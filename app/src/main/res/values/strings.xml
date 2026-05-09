@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Upgrid Browser</string>
+    <string name="omnibar_hint">Search or enter address</string>
+
+    <!-- Start page -->
+    <string name="start_page_tagline">Search the web. Quietly ad-free.</string>
+
+    <!-- Bottom bar / nav -->
+    <string name="nav_back">Back</string>
+    <string name="nav_forward">Forward</string>
+    <string name="nav_home">Home</string>
+    <string name="nav_reload">Reload</string>
+    <string name="nav_tabs">Tabs</string>
+    <string name="nav_menu">Menu</string>
+    <string name="nav_pip">Picture in picture</string>
+    <string name="nav_adblock">AdBlock</string>
+    <string name="nav_bookmarks">Bookmarks</string>
+    <string name="nav_reader">Reader view</string>
+
+    <!-- Generic shorts -->
+    <string name="coming_soon">Coming soon</string>
+
+    <!-- App menu (popup) -->
+    <string name="menu_new_tab">New tab</string>
+    <string name="menu_refresh">Refresh</string>
+    <string name="menu_share">Share</string>
+    <string name="menu_home">Home</string>
+    <string name="menu_close_tab">Close tab</string>
+    <string name="menu_adblock">AdBlock</string>
+    <string name="menu_adblock_state_on">ON</string>
+    <string name="menu_adblock_state_off">OFF</string>
+    <string name="menu_find_in_page">Find in page</string>
+    <string name="menu_desktop_site">Desktop site</string>
+    <string name="menu_bookmarks">Bookmarks</string>
+    <string name="menu_history">History</string>
+    <string name="menu_downloads">Downloads</string>
+    <string name="menu_settings">Settings</string>
+    <string name="menu_settings_subtitle">Coming soon</string>
+    <string name="menu_pill_soon">Soon</string>
+
+    <!-- Legacy strings — kept for backwards compat with menu/app_menu.xml until
+         we delete it; safe to remove once that resource file is gone. -->
+    <string name="menu_adblock_on">AdBlock: ON</string>
+    <string name="menu_adblock_off">AdBlock: OFF</string>
+
+    <!-- Tabs tray -->
+    <string name="tabs_tray_title">Tabs</string>
+    <string name="tabs_tray_title_count">Tabs · %1$d</string>
+    <string name="tabs_tray_close">Close tab</string>
+    <string name="tabs_tray_close_all">Close all</string>
+    <string name="tabs_tray_new">New</string>
+    <string name="tabs_tray_empty_title">Your tabs will appear here.</string>
+    <string name="tabs_tray_empty_subtitle">Use tabs to browse multiple pages at once.</string>
+</resources>

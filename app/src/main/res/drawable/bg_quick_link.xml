@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Generic rounded tile shape; per-tile color is applied via backgroundTint at
+  bind time, so this single drawable serves all 8 default tiles + any future
+  custom ones without an explosion of color-state-list xml.
+-->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <solid android:color="#FFFFFFFF" />
+    <corners android:radius="20dp" />
+</shape>

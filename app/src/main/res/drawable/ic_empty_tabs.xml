@@ -1,0 +1,27 @@
+<!--
+  Empty-state illustration for the tabs tray. Two stacked window cards, the
+  back card faded so it reads as "behind". Drawn in pure white so the host
+  ImageView's app:tint applies — keeps the asset theme-agnostic.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="120dp"
+    android:height="120dp"
+    android:viewportWidth="120"
+    android:viewportHeight="120">
+    <!-- back card, faded -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:fillAlpha="0.25"
+        android:pathData="M22,40h62a6,6 0 0 1 6,6v40a6,6 0 0 1 -6,6h-62a6,6 0 0 1 -6,-6v-40a6,6 0 0 1 6,-6z" />
+    <!-- front card, solid -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:fillAlpha="0.85"
+        android:pathData="M38,22h62a6,6 0 0 1 6,6v40a6,6 0 0 1 -6,6h-62a6,6 0 0 1 -6,-6v-40a6,6 0 0 1 6,-6z" />
+    <!-- close-X mark on front card so it reads as a browser window -->
+    <path
+        android:strokeColor="#FF202A36"
+        android:fillColor="#00000000"
+        android:strokeWidth="2.5"
+        android:pathData="M92,32 L100,40 M100,32 L92,40" />
+</vector>

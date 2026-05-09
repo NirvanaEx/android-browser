@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Tab-row card. Selected state highlights the active tab with a tinted fill +
+  accent border. Ripple is layered separately via android:foreground=
+  ?attr/selectableItemBackground in the row layout — keeps this drawable as
+  pure surface and avoids stroke-clipped ripples.
+-->
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:state_selected="true">
+        <shape android:shape="rectangle">
+            <solid android:color="?attr/colorPrimaryContainer" />
+            <stroke
+                android:width="1.5dp"
+                android:color="?attr/colorPrimary" />
+            <corners android:radius="14dp" />
+        </shape>
+    </item>
+    <item>
+        <shape android:shape="rectangle">
+            <solid android:color="?attr/colorSurfaceContainerHigh" />
+            <corners android:radius="14dp" />
+        </shape>
+    </item>
+</selector>

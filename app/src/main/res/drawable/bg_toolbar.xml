@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Pill-shaped surfaceContainer fill behind the BrowserToolbar's URL field.
+  Mozilla's toolbar paints its own URL/hint text on top, so we just give it a
+  soft chip background to feel like a search bar.
+-->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <solid android:color="?attr/colorSurfaceContainer" />
+    <corners android:radius="22dp" />
+</shape>

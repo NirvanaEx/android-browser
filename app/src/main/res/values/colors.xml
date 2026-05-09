@@ -1,0 +1,82 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Brand palette. Single source of truth for colors that the M3 theme attributes
+  remap to. Don't reference these directly from layouts — go through ?attr/colorXxx
+  so light/dark stays consistent.
+-->
+<resources>
+    <!-- Launcher / brand seed. Matches mipmap ic_launcher background. -->
+    <color name="brand_blue">#1F6FEB</color>
+    <color name="brand_blue_dark">#00468F</color>
+    <color name="brand_blue_light">#B0C7FF</color>
+
+    <color name="ic_launcher_background">@color/brand_blue</color>
+
+    <!-- Light scheme (Material 3 baseline derived from brand_blue) -->
+    <color name="md_primary_light">#1F6FEB</color>
+    <color name="md_on_primary_light">#FFFFFF</color>
+    <color name="md_primary_container_light">#DCE7FF</color>
+    <color name="md_on_primary_container_light">#001A45</color>
+
+    <color name="md_secondary_light">#555F71</color>
+    <color name="md_on_secondary_light">#FFFFFF</color>
+    <color name="md_secondary_container_light">#DAE2F9</color>
+    <color name="md_on_secondary_container_light">#121C2B</color>
+
+    <color name="md_tertiary_light">#705575</color>
+    <color name="md_on_tertiary_light">#FFFFFF</color>
+    <color name="md_tertiary_container_light">#FAD8FD</color>
+    <color name="md_on_tertiary_container_light">#28132E</color>
+
+    <color name="md_error_light">#BA1A1A</color>
+    <color name="md_on_error_light">#FFFFFF</color>
+    <color name="md_error_container_light">#FFDAD6</color>
+    <color name="md_on_error_container_light">#410002</color>
+
+    <color name="md_background_light">#FDFCFF</color>
+    <color name="md_on_background_light">#1A1B22</color>
+    <color name="md_surface_light">#FDFCFF</color>
+    <color name="md_on_surface_light">#1A1B22</color>
+    <color name="md_surface_variant_light">#E1E2EC</color>
+    <color name="md_on_surface_variant_light">#44464F</color>
+    <color name="md_surface_container_light">#F2F3F9</color>
+    <color name="md_surface_container_high_light">#ECEDF3</color>
+    <color name="md_surface_container_highest_light">#E5E7EE</color>
+
+    <color name="md_outline_light">#74777F</color>
+    <color name="md_outline_variant_light">#C4C6CF</color>
+
+    <!-- Dark scheme -->
+    <color name="md_primary_dark">#B0C7FF</color>
+    <color name="md_on_primary_dark">#002F6E</color>
+    <color name="md_primary_container_dark">#00468F</color>
+    <color name="md_on_primary_container_dark">#DCE7FF</color>
+
+    <color name="md_secondary_dark">#BEC6DC</color>
+    <color name="md_on_secondary_dark">#283041</color>
+    <color name="md_secondary_container_dark">#3E4759</color>
+    <color name="md_on_secondary_container_dark">#DAE2F9</color>
+
+    <color name="md_tertiary_dark">#DEBCDF</color>
+    <color name="md_on_tertiary_dark">#402744</color>
+    <color name="md_tertiary_container_dark">#583D5C</color>
+    <color name="md_on_tertiary_container_dark">#FAD8FD</color>
+
+    <color name="md_error_dark">#FFB4AB</color>
+    <color name="md_on_error_dark">#690005</color>
+    <color name="md_error_container_dark">#93000A</color>
+    <color name="md_on_error_container_dark">#FFDAD6</color>
+
+    <color name="md_background_dark">#111318</color>
+    <color name="md_on_background_dark">#E2E2E9</color>
+    <color name="md_surface_dark">#111318</color>
+    <color name="md_on_surface_dark">#E2E2E9</color>
+    <color name="md_surface_variant_dark">#44464F</color>
+    <color name="md_on_surface_variant_dark">#C4C6CF</color>
+    <color name="md_surface_container_dark">#1D1F24</color>
+    <color name="md_surface_container_high_dark">#272A2F</color>
+    <color name="md_surface_container_highest_dark">#32353A</color>
+
+    <color name="md_outline_dark">#8E9099</color>
+    <color name="md_outline_variant_dark">#44464F</color>
+</resources>

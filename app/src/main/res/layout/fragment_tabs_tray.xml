@@ -1,0 +1,116 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Bottom-sheet tabs tray. Material drag handle at the top, header row with the
+  current tab count + "Close all" + "+ New", then a card-style RecyclerView.
+  Sheet height is capped via maxHeight on the list so a few tabs render compact
+  but a long list scrolls inside the sheet rather than pushing the system bars.
+
+  When tabs.isEmpty() we hide the list and show a Banana-style empty-state
+  illustration with copy. The sheet stays open in this state — TabsTrayFragment
+  drops a fresh HOME tab on dismiss so MainActivity isn't left empty-handed.
+-->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:background="?attr/colorSurfaceContainer">
+
+    <com.google.android.material.bottomsheet.BottomSheetDragHandleView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content" />
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:paddingHorizontal="16dp"
+        android:paddingTop="4dp"
+        android:paddingBottom="12dp">
+
+        <TextView
+            android:id="@+id/tabsTitle"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:textAppearance="?attr/textAppearanceTitleLarge"
+            android:textColor="?attr/colorOnSurface"
+            android:text="@string/tabs_tray_title" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnCloseAll"
+            style="@style/Widget.Material3.Button.TextButton"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginEnd="4dp"
+            android:text="@string/tabs_tray_close_all" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnNewTab"
+            style="@style/Widget.Material3.Button.TonalButton.Icon"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            app:icon="@drawable/ic_add"
+            android:text="@string/tabs_tray_new" />
+    </LinearLayout>
+
+    <!--
+      Content area: RecyclerView and empty-state stacked. Min height keeps the
+      sheet from collapsing to nothing while the empty state is showing.
+    -->
+    <FrameLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:minHeight="320dp">
+
+        <androidx.recyclerview.widget.RecyclerView
+            android:id="@+id/tabsList"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:paddingHorizontal="12dp"
+            android:paddingBottom="16dp"
+            android:clipToPadding="false"
+            android:maxHeight="520dp"
+            android:nestedScrollingEnabled="true"
+            android:overScrollMode="never" />
+
+        <LinearLayout
+            android:id="@+id/emptyState"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:gravity="center"
+            android:paddingVertical="32dp"
+            android:paddingHorizontal="32dp"
+            android:visibility="gone"
+            tools:visibility="visible">
+
+            <ImageView
+                android:layout_width="120dp"
+                android:layout_height="120dp"
+                android:contentDescription="@null"
+                android:src="@drawable/ic_empty_tabs"
+                app:tint="?attr/colorOnSurface" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="20dp"
+                android:textAppearance="?attr/textAppearanceTitleMedium"
+                android:textColor="?attr/colorOnSurface"
+                android:gravity="center"
+                android:text="@string/tabs_tray_empty_title" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:textAppearance="?attr/textAppearanceBodyMedium"
+                android:textColor="?attr/colorOnSurfaceVariant"
+                android:gravity="center"
+                android:text="@string/tabs_tray_empty_subtitle" />
+        </LinearLayout>
+    </FrameLayout>
+</LinearLayout>

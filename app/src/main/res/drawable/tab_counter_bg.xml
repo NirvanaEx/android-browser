@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Tab counter "frame" — a rounded square outline with the count drawn inside.
+  Stroke uses ?attr/colorOnSurface so it adapts to light/dark themes; the count
+  TextView inherits the same color via its android:textColor.
+-->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <solid android:color="@android:color/transparent" />
+    <stroke
+        android:width="2dp"
+        android:color="?attr/colorOnSurface" />
+    <corners android:radius="6dp" />
+    <size
+        android:width="26dp"
+        android:height="26dp" />
+</shape>

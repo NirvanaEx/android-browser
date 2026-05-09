@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Background for AppMenuPopup. Solid surfaceContainerHigh chip with 14dp
+  rounded corners — matches Banana's dropdown menu shape. PopupWindow uses
+  this as its window background so the elevation shadow clips correctly.
+-->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <solid android:color="?attr/colorSurfaceContainerHigh" />
+    <corners android:radius="14dp" />
+</shape>
