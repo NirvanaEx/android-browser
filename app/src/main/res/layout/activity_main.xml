@@ -1,13 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
   Top-level browser layout:
-   - BrowserToolbar (Mozilla) at the top, on a soft surface chip.
+   - Topbar: home + URL chip + video-PiP button (conditional) + menu trigger.
    - GeckoEngineView in the middle.
    - Speed-dial start page overlaying the engine when tab is at about:blank.
-   - Floating PiP button overlay shown while media is playing.
    - FindInPageBar pinned above the bottom bar, GONE until invoked.
-   - Banana-style 6-slot bottom bar: forward / adblock-shield / bookmarks /
-     reader / tabs / menu. Back is the system gesture; home moved to topbar.
+   - Bottom bar: 5-slot Banana-style row: forward / adblock-shield / bookmarks
+     / reader / tabs. Menu moved to topbar; back is the system gesture.
 
   Hairline dividers above the bottom bar and below the toolbar give a subtle
   "raised" feeling without elevation shadows that don't render upward.
@@ -21,10 +20,15 @@
     android:fitsSystemWindows="true">
 
     <!--
-      Topbar: Banana-style home button on the left + the BrowserToolbar chip
-      taking the rest of the row. The wrapper paints the chrome surface so the
-      home button sits flush with the rest of the bar; the toolbar itself keeps
-      its rounded chip background via @drawable/bg_toolbar.
+      Topbar — 4 slots in a row:
+        1. btnTopHome   — always visible
+        2. BrowserToolbar (URL chip)  — flex, takes leftover width
+        3. btnTopVideo  — VISIBLE only while a tab has playing media; tap
+                          enters Picture-in-Picture
+        4. btnTopMenu   — always visible; opens AppMenuPopup
+      Menu was originally in the bottom bar; moving it up frees a slot there
+      and matches Banana's right-anchored dropdown. The video button replaces
+      the old floating PiP FAB so play/pause/seek live in one consistent place.
     -->
     <LinearLayout
         android:id="@+id/toolbarWrapper"
@@ -33,7 +37,7 @@
         android:orientation="horizontal"
         android:gravity="center_vertical"
         android:paddingStart="4dp"
-        android:paddingEnd="8dp"
+        android:paddingEnd="4dp"
         android:paddingVertical="4dp"
         android:background="?attr/colorSurface"
         app:layout_constraintTop_toTopOf="parent"
@@ -44,6 +48,8 @@
             android:id="@+id/btnTopHome"
             android:layout_width="44dp"
             android:layout_height="44dp"
+            android:padding="0dp"
+            android:scaleType="center"
             android:background="?attr/selectableItemBackgroundBorderless"
             android:contentDescription="@string/nav_home"
             android:src="@drawable/ic_home"
@@ -55,7 +61,32 @@
             android:layout_weight="1"
             android:layout_height="56dp"
             android:layout_marginStart="4dp"
+            android:layout_marginEnd="4dp"
             android:background="@drawable/bg_toolbar" />
+
+        <ImageButton
+            android:id="@+id/btnTopVideo"
+            android:layout_width="44dp"
+            android:layout_height="44dp"
+            android:padding="0dp"
+            android:scaleType="center"
+            android:visibility="gone"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="@string/nav_video_pip"
+            android:src="@drawable/ic_video_play"
+            android:tint="?attr/colorPrimary"
+            tools:visibility="visible" />
+
+        <ImageButton
+            android:id="@+id/btnTopMenu"
+            android:layout_width="44dp"
+            android:layout_height="44dp"
+            android:padding="0dp"
+            android:scaleType="center"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="@string/nav_menu"
+            android:src="@drawable/ic_more_vert"
+            android:tint="?attr/colorOnSurface" />
     </LinearLayout>
 
     <View
@@ -95,25 +126,6 @@
         app:layout_constraintEnd_toEndOf="parent" />
 
     <!--
-      Floating Picture-in-Picture trigger. MainActivity flips its visibility
-      based on the selected tab's mediaSessionState; tap → enterPictureInPictureMode.
-    -->
-    <com.google.android.material.floatingactionbutton.FloatingActionButton
-        android:id="@+id/pipFab"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_margin="20dp"
-        android:visibility="gone"
-        android:contentDescription="@string/nav_pip"
-        android:src="@drawable/ic_pip"
-        app:tint="?attr/colorOnPrimary"
-        app:backgroundTint="?attr/colorPrimary"
-        app:fabSize="normal"
-        app:layout_constraintEnd_toEndOf="@id/engineView"
-        app:layout_constraintBottom_toBottomOf="@id/engineView"
-        tools:visibility="visible" />
-
-    <!--
       Mozilla's built-in find-in-page bar. Sits between engine view and the
       bottom bar; height collapses when GONE so layout stays clean otherwise.
     -->
@@ -138,9 +150,8 @@
         app:layout_constraintEnd_toEndOf="parent" />
 
     <!--
-      Banana-style bottom bar: 6 evenly-distributed slots. Each child uses
-      weight=1 so the row stays balanced on any screen width. Order is fixed by
-      the design and depended on by MainActivity.wireBottomBar().
+      Banana-style bottom bar: 5 evenly-distributed slots. Menu moved to the
+      topbar (btnTopMenu); freeing a slot here keeps each tap target generous.
 
         1. btnForward         — page forward (back is the system gesture)
         2. btnAdblockShield   — instant uBO toggle. Icon flips between
@@ -148,9 +159,8 @@
                                 (OFF, dimmed). Tap = toggle, no menu hop.
         3. btnBookmarks       — Phase 3 stub; toast for now.
         4. btnReader          — Phase 3+ stub; toast for now.
-        5. btnTabs            — opens TabsTrayFragment. The TextView inside
+        5. btnTabs            — opens the tabs page. The TextView inside
                                 shows the live tab count badge.
-        6. btnMenu            — opens MenuBottomSheet (everything else).
     -->
     <LinearLayout
         android:id="@+id/bottomBar"
@@ -168,6 +178,8 @@
             android:layout_width="0dp"
             android:layout_height="48dp"
             android:layout_weight="1"
+            android:padding="0dp"
+            android:scaleType="center"
             android:background="?attr/selectableItemBackgroundBorderless"
             android:contentDescription="@string/nav_forward"
             android:src="@drawable/ic_arrow_forward"
@@ -178,6 +190,8 @@
             android:layout_width="0dp"
             android:layout_height="48dp"
             android:layout_weight="1"
+            android:padding="0dp"
+            android:scaleType="center"
             android:background="?attr/selectableItemBackgroundBorderless"
             android:contentDescription="@string/nav_adblock"
             android:src="@drawable/ic_shield"
@@ -188,6 +202,8 @@
             android:layout_width="0dp"
             android:layout_height="48dp"
             android:layout_weight="1"
+            android:padding="0dp"
+            android:scaleType="center"
             android:background="?attr/selectableItemBackgroundBorderless"
             android:contentDescription="@string/nav_bookmarks"
             android:src="@drawable/ic_bookmark"
@@ -198,6 +214,8 @@
             android:layout_width="0dp"
             android:layout_height="48dp"
             android:layout_weight="1"
+            android:padding="0dp"
+            android:scaleType="center"
             android:background="?attr/selectableItemBackgroundBorderless"
             android:contentDescription="@string/nav_reader"
             android:src="@drawable/ic_reader"
@@ -225,15 +243,22 @@
                 android:textColor="?attr/colorOnSurface"
                 tools:text="3" />
         </FrameLayout>
-
-        <ImageButton
-            android:id="@+id/btnMenu"
-            android:layout_width="0dp"
-            android:layout_height="48dp"
-            android:layout_weight="1"
-            android:background="?attr/selectableItemBackgroundBorderless"
-            android:contentDescription="@string/nav_menu"
-            android:src="@drawable/ic_more_vert"
-            android:tint="?attr/colorOnSurface" />
     </LinearLayout>
+
+    <!--
+      Fullscreen video controls overlay. Sits as the very last child so it's
+      drawn on top of the engine view and any chrome. Visibility is owned by
+      MainActivity: shown when FullScreenFeature reports the page video has
+      gone fullscreen, hidden otherwise. See [view_fullscreen_controls.xml]
+      for the UI layout.
+    -->
+    <include
+        android:id="@+id/fsOverlay"
+        layout="@layout/view_fullscreen_controls"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent" />
 </androidx.constraintlayout.widget.ConstraintLayout>

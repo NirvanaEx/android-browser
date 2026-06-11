@@ -1,6 +1,7 @@
 package com.upgrid.browser
 
 import android.content.Context
+import com.upgrid.browser.fullscreen.VideoPlayerBridge
 import mozilla.components.browser.engine.gecko.GeckoEngine
 import mozilla.components.browser.icons.BrowserIcons
 import mozilla.components.browser.session.storage.SessionStorage
@@ -8,6 +9,7 @@ import mozilla.components.browser.state.engine.EngineMiddleware
 import mozilla.components.browser.state.store.BrowserStore
 import mozilla.components.concept.engine.DefaultSettings
 import mozilla.components.concept.engine.Engine
+import mozilla.components.concept.engine.EngineSession
 import mozilla.components.feature.session.SessionUseCases
 import mozilla.components.feature.tabs.TabsUseCases
 import mozilla.components.lib.fetch.okhttp.OkHttpClient
@@ -49,8 +51,7 @@ class BrowserComponents(val context: Context) {
                 domStorageEnabled = true,
                 webFontsEnabled = true,
                 automaticFontSizeAdjustment = true,
-                trackingProtectionPolicy = mozilla.components.concept.engine.EngineSession
-                    .TrackingProtectionPolicy.recommended()
+                trackingProtectionPolicy = EngineSession.TrackingProtectionPolicy.recommended(),
             )
         )
     }
@@ -80,4 +81,13 @@ class BrowserComponents(val context: Context) {
 
     /** Favicon loader used by toolbar + tabs tray. */
     val icons: BrowserIcons by lazy { BrowserIcons(context, httpClient) }
+
+    /**
+     * Owns the built-in WebExtension behind the built-in video player.
+     * [BrowserApplication.onCreate] calls `setupAndInstall()` once the engine
+     * is ready; the bridge then has a port open for the lifetime of the app.
+     */
+    val videoPlayerBridge: VideoPlayerBridge by lazy {
+        VideoPlayerBridge(this)
+    }
 }

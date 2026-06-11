@@ -44,6 +44,13 @@ class BrowserApplication : Application() {
         components.runtime
         restorePreviousSession()
 
+        // Install the bundled player-helper WebExtension. Touching the
+        // bridge property creates it; setupAndInstall() then registers the
+        // extension with the engine and primes the native messaging port.
+        // Idempotent — re-installing an already-installed extension is a
+        // no-op in a-c.
+        components.videoPlayerBridge.setupAndInstall()
+
         appScope.launch {
             AdblockBootstrap(components, this@BrowserApplication).ensureInstalled()
         }

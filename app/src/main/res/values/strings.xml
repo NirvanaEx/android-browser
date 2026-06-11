@@ -21,6 +21,25 @@
     <!-- Generic shorts -->
     <string name="coming_soon">Coming soon</string>
 
+    <!-- Settings -->
+    <string name="settings_title">Settings</string>
+    <string name="settings_section_search">Search engine</string>
+    <string name="settings_section_history">Search history</string>
+    <string name="settings_clear_history">Clear history</string>
+    <string name="settings_section_player">Video player</string>
+    <string name="settings_seek_step">Double-tap seek step</string>
+    <string name="settings_seek_option">%1$d seconds</string>
+
+    <!-- Topbar -->
+    <string name="nav_video_pip">Open video in PiP</string>
+
+    <!-- Built-in video player -->
+    <string name="player_no_video">No video found on this page</string>
+    <string name="player_seek_back">−%1$d s</string>
+    <string name="player_seek_forward">+%1$d s</string>
+    <string name="player_volume">Volume %1$d%%</string>
+    <string name="player_brightness">Brightness %1$d%%</string>
+
     <!-- App menu (popup) -->
     <string name="menu_new_tab">New tab</string>
     <string name="menu_refresh">Refresh</string>
