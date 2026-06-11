@@ -395,14 +395,6 @@
                 android:textSize="14sp"
                 android:textColor="?attr/colorOnSurface"
                 android:text="@string/menu_settings" />
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:paddingHorizontal="8dp"
-                android:paddingVertical="2dp"
-                android:textSize="10sp"
-                android:textColor="?attr/colorOnSurfaceVariant"
-                android:text="@string/menu_pill_soon" />
         </LinearLayout>
     </LinearLayout>
 </androidx.core.widget.NestedScrollView>

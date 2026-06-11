@@ -1,6 +1,6 @@
-# CLAUDE.md
+# AGENTS.md
 
-Guidance for Claude Code working on this repository.
+Guidance for Codex working on this repository.
 
 ## Mission in one line
 
@@ -20,7 +20,6 @@ GeckoView-based Android browser whose only "killer feature" is **uBlock Origin r
 ```
 app/src/main/
 ├── AndroidManifest.xml             ← intent-filters for VIEW http(s), default browser
-├── assets/extensions/upgrid_fullscreen/  ← built-in player WebExtension (manifest + background.js + player.js)
 ├── java/com/upgrid/browser/
 │   ├── BrowserApplication.kt       ← components; restore session; uBO bootstrap; autosave
 │   ├── BrowserComponents.kt        ← single source of truth for runtime/engine/store/tabs
@@ -28,20 +27,12 @@ app/src/main/
 │   │                                 6-slot Banana-style bottom bar + Session/Toolbar features
 │   ├── AdblockController.kt        ← thin façade for the AdBlock on/off menu toggle
 │   ├── addons/AdblockBootstrap.kt  ← silent uBO install + version pin
-│   ├── fullscreen/
-│   │   ├── VideoPlayerBridge.kt    ← native ⇆ extension port; takeover trigger
-│   │   └── PlayerOverlayController.kt ← overlay buttons, seek bar, gestures
-│   ├── home/                       ← speed-dial start page
 │   ├── menu/AppMenuPopup.kt        ← Banana-style drop-down menu (PopupWindow, not BottomSheet)
-│   ├── prefs/BrowserPreferences.kt ← typed SharedPreferences façade (all settings)
-│   ├── search/                     ← SearchEngine enum + SearchHistory
-│   ├── settings/SettingsBottomSheet.kt ← settings sheet (search engine, seek step, history)
 │   └── tabs/
 │       ├── TabsTrayFragment.kt     ← BottomSheet tabs tray (RecyclerView, store-driven)
 │       └── TabViewHolder.kt
 └── res/
-    ├── layout/                     ← activity_main + app_menu_popup + fragment_tabs_tray +
-    │                                 view_fullscreen_controls (player overlay) + …
+    ├── layout/                     ← activity_main + app_menu_popup + fragment_tabs_tray + item_tab_row
     ├── menu/app_menu.xml           ← New tab / Close tab / AdBlock toggle
     └── values, drawable, mipmap…
 ```
@@ -83,17 +74,6 @@ We auto-grant **only for our pinned UBO_ID**; anything else falls through to the
 `Engine.listInstalledWebExtensions(…)` is a callback API. The callback **does not** always fire synchronously — on cold start the engine cache is cold and the callback lands on the next dispatch tick. A sync `isEnabled()` that reads `var result = false` before the callback fires returns `false` even when uBO is installed and active — symptom: bottom-bar shield permanently rendered OFF.
 
 The fix is `suspend fun isEnabled(): Boolean = findUbo()?.isEnabled() == true`. **Don't** call it from `store.flow().collect { … renderAdblockShield() }` — store ticks fire dozens of times during page load, each launches a new lookup coroutine, the engine queue backs up, main thread stalls, **ANR**. Refresh shield only at: `wireBottomBar()` init, after the user's own shield tap, after `AppMenuPopup` toggles uBO (popup calls back via `activity.renderAdblockShield()`), and `onResume()`.
-
-## Built-in video player (takeover architecture)
-
-The topbar ▶ button hands the page's `<video>` to OUR overlay player. Key facts:
-
-- **Gesture token path is sacred.** Gecko rejects `requestFullscreen()`/`play()` without a user gesture, and `loadUrl("javascript:…")` carries none. The only preserved path: Android click → `Action.onClick` (browser_action) → background.js `onClicked` → `tabs.executeScript` → page. Don't "simplify" this into direct JS injection — it half-works and the failure is silent.
-- **Takeover = fullscreen the `<video>` element itself + `v.controls = false`.** The page's custom control DOM (YouTube/VK/video.js) lives *outside* the video element, so it simply never renders in fullscreen — no z-index fights. `player.js` remembers the original `controls` value and restores it on release.
-- **State/commands flow over a native-messaging port** (`upgridPlayer`): content script streams `{t:"state", pos, dur, paused…}` every 500 ms; native sends `{cmd:"toggle"|"seekBy"|"seekTo"|"loop"|"release"}`. Native side: `VideoPlayerBridge.registerBackgroundMessageHandler`; manifest needs `nativeMessaging` + `geckoViewAddons` (privileged, OK for built-in extensions only).
-- **Frame locking.** `player.js` is injected `allFrames:true` (videos live in embed iframes). background.js locks onto the first frame reporting takeover-ok and silently releases any later claimant; commands are routed with `{frameId}`.
-- **Exit is multi-path and must stay idempotent.** System back / fsExit button / page exiting fullscreen all converge: content script's `fullscreenchange` listener auto-releases → `"released"` event → MainActivity hides overlay + restores chrome. `exitPlayer()` also restores chrome optimistically without waiting for the round-trip.
-- Seek step for double-tap/skip buttons is `BrowserPreferences.playerSeekSeconds` (5/10/15/30 s, settings sheet).
 
 ## API gotchas (these break between a-c versions)
 
@@ -146,7 +126,7 @@ The AMO file id changes per release; the version in the filename is cosmetic.
 - Verify uBO is alive: load `https://d3ward.github.io/toolz/adblock` — it scores blocked items. Expected: 90+%.
 - After bumping a-c version, smoke-test by loading youtube.com (cosmetic filtering), facebook.com (anti-circumvention), and a major news site.
 
-## Sharing screenshots with Claude
+## Sharing screenshots with Codex
 
 UI work on this project goes screenshot ↔ feedback. **Anthropic's API rejects multi-image chats when any image exceeds 2000 px on any side**, and Android phones produce 1080×2400 screenshots — they trip the limit and corrupt the whole conversation.
 
@@ -155,7 +135,7 @@ UI work on this project goes screenshot ↔ feedback. **Anthropic's API rejects 
 2. Run [tools/Resize-Screenshots.ps1](tools/Resize-Screenshots.ps1) — downsizes anything >1900 px to fit, in-place, preserving aspect ratio.
 3. Drag the resized files into the chat.
 
-If Claude is asked to review UI and the user pastes a fresh phone screenshot, **first** point them at this workflow before the chat is at risk. Don't dump screenshots into the project root — they end up unowned junk and pollute Glob results.
+If Codex is asked to review UI and the user pastes a fresh phone screenshot, **first** point them at this workflow before the chat is at risk. Don't dump screenshots into the project root — they end up unowned junk and pollute Glob results.
 
 ## Design direction
 

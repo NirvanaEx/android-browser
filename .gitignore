@@ -21,3 +21,14 @@ release/
 
 # Logs
 *.log
+
+# Working files for chat/UI-review — never part of the app
+screenshots/
+
+# Build artifacts
+*.apk
+*.aab
+
+# Tooling caches
+.kotlin/
+.claude/

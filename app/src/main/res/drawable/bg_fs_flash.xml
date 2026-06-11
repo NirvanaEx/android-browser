@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Translucent pill behind the transient gesture indicators ("+10 s",
+     "Volume 60%") on the fullscreen player overlay. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <solid android:color="#99000000" />
+    <corners android:radius="24dp" />
+</shape>

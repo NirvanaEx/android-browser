@@ -29,7 +29,8 @@ class AdblockController(private val components: BrowserComponents) {
      * "OFF" while uBO was actually blocking ads. Going through a coroutine
      * makes this race impossible.
      */
-    suspend fun isEnabled(): Boolean = findUbo()?.isEnabled() == true
+    suspend fun isEnabled(): Boolean =
+        runCatching { findUbo()?.isEnabled() == true }.getOrDefault(false)
 
     /** Flip the current state. If uBO isn't installed, install + enable it. */
     suspend fun toggle() {

@@ -14,6 +14,7 @@ import com.upgrid.browser.BrowserApplication
 import com.upgrid.browser.MainActivity
 import com.upgrid.browser.R
 import com.upgrid.browser.databinding.AppMenuPopupBinding
+import com.upgrid.browser.settings.SettingsBottomSheet
 import kotlinx.coroutines.launch
 import mozilla.components.browser.state.selector.selectedTab
 
@@ -122,7 +123,12 @@ class AppMenuPopup(private val activity: MainActivity) {
         rowBookmarks.setOnClickListener { stubToast(); popup.dismiss() }
         rowHistory.setOnClickListener { stubToast(); popup.dismiss() }
         rowDownloads.setOnClickListener { stubToast(); popup.dismiss() }
-        rowSettings.setOnClickListener { stubToast(); popup.dismiss() }
+
+        // Settings now leads somewhere real: search-engine picker + history.
+        rowSettings.setOnClickListener {
+            popup.dismiss()
+            SettingsBottomSheet().show(activity.supportFragmentManager, "settings")
+        }
     }
 
     private fun stubToast() {
