@@ -5,6 +5,7 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Intent
 import android.net.Uri
+import android.view.HapticFeedbackConstants
 import android.widget.Toast
 import androidx.annotation.StringRes
 import androidx.appcompat.app.AlertDialog
@@ -54,6 +55,7 @@ class LinkContextMenu(
     private val activity: Activity,
     private val store: BrowserStore,
     private val tabsUseCases: TabsUseCases,
+    private val haptics: () -> Boolean = { true },
     private val mainDispatcher: CoroutineDispatcher = Dispatchers.Main,
 ) : LifecycleAwareFeature {
 
@@ -91,11 +93,35 @@ class LinkContextMenu(
         // stacking a dialog behind a dialog.
         if (dialog?.isShowing == true) return
 
+        buzz()
+
         dialog = MaterialAlertDialogBuilder(activity)
             .setTitle(title(hit))
             .setItems(rows.map(::labelOf).toTypedArray()) { _, which -> rows[which].act() }
             .setOnDismissListener { dialog = null }
             .show()
+    }
+
+    /**
+     * The tick that says the long press worked.
+     *
+     * This is the one gesture in a browser with no other feedback: the finger
+     * is already down, nothing on screen moves, and the only way to learn
+     * whether you have held it long enough is to wait and find out. A short
+     * buzz at the moment the menu is decided answers that before the dialog has
+     * even drawn.
+     *
+     * `LONG_PRESS` rather than `KEYBOARD_TAP` because Android reserves it for
+     * exactly this, and because a phone that already buzzes for the launcher's
+     * long press should buzz the same way here. [View.performHapticFeedback] is
+     * a no-op when the user has turned haptics off system-wide, so the phone's
+     * own setting is honoured without asking about it.
+     */
+    private fun buzz() {
+        if (!haptics()) return
+        runCatching {
+            activity.window.decorView.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+        }
     }
 
     private fun labelOf(row: Row): CharSequence = activity.getString(row.label)

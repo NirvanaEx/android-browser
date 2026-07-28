@@ -302,8 +302,8 @@ The AMO file id changes per release; the version in the filename is cosmetic.
 
 ## Chrome: one bar, and where the bottom bar went
 
-There is **one** bar, at the top: home · URL chip · player button · tab counter ·
-menu. The five-slot bottom bar is gone. It cost ~60dp of page height on every
+There is **one** bar, at the top: home · URL chip · player button · new tab ·
+tab counter · menu. The five-slot bottom bar is gone. It cost ~60dp of page height on every
 screen, sat where the system gesture bar and most sites' sticky footers are, and
 two of its five slots only ever produced a "coming soon" toast.
 
@@ -330,6 +330,36 @@ toolbar, not above the nav bar.
 the page down when visible. Opening either closes the other — stacking them
 would take 100dp off the page and neither is a mode you're in twice.
 
+**All of it lives in one `chrome` container, and the page is not under it.**
+The bar, the progress line, the hairline and the three page bars are children of
+a single vertical LinearLayout; `swipeRefresh` (and `pageCover`) are constrained
+to the *whole* window and slid down by `chrome.height` — see
+`MainActivity.applyChromeOffset`. That inversion is what makes hiding the bar on
+scroll cheap: the engine view is never re-measured, so GeckoView is never
+resized, so the page never reflows and never jumps. Anything added to the chrome
+goes inside that container, and its height is accounted for automatically by the
+layout listener.
+
+Two calls make Gecko agree with the geometry:
+`setDynamicToolbarMaxHeight(toolbarHeight)`, so `100vh` is computed for the
+bar-hidden case once and stays put, and `setVerticalClipping(offset)`, so a
+site's own bottom-fixed bar sits above the screen edge rather than below it —
+the page is `chrome.height` taller than the window and hangs off the bottom.
+
+**The bar hides on the way down and comes back on the way up.** Driven by
+`EngineSession.Observer.onScrollChange` (the only reliable source: a touch on
+the engine view tells us nothing about whether the page moved), through
+`onPageScrolled`, which accumulates a *directional run* rather than summing
+deltas — a single scroll event is a few pixels and the sum of a scroll down and
+back up is zero. Thresholds are asymmetric (24dp to hide, 8dp to show) and the
+top of the document always shows it. It never hides while the address bar is
+being typed into or while find/translate is open; see `canHideToolbar`.
+
+There is **no slide animation**, deliberately. Moving the engine view every
+frame means moving a SurfaceView every frame, and its surface follows the view
+by about a frame — the page would tear away from the bar for the length of the
+animation. One frame of that is invisible, twelve are not.
+
 **A `wrap_content` view constrained top *and* bottom is centred.** That's
 ConstraintLayout doing what it's told, and it parked the whole suggestion list
 halfway down the screen. The bottom constraint has to stay — it's what
@@ -338,9 +368,12 @@ halfway down the screen. The bottom constraint has to stay — it's what
 
 Two consequences worth knowing before you "restore" something:
 
-- **`applyVideoFocus` hides `toolbarWrapper`, `toolbarDivider` and both page
-  bars (`findBar`, `translateBar`).** Any new chrome that should vanish in video
-  focus has to be added there explicitly.
+- **`applyVideoFocus` hides the whole `chrome` container.** That is now one line
+  rather than a list of views, and the page moves to the top of the window by
+  itself because the offset is derived from the container's height. It also
+  un-hides the top bar on the way out: a bar scrolled away before the video
+  started would otherwise still be away after it ends, with nothing to scroll
+  back up with.
 - **`BrowserToolbar` must be given 56dp. Never shrink it.** Its layouts are
   built for exactly that height and nothing in them re-centres:
   `mozac_browser_toolbar_displaytoolbar.xml` top-anchors every child with a
@@ -985,6 +1018,33 @@ and it was not taken: Mozilla documents it as the slower backend, video is this
 browser's headline feature, and paying for every frame forever to make one
 static picture correct is the wrong trade.
 
+## The tabs screen, laid out like Chrome's
+
+Asked for by name, with a screenshot. The arrangement is: ⊞ filled, on the left;
+the view switch in the middle as one trough with two positions; ⋮ on the right;
+the filter underneath, full width.
+
+Each position earns its place. **⊞ is the only action here that isn't about a
+tab you already have**, so it is the only one that is filled. **The switch shows
+where it is, not where it could go** — the old single icon showed the *other*
+view, which is a coin-toss to read, and the left half now carries the tab count
+because that is the number you came to check. **⋮ holds close-everything**: it
+was a text button in the header, i.e. an irreversible action sitting under a
+resting thumb. **The filter is about the list**, so it is under the row of
+controls rather than in it.
+
+There is **no back arrow**, also Chrome's. Every way out of this screen is a
+tab, the system back button, or the gesture; an arrow would be a fourth, and it
+was the only reason this screen used the shared `view_page_header`.
+
+The filter matches title *or* address, because half the time you remember the
+site and half the time you remember the headline — and a tab that hasn't loaded
+yet has an address and nothing else. "You have no tabs" and "nothing matches
+what you typed" are different situations and get different empty states; one
+message that says the first while the second is true reads as the browser having
+lost them. The count on the switch stays the real one either way: a filter is a
+way of looking, not a change to what is there.
+
 ## The long-press menu
 
 [LinkContextMenu](app/src/main/java/com/upgrid/browser/menu/LinkContextMenu.kt),
@@ -1011,6 +1071,25 @@ same element changes nothing in the store and is silently ignored.
 Saving goes through `ContentAction.UpdateDownloadAction`, which is what
 `DownloadManager` already watches for; it re-fetches with the page as referrer,
 which is what makes an image behind a hotlink check actually arrive.
+
+## The one buzz, and where it belongs
+
+There is exactly one haptic in this browser, and it fires when the long-press
+menu is about to open (`LinkContextMenu.buzz`). That gesture is the only one
+with no other feedback: the finger is already down, nothing on screen moves, and
+the only way to learn whether you have held it long enough is to wait and find
+out.
+
+It used to fire on an ordinary tap on a link instead, reported by a content
+script (`taps.js`, now deleted). That was the wrong gesture — a tap answers
+itself, because the page starts loading — and it cost a click listener in every
+frame of every page to say so.
+
+`HapticFeedbackConstants.LONG_PRESS`, because Android reserves it for exactly
+this and a phone that buzzes for the launcher's long press should buzz the same
+way here. `View.performHapticFeedback` is a no-op when the user has turned
+haptics off system-wide, so the phone's own setting is honoured without the app
+asking about it; the switch in Settings sits on top of that, not instead of it.
 
 ## Google account & sync
 
