@@ -20,6 +20,8 @@ import java.util.Locale
  * as the list is filtered.
  */
 class HistoryAdapter(
+    private val todayLabel: String,
+    private val yesterdayLabel: String,
     private val onOpen: (HistoryEntry) -> Unit,
     private val onDelete: (HistoryEntry) -> Unit,
 ) : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
@@ -50,8 +52,8 @@ class HistoryAdapter(
     }
 
     private fun labelFor(day: LocalDate, today: LocalDate): String = when (day) {
-        today -> "Today"
-        today.minusDays(1) -> "Yesterday"
+        today -> todayLabel
+        today.minusDays(1) -> yesterdayLabel
         else -> day.format(DAY_FORMAT)
     }
 

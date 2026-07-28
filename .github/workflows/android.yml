@@ -56,12 +56,6 @@ jobs:
       - name: Set up Gradle (with build cache)
         uses: gradle/actions/setup-gradle@v4
 
-      # Without an NDK, AGP can't strip GeckoView's .so files and the debug
-      # APK balloons to ~225 MB. The runner image ships one; tell AGP which.
-      - name: Point AGP at the runner's NDK
-        run: |
-          set -euo pipefail
-          echo "UPGRID_NDK_VERSION=$(basename "$ANDROID_NDK_LATEST_HOME")" >> "$GITHUB_ENV"
 
       - name: Resolve build identity
         id: ver
@@ -159,26 +153,40 @@ jobs:
           # reject the whole message as malformed HTML.
           esc() { printf '%s' "$1" | sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g'; }
 
+          # sendDocument captions are capped at 1024 chars — a long commit
+          # subject would otherwise come back as HTTP 400 and fail the job.
+          SUBJECT=$(printf '%s' "$SUBJECT" | cut -c1-600)
+
           CAPTION=$(printf '<b>Upgrid Browser %s</b>\n<code>%s</code> · %s\n\n%s' \
             "$(esc "$VERSION")" "$(esc "$SHA")" "$(esc "$BRANCH")" "$(esc "$SUBJECT")")
 
-          # Bot API hard-caps uploads at 50 MB. GeckoView debug builds sit close
-          # to that line, so fall back to a link rather than failing the job.
+          # One decimal place: integer MB would report a 50.9 MiB APK as
+          # "50 МБ — больше лимита в 50 МБ".
+          SIZE_H=$(awk -v b="$SIZE" 'BEGIN { printf "%.1f", b / 1048576 }')
+
+          # NOTE: --form-string, not -F. curl reads a -F value beginning with
+          # "<" as a filename to load the field from, and every caption here
+          # starts with "<b>" — with -F the request is never even sent
+          # (curl: (26) Failed to open/read local data). Only `document=@…`
+          # wants -F's @/< interpretation.
+          #
+          # Bot API hard-caps uploads at 50 MB, which GeckoView debug builds
+          # clear comfortably — fall back to a link rather than failing.
           LIMIT=$((50 * 1024 * 1024))
           if [ "$SIZE" -lt "$LIMIT" ]; then
             curl -sS -f -X POST "${API}/sendDocument" \
-              -F "chat_id=${TG_CHAT}" \
-              -F "parse_mode=HTML" \
-              -F "caption=${CAPTION}" \
+              --form-string "chat_id=${TG_CHAT}" \
+              --form-string "parse_mode=HTML" \
+              --form-string "caption=${CAPTION}" \
               -F "document=@${APK}" > /dev/null
-            echo "Sent ${APK} (${SIZE_MB} MB) to Telegram."
+            echo "Sent ${APK} (${SIZE_H} MB) to Telegram."
           else
             TEXT=$(printf '%s\n\n⚠️ APK весит %s МБ — больше лимита Telegram в 50 МБ.\nСкачать: %s' \
-              "$CAPTION" "$SIZE_MB" "${RELEASE_URL}/${APK}")
+              "$CAPTION" "$SIZE_H" "${RELEASE_URL}/${APK}")
             curl -sS -f -X POST "${API}/sendMessage" \
-              -F "chat_id=${TG_CHAT}" \
-              -F "parse_mode=HTML" \
-              -F "disable_web_page_preview=true" \
-              -F "text=${TEXT}" > /dev/null
-            echo "APK is ${SIZE_MB} MB — sent a link instead."
+              --form-string "chat_id=${TG_CHAT}" \
+              --form-string "parse_mode=HTML" \
+              --form-string "disable_web_page_preview=true" \
+              --form-string "text=${TEXT}" > /dev/null
+            echo "APK is ${SIZE_H} MB — sent a link instead."
           fi

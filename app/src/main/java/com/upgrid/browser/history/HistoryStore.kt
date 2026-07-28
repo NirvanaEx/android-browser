@@ -33,13 +33,25 @@ data class HistoryEntry(
  * wants — otherwise refreshing a page ten times buries everything else. The
  * unique index on `url` makes that an upsert.
  *
- * Every public method suspends onto [Dispatchers.IO]; none of this may run on
- * the main thread — [record] is called from the store observer, which ticks
- * dozens of times per page load.
+ * Every public method suspends onto [dbContext]; none of this may run on the
+ * main thread — [record] is called from the store observer, which ticks dozens
+ * of times per page load.
  */
 class HistoryStore(context: Context) {
 
     private val helper = Helper(context.applicationContext)
+
+    /**
+     * All DB work runs here, and it is deliberately single-threaded.
+     *
+     * [record] and [updateTitle] are launched as separate coroutines from the
+     * store observer within milliseconds of each other. On the shared IO pool
+     * they race, and `updateTitle` — much the cheaper statement — can win and
+     * update a row `record` hasn't inserted yet, silently dropping the title.
+     * Serialising makes the pair ordered by construction.
+     */
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+    private val dbContext = Dispatchers.IO.limitedParallelism(1)
 
     /**
      * Record a visit. Silently ignores anything that isn't a real page:
@@ -49,7 +61,7 @@ class HistoryStore(context: Context) {
      * the title resolves. We never overwrite a good stored title with an empty
      * one, so the later call with the real title wins.
      */
-    suspend fun record(url: String, title: String) = withContext(Dispatchers.IO) {
+    suspend fun record(url: String, title: String) = withContext(dbContext) {
         if (!isRecordable(url)) return@withContext
         val now = System.currentTimeMillis()
         val db = helper.writableDatabase
@@ -100,7 +112,7 @@ class HistoryStore(context: Context) {
      * mid-session; routing those through [record] would inflate every row's
      * visit counter. No-op when the URL isn't in the table yet.
      */
-    suspend fun updateTitle(url: String, title: String) = withContext(Dispatchers.IO) {
+    suspend fun updateTitle(url: String, title: String) = withContext(dbContext) {
         if (title.isBlank() || !isRecordable(url)) return@withContext
         helper.writableDatabase.update(
             TABLE,
@@ -113,7 +125,7 @@ class HistoryStore(context: Context) {
 
     /** Most-recent first. [query] filters on URL or title when non-blank. */
     suspend fun entries(query: String = "", limit: Int = PAGE_SIZE): List<HistoryEntry> =
-        withContext(Dispatchers.IO) {
+        withContext(dbContext) {
             val trimmed = query.trim()
             val (where, args) = if (trimmed.isEmpty()) {
                 null to emptyArray<String>()
@@ -141,17 +153,17 @@ class HistoryStore(context: Context) {
             }
         }
 
-    suspend fun delete(id: Long) = withContext(Dispatchers.IO) {
+    suspend fun delete(id: Long) = withContext(dbContext) {
         helper.writableDatabase.delete(TABLE, "_id = ?", arrayOf(id.toString()))
         Unit
     }
 
-    suspend fun clearAll() = withContext(Dispatchers.IO) {
+    suspend fun clearAll() = withContext(dbContext) {
         helper.writableDatabase.delete(TABLE, null, null)
         Unit
     }
 
-    suspend fun count(): Int = withContext(Dispatchers.IO) {
+    suspend fun count(): Int = withContext(dbContext) {
         helper.readableDatabase.rawQuery("SELECT COUNT(*) FROM $TABLE", null).use { c ->
             if (c.moveToFirst()) c.getInt(0) else 0
         }

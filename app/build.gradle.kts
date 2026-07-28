@@ -48,16 +48,6 @@ android {
     namespace = "com.upgrid.browser"
     compileSdk = 36
 
-    // Stripping GeckoView's native libraries needs an NDK — AGP shells out to
-    // llvm-strip. With none installed it gives up with "Unable to strip the
-    // following libraries, packaging them as they are", and unstripped
-    // libxul.so alone takes the debug APK from ~90 MB to 225 MB.
-    //
-    // CI exports the runner's preinstalled NDK version (see the workflow);
-    // locally this stays unset and Android Studio uses whatever it has.
-    System.getenv("UPGRID_NDK_VERSION")?.takeIf { it.isNotBlank() }?.let {
-        ndkVersion = it
-    }
 
     defaultConfig {
         applicationId = "com.upgrid.browser"
@@ -115,6 +105,26 @@ android {
     }
 
     packaging {
+        jniLibs {
+            // Store GeckoView's .so files COMPRESSED in the APK.
+            //
+            // At minSdk >= 23 AGP defaults to uncompressed native libs
+            // (extractNativeLibs=false): the loader maps them straight out of
+            // the APK, which is faster to install and costs no extra device
+            // storage. But GeckoView's libxul.so is enormous, and uncompressed
+            // it makes the arm64 debug APK 225 MB — a painful download over
+            // mobile data, and far past what a chat client will carry.
+            // Compressed it lands near 90 MB. Note this is NOT about debug
+            // symbols: Mozilla already ships these libraries stripped, which
+            // is why forcing an NDK onto the CI runner changed the output by
+            // exactly zero bytes.
+            //
+            // The trade is a slower first install and libs unpacked onto the
+            // device. Worth it while the APK is hand-delivered; revisit if
+            // this ever ships through Play, where the store does its own
+            // per-device splitting and compression.
+            useLegacyPackaging = true
+        }
         resources {
             excludes += listOf(
                 "/META-INF/{AL2.0,LGPL2.1}",
