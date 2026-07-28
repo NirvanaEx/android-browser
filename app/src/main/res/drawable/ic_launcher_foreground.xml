@@ -16,9 +16,11 @@
   anything outside that circle-and-a-bit is not guaranteed to survive the crop.
 
   The shield is the app's one idea — uBlock always on, VPN a tap away — and the
-  same silhouette as ic_shield, which the menu, the settings rows and the VPN
-  screen already use. This replaces a placeholder "U" that had been sitting
-  here since the first commit.
+  same motif the menu, the settings rows and the VPN screen already carry. It is
+  drawn at icon scale rather than reusing ic_shield's 24dp path: that one is a
+  20-pixel glyph and its proportions do not survive being blown up to 108.
+  This replaces a placeholder "U" that had been sitting here since the first
+  commit.
 -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
