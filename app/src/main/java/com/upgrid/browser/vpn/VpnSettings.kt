@@ -66,6 +66,29 @@ class VpnSettings(context: Context) {
             prefs.edit().putBoolean(KEY_AUTO, value).apply()
         }
 
+    /**
+     * Undo the auto-connect that signing in used to switch on by itself.
+     *
+     * Up to and including 0.2.0.27, `AccountController.applyVpn` set
+     * [autoConnect] as part of provisioning the profile. Nobody asked for it,
+     * and the result is a browser that raises a VPN on every launch — including
+     * the launch right after an update, which is where it gets noticed. That
+     * line is gone, but the value it wrote is in SharedPreferences on every
+     * phone that ever signed in, and removing the writer does not remove the
+     * value.
+     *
+     * So: clear it once, and remember that it was cleared. The switch on the
+     * VPN screen still works and is still honoured — it just has to be the user
+     * who moves it.
+     */
+    fun forgetAutoConnectSetBySignIn() {
+        if (prefs.getBoolean(KEY_AUTO_RESET, false)) return
+        prefs.edit()
+            .putBoolean(KEY_AUTO_RESET, true)
+            .putBoolean(KEY_AUTO, false)
+            .apply()
+    }
+
     /** Enough of a profile to try connecting with. */
     val isConfigured: Boolean
         get() = privateKey.isNotBlank() && peerPublicKey.isNotBlank() &&
@@ -157,6 +180,9 @@ class VpnSettings(context: Context) {
         private const val KEY_MTU = "mtu"
         private const val KEY_KEEPALIVE = "keepalive"
         private const val KEY_AUTO = "auto_connect"
+
+        /** Marks [forgetAutoConnectSetBySignIn] as already done on this phone. */
+        private const val KEY_AUTO_RESET = "auto_connect_reset"
 
         const val DEFAULT_DNS = "1.1.1.1, 1.0.0.1"
 

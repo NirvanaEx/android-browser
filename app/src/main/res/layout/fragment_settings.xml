@@ -312,6 +312,55 @@
             </LinearLayout>
         </com.google.android.material.card.MaterialCardView>
 
+        <!--
+          ============== Staying open ==============
+
+          The one setting here isn't ours: it opens the system's battery
+          exemption. It lives in Settings anyway because the symptom the user
+          reports — "I came back and the page had loaded again" — is the
+          system's doing, and this is the only switch that changes it. The
+          browser does everything it can on its side (see
+          SessionPrioritizationMiddleware and the snapshot on disk); past that,
+          Android decides.
+        -->
+        <TextView
+            style="@style/Widget.UpgridBrowser.GroupHeader"
+            android:text="@string/settings_section_background" />
+
+        <com.google.android.material.card.MaterialCardView
+            style="@style/Widget.UpgridBrowser.Card">
+
+            <LinearLayout style="@style/Widget.UpgridBrowser.CardBody">
+
+                <LinearLayout
+                    android:id="@+id/btnKeepAlive"
+                    style="@style/Widget.UpgridBrowser.Row">
+
+                    <ImageView
+                        style="@style/Widget.UpgridBrowser.RowIcon"
+                        android:contentDescription="@null"
+                        android:src="@drawable/ic_battery" />
+
+                    <LinearLayout style="@style/Widget.UpgridBrowser.RowText">
+
+                        <TextView
+                            style="@style/Widget.UpgridBrowser.RowTitle"
+                            android:text="@string/settings_keep_alive" />
+
+                        <TextView
+                            android:id="@+id/keepAliveStatus"
+                            style="@style/Widget.UpgridBrowser.RowSubtitle"
+                            android:text="@string/settings_keep_alive_off" />
+                    </LinearLayout>
+
+                    <ImageView
+                        style="@style/Widget.UpgridBrowser.RowChevron"
+                        android:contentDescription="@null"
+                        android:src="@drawable/ic_chevron_right" />
+                </LinearLayout>
+            </LinearLayout>
+        </com.google.android.material.card.MaterialCardView>
+
         <!-- ============== Video player ============== -->
 
         <TextView

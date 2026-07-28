@@ -1,7 +1,12 @@
 package com.upgrid.browser.settings
 
 import android.app.Activity
+import android.content.Context
+import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
+import android.os.PowerManager
+import android.provider.Settings
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -118,6 +123,7 @@ class SettingsBottomSheet : ExpandedBottomSheetFragment() {
         renderThemes()
         renderEngines()
         wireLinkHandling()
+        wireKeepAlive()
         renderSeekSteps()
         wireBackgroundPlayback()
         wireDataButtons()
@@ -125,6 +131,13 @@ class SettingsBottomSheet : ExpandedBottomSheetFragment() {
 
         renderAccount()
         renderCounts()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // The battery exemption is granted on a system screen, so the answer
+        // can change while this sheet is open and behind it.
+        if (_binding != null) renderKeepAlive()
     }
 
     // --- The browser's own account -----------------------------------------
@@ -448,6 +461,59 @@ class SettingsBottomSheet : ExpandedBottomSheetFragment() {
     private fun wireBackgroundPlayback() {
         binding.switchBackgroundPlayback.setCheckedSilently(prefs.backgroundPlayback) { _, on ->
             prefs.backgroundPlayback = on
+        }
+    }
+
+    // --- Staying open ------------------------------------------------------
+
+    /**
+     * The one row in Settings that changes an Android setting rather than one
+     * of ours.
+     *
+     * "I left the browser for two minutes and my page had to load again" is not
+     * a browser bug and cannot be fixed inside the browser. Android decides
+     * which background processes to kill, some phones far more eagerly than
+     * others, and once ours is gone the most a browser can do is come back to
+     * the same address — which is what the session snapshot does. The only
+     * thing that stops the kill is the battery exemption, and it belongs to the
+     * user to give.
+     *
+     * So the row states what the system is currently doing, and opens the
+     * system's own dialog to change it. It does not nag: no prompt on launch,
+     * no banner. It is here for the moment somebody goes looking for why.
+     */
+    private fun wireKeepAlive() {
+        renderKeepAlive()
+        binding.btnKeepAlive.setOnClickListener {
+            if (keptAlive()) openBatterySettings() else requestKeepAlive()
+        }
+    }
+
+    private fun renderKeepAlive() {
+        binding.keepAliveStatus.setText(
+            if (keptAlive()) R.string.settings_keep_alive_on else R.string.settings_keep_alive_off,
+        )
+    }
+
+    private fun keptAlive(): Boolean {
+        val power = requireContext().getSystemService(Context.POWER_SERVICE) as? PowerManager
+        return power?.isIgnoringBatteryOptimizations(requireContext().packageName) == true
+    }
+
+    /**
+     * The system's one-tap "allow?" dialog. Some manufacturers ship without the
+     * activity that answers this intent, so a refusal to start it falls through
+     * to the full list, where the app can still be found by hand.
+     */
+    private fun requestKeepAlive() {
+        val direct = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS)
+            .setData(Uri.parse("package:${requireContext().packageName}"))
+        runCatching { startActivity(direct) }.onFailure { openBatterySettings() }
+    }
+
+    private fun openBatterySettings() {
+        runCatching {
+            startActivity(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))
         }
     }
 

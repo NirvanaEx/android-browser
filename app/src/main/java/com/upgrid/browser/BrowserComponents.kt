@@ -18,6 +18,7 @@ import mozilla.components.browser.engine.gecko.GeckoEngine
 import mozilla.components.browser.icons.BrowserIcons
 import mozilla.components.browser.session.storage.SessionStorage
 import mozilla.components.browser.state.engine.EngineMiddleware
+import mozilla.components.browser.state.engine.middleware.SessionPrioritizationMiddleware
 import mozilla.components.browser.state.store.BrowserStore
 import mozilla.components.concept.engine.DefaultSettings
 import mozilla.components.concept.engine.Engine
@@ -79,9 +80,37 @@ class BrowserComponents(val context: Context) {
      * `EngineMiddleware.create(engine)` is the bridge that turns store actions
      * (LoadUrl, AddTab, GoBack…) into actual engine session calls. Without it,
      * dispatching a `LoadUrlAction` throws "You need to add EngineMiddleware".
+     *
+     * [SessionPrioritizationMiddleware] is NOT part of that set and has to be
+     * added by hand — and it is the single most important line in this file for
+     * "I switched away for a minute and my page had to load again".
+     *
+     * GeckoView renders every page in a **separate content process**. Android
+     * ranks processes and kills the cheapest-looking one first, and a content
+     * process belonging to an app that isn't on screen looks very cheap: it is
+     * large, it is idle, and nothing is bound to it. When it goes, the tab comes
+     * back marked `crashed`, and the only way back is to recreate the session
+     * and fetch the page again — which is exactly what the user sees.
+     *
+     * This middleware tells Gecko which tab the user is actually going to come
+     * back to: the selected one is set to `PRIORITY_HIGH`, everything else to
+     * default. Gecko passes that down to the process manager, which keeps the
+     * high-priority child bound at foreground importance instead of letting it
+     * drop to "empty" the moment the app is backgrounded. It is Mozilla's own
+     * answer to this problem; we were simply not asking for it.
+     *
+     * It also raises the priority of a tab with half-filled form data for three
+     * minutes after you leave — which needs `AppLifecycleAction` to be
+     * dispatched; [BrowserApplication] does that.
+     *
+     * Last in the list on purpose: it reads `store.state` straight after
+     * passing the action on, so it wants the reducer to have run.
      */
     val store: BrowserStore by lazy {
-        BrowserStore(middleware = EngineMiddleware.create(engine = engine))
+        BrowserStore(
+            middleware = EngineMiddleware.create(engine = engine) +
+                SessionPrioritizationMiddleware(),
+        )
     }
 
     /** HTTP client shared by feature-addons (downloading XPI) and other features. */

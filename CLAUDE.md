@@ -12,7 +12,7 @@ GeckoView-based Android browser whose only "killer feature" is **uBlock Origin r
 - **Frameworks**: Mozilla android-components 150.0.2 — pinned in [app/build.gradle.kts](app/build.gradle.kts) via `androidComponentsVersion`. **Every `org.mozilla.components:*` artifact must use the same version**, mismatches give cryptic linker errors at runtime.
 - **AdBlock**: uBlock Origin (Mozilla-signed XPI from AMO, fetched at first launch)
 - **Language**: Kotlin 2.0, Java 17 toolchain, AGP 8.7
-- **min/target SDK**: 26 / 35
+- **min/target SDK**: 26 / 36
 - **UI**: View system + ViewBinding (Compose later)
 
 ## Repo map
@@ -56,7 +56,8 @@ app/src/main/
 │   │   ├── ClearDataDialog.kt      ← the picker, generated from the enums
 │   │   └── SiteDataActivity.kt     ← which sites have data, per-site clear
 │   ├── search/                     ← SearchEngine, SearchHistory, omnibar Suggestions
-│   ├── settings/SettingsBottomSheet.kt ← account, adblock, search, player, data, about
+│   ├── settings/SettingsBottomSheet.kt ← account, adblock, search, staying open, player,
+│   │                                     data, about
 │   ├── sync/
 │   │   ├── AccountSync.kt          ← GoogleAccounts (sign-in) + SyncEngine (merge loop)
 │   │   ├── DriveAppData.kt         ← the four Drive v3 calls, over HttpURLConnection
@@ -223,6 +224,30 @@ MIUI note in the code).
 shape of a phone, so there is always a band above and below it, and on a light
 theme that band was the app's white surface — the brightest thing you can put
 next to moving picture.
+
+**The navigation bar has to be painted too, separately.** Painting the root is
+not enough: the system draws the navigation strip itself, in the colour the
+theme names (`android:navigationBarColor` → `?attr/colorSurface`), *over* our
+black root. One shade off black under a player is exactly the seam the eye
+locks onto, and it is the difference the user photographed next to another
+browser. `applySystemBarColors` sets both bars to black in video focus and back
+to `colorSurface` on the way out, and moves `isAppearanceLight*Bars` with them —
+on the light theme the bars are told to draw dark icons, which on black means no
+back button at all. The light flag is derived from the surface colour's
+luminance rather than read back from the theme, so it cannot drift out of sync
+with the colour set two lines above it. (On API 35+ both setters are no-ops
+under enforced edge-to-edge, where the black root shows through anyway — the
+code is correct either way, which is why there is no version branch.)
+
+**Rotation is the player's, not the browser's.** Every activity is
+`screenOrientation="portrait"` in the manifest. Turning the phone while reading
+used to rotate the whole browser, and every screen in it is a portrait layout
+stretched sideways; worse, rotating for a video left the *browser* sideways
+after the video ended. The player's own rotate button calls
+`toggleFsOrientation()`, and `applyVideoFocus(false)` puts
+`SCREEN_ORIENTATION_PORTRAIT` back — so landscape exists exactly as long as the
+video does. `configChanges` already lists `orientation`, so none of this
+rebuilds the activity.
 
 ## API gotchas (these break between a-c versions)
 
@@ -571,7 +596,24 @@ duplicate fails the build.
 ## Surviving the background
 
 "I switched away for a second and the page had to load again" is a memory
-problem, not a lifecycle one, and it has two halves.
+problem, not a lifecycle one. It is also the single most-reported bug in this
+project, so the answer is spread across four places and it is worth knowing all
+four before touching any of them.
+
+**Say which tab matters.** GeckoView renders each page in its own content
+process, and Android kills the cheapest-looking process first — a large, idle
+one belonging to an app that isn't on screen looks very cheap indeed. a-c ships
+`SessionPrioritizationMiddleware`, which sets the selected tab's session to
+`PRIORITY_HIGH` (`GeckoSession.setPriorityHint`) and everything else to default;
+Gecko then keeps that child process at foreground importance instead of letting
+it fall to "empty" the moment the app is backgrounded. **It is not part of
+`EngineMiddleware.create()`** — Fenix adds it by hand and so do we, in
+`BrowserComponents.store`. For six rounds we simply were not asking for it, and
+every "the page reloaded" report traces back through a tab that came back
+`crashed`. It also keeps a tab holding half-filled form data at high priority
+for three minutes after you leave, which needs `AppLifecycleAction` to be
+dispatched — `BrowserApplication.watchAppLifecycle` does that off
+`ProcessLifecycleOwner`.
 
 **Give memory back before the system takes the process.**
 `BrowserApplication.onTrimMemory` dispatches `SystemAction.LowMemoryAction` and
@@ -599,6 +641,17 @@ Bounded per tab (`MAX_CRASH_RESTORES`), because a page that takes the content
 process down on sight would otherwise be restored, crash and be restored again
 forever. The collector lives inside `repeatOnLifecycle(STARTED)`, so nothing
 spawns a content process while the browser is in the background.
+
+**And past that it is not ours to fix.** Some phones — MIUI above all — kill
+backgrounded apps far more eagerly than stock Android, and no amount of
+priority hinting survives a manufacturer's task killer. The only switch that
+does is the battery exemption, and it belongs to the user, so Settings has one
+row that reports what the system is currently doing and opens the system's own
+dialog (`Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS`, which is why
+`REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` is in the manifest). **The browser never
+asks by itself** — no prompt on launch, no banner. The row is there for the
+moment somebody goes looking for why, and a browser that nags for a permission
+on startup is exactly the kind of app this one is trying not to be.
 
 ## Cards and rows: the shape of every settings-ish screen
 
@@ -837,7 +890,14 @@ Three things ship in a particular position, and each has been the wrong kind of
 - **VPN off.** Signing in fills the WireGuard profile in and stops there.
   It used to switch `autoConnect` on as well — signing in to a browser account
   is not asking for every byte to be routed through someone's server, and the
-  tunnel's only visible sign is a notification.
+  tunnel's only visible sign is a notification. **Deleting the line that wrote
+  the preference does not delete the preference**, which is the whole lesson
+  here: every phone that had ever signed in kept coming up with a tunnel, and
+  the report arrived as "installing the update turns the VPN on". So
+  `VpnSettings.forgetAutoConnectSetBySignIn` clears it once and records that it
+  did. The switch on the VPN screen still works and is still honoured — it just
+  has to be the user who moves it. Any future preference written on the user's
+  behalf needs the same treatment when it is taken back.
 - **Desktop mode off, per tab.** Nothing to enforce: `requestDesktopSite`
   dispatches `EngineAction.ToggleDesktopModeAction(tabId, …)`, which is per-tab,
   and the browser-wide `BrowserState.desktopMode` is only moved by
@@ -857,10 +917,24 @@ with a `parentId` (i.e. one a link opened) goes back to the tab it came from
 via `removeTab(id, selectParentIfExists = true)`, any other extra tab just
 closes, and the last one asks.
 
-**State is saved three ways**, and each catches a different loss —
+**State is saved four ways**, and each catches a different loss —
 `whenSessionsChange` (tabs opened/closed/navigated), `periodicallyInForeground`
 (a page being read and scrolled, which fires nothing else — without it the
-saved copy can be an hour older than the screen), and `whenGoingToBackground`.
+saved copy can be an hour older than the screen), `whenGoingToBackground`, and
+one of our own, in `BrowserApplication.saveSessionOnceGeckoHasAnswered`.
+
+That fourth one exists because of an ordering problem in the third. Releasing
+the engine view at `onStop` calls `GeckoSession.setActive(false)`, which asks
+the session to flush its state — scroll position, back/forward history, what
+was typed into the page. Gecko answers on its own thread, a beat later, through
+`UpdateEngineSessionStateAction`. a-c's `whenGoingToBackground` writes the
+snapshot the moment `ProcessLifecycleOwner` stops, i.e. possibly before that
+answer lands, and `whenSessionsChange` does not watch `engineSessionState` at
+all (it watches the tab list, the selection and the loading flag). So the file
+on disk could be one flush behind, and after a kill the browser came back one
+step older than it should have. We write again after
+`SESSION_FLUSH_GRACE_MS`.
+
 `android:alwaysRetainTaskState="true"` on MainActivity stops the system
 trimming the task after ~30 minutes away, which it otherwise does on the theory
 that after a break you want to start over.
@@ -872,6 +946,44 @@ the phone. `pageLoadedAt` is recorded from the loading→idle transition rather
 than from the URL changing, so a plain reload counts. It is deliberately
 in-memory: the question is "how old is what I'm looking at", and if the process
 was killed and the page refetched, the missing entry is the right answer.
+
+## The hole GeckoView leaves in this window
+
+GeckoView does not draw the page into our window. It draws into a `SurfaceView`
+— a separate layer *behind* the window — and punches a transparent hole through
+the window where that layer shows through (`SurfaceView.draw` clears its own
+bounds with `PorterDuff.CLEAR` before anything else gets to paint there). Live
+on screen this is invisible and it is why scrolling is fast. Everywhere the
+system takes a *picture* of the window instead, it gets the hole: the card in
+the recents list showed the address bar floating over the wallpaper with
+nothing underneath it, which reads as "the app is broken", not as "the app is
+in the background".
+
+The fix is a plain `ImageView` (`pageCover` in `activity_main.xml`) laid over
+that hole while the activity is not resumed, holding the last capture from
+`TabThumbnails`. The window draws ordinary views into its own surface, so
+whatever the system photographs now has a page in it. Shown in `onPause`, hidden
+in `onResume`; the pixels are the ones already on screen, so the swap is never
+visible as a change. Two things it must not do:
+
+- **Not over the player.** Picture-in-picture is entered through `onPause` like
+  everything else, and there the window *is* the video and it is still playing.
+  `showPageCover` checks `inVideoFocus`, `playerActive` and `isInPipMode`.
+- **Not on the start page.** That one is an ordinary view; the window draws it
+  perfectly well, and there is no page to stand in for.
+
+`captureCurrentThumbnail` used to return early when the tabs tray was set to the
+list view — a preference about a different screen, which has nothing to say
+about whether the recents card should be empty. One `capturePixels` per pause is
+not a cost worth reasoning about. The capture is a compositor round trip, so it
+can land after the cover is already up with an older frame; the callback swaps
+the fresher one in if the tab hasn't changed underneath it.
+
+The other way to fix this is `GeckoView.setViewBackend(BACKEND_TEXTURE_VIEW)`,
+which makes the engine a normal composited view. It is one line and it works,
+and it was not taken: Mozilla documents it as the slower backend, video is this
+browser's headline feature, and paying for every frame forever to make one
+static picture correct is the wrong trade.
 
 ## The long-press menu
 

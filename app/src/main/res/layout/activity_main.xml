@@ -240,6 +240,34 @@
             android:layout_height="match_parent" />
     </com.upgrid.browser.ui.PullToRefreshLayout>
 
+    <!--
+      The page, as a picture, for the moments the real one can't be seen.
+
+      GeckoView draws into a SurfaceView, which is not part of this window: it
+      is a separate layer behind it, and the window punches a transparent hole
+      where it sits. Everything the system does with a *picture* of the window
+      therefore gets the hole and not the page — most visibly the card in the
+      recents list, which showed the address bar floating over the wallpaper
+      with nothing underneath it.
+
+      So while the activity isn't on screen, the last captured frame is laid
+      over that hole by an ordinary ImageView, which the window does draw. Same
+      pixels the user just saw; the swap happens after onPause and is undone in
+      onResume, so it is never visible as a change. See MainActivity.showPageCover.
+    -->
+    <ImageView
+        android:id="@+id/pageCover"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:visibility="gone"
+        android:scaleType="fitXY"
+        android:background="?attr/colorSurface"
+        android:importantForAccessibility="no"
+        app:layout_constraintTop_toBottomOf="@id/staleBar"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent" />
+
     <!-- Start page (speed dial). Inflated as <include> so view binding picks up the inner ids. -->
     <include
         android:id="@+id/startPage"

@@ -183,6 +183,10 @@ dependencies {
     implementation("androidx.appcompat:appcompat:1.7.0")
     implementation("androidx.activity:activity-ktx:1.9.3")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.7")
+    // ProcessLifecycleOwner: "the whole app went away", as opposed to "a screen
+    // did". browser-session-storage already pulls this in for its own autosave;
+    // BrowserApplication uses it directly, so it is named directly.
+    implementation("androidx.lifecycle:lifecycle-process:2.8.7")
     implementation("androidx.constraintlayout:constraintlayout:2.2.0")
     implementation("com.google.android.material:material:1.12.0")
 
