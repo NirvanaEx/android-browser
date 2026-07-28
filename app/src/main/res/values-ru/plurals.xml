@@ -28,4 +28,19 @@
         <item quantity="many">%d закладок</item>
         <item quantity="other">%d закладки</item>
     </plurals>
+
+    <plurals name="settings_downloads_count">
+        <item quantity="one">%d файл</item>
+        <item quantity="few">%d файла</item>
+        <item quantity="many">%d файлов</item>
+        <item quantity="other">%d файла</item>
+    </plurals>
+
+    <plurals name="site_pages_count">
+        <item quantity="one">%d страница</item>
+        <item quantity="few">%d страницы</item>
+        <item quantity="many">%d страниц</item>
+        <item quantity="other">%d страницы</item>
+    </plurals>
+
 </resources>

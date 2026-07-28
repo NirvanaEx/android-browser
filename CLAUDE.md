@@ -20,7 +20,8 @@ GeckoView-based Android browser whose only "killer feature" is **uBlock Origin r
 ```
 app/src/main/
 ├── AndroidManifest.xml             ← intent-filters for VIEW http(s), default browser
-├── assets/extensions/upgrid_fullscreen/  ← built-in player WebExtension (manifest + background.js + player.js + observer.js)
+├── assets/extensions/upgrid_fullscreen/  ← the one bundled WebExtension: background.js relay +
+│                                     player.js/observer.js (video) + find.js + translate.js + logins.js
 ├── java/com/upgrid/browser/
 │   ├── BrowserApplication.kt       ← components; restore session; uBO bootstrap; autosave
 │   ├── BrowserComponents.kt        ← single source of truth for runtime/engine/store/tabs
@@ -32,16 +33,28 @@ app/src/main/
 │   │   ├── BookmarkStore.kt        ← SQLite, one row per URL, no folders
 │   │   ├── BookmarkAdapter.kt
 │   │   └── BookmarksActivity.kt    ← full screen, search, undo on delete
+│   ├── download/
+│   │   ├── DownloadManager.kt      ← copies the engine's response to disk; no a-c feature-downloads
+│   │   ├── DownloadRecords.kt      ← the list, as JSON in prefs, exposed as a StateFlow
+│   │   ├── DownloadsActivity.kt    ← full screen, live progress, open/delete
+│   │   └── FileNames.kt            ← the engine's DownloadDelegate (Content-Disposition)
 │   ├── fullscreen/
 │   │   ├── VideoPlayerBridge.kt    ← native ⇆ extension port; takeover trigger
-│   │   └── PlayerOverlayController.kt ← overlay buttons, seek bar, gestures
+│   │   └── PlayerOverlayController.kt ← overlay buttons, seek bar, gestures, the lock
 │   ├── history/
 │   │   ├── HistoryStore.kt         ← SQLite visits table (one row per URL)
 │   │   ├── HistoryAdapter.kt       ← day chips + rows
 │   │   └── HistoryActivity.kt      ← full screen, search, clear-all
 │   ├── home/                       ← speed-dial start page (bookmarks, topped up from SEED)
+│   ├── logins/
+│   │   ├── LoginStore.kt           ← AES-GCM under an Android-keystore key
+│   │   └── LoginsActivity.kt       ← the list; passwords only behind a tap
 │   ├── menu/AppMenuPopup.kt        ← 236dp drop-down menu (PopupWindow, not BottomSheet)
 │   ├── prefs/BrowserPreferences.kt ← typed SharedPreferences façade (all settings)
+│   ├── privacy/
+│   │   ├── BrowsingDataCleaner.kt  ← periods, data types, cache size
+│   │   ├── ClearDataDialog.kt      ← the picker, generated from the enums
+│   │   └── SiteDataActivity.kt     ← which sites have data, per-site clear
 │   ├── search/                     ← SearchEngine, SearchHistory, omnibar Suggestions
 │   ├── settings/SettingsBottomSheet.kt ← account, adblock, search, player, data, about
 │   ├── sync/
@@ -49,11 +62,15 @@ app/src/main/
 │   │   ├── DriveAppData.kt         ← the four Drive v3 calls, over HttpURLConnection
 │   │   └── SyncPayload.kt          ← the versioned JSON document
 │   ├── tabs/
-│   │   ├── TabsActivity.kt         ← 2-column preview grid, store-driven
-│   │   ├── TabThumbnails.kt        ← in-memory LRU of page captures
+│   │   ├── TabsActivity.kt         ← list of open tabs, store-driven, swipe to close
 │   │   └── TabViewHolder.kt
+│   ├── vpn/
+│   │   ├── VpnController.kt        ← com.wireguard.android:tunnel, one per process
+│   │   ├── VpnSettings.kt          ← the profile as fields; wg-quick in and out
+│   │   └── VpnActivity.kt          ← the form, the switch, the key pair
 │   └── ui/
 │       ├── HostTile.kt             ← per-host letter + color, shared by every list
+│       ├── SiteIconView.kt         ← that letter with the real favicon over it
 │       └── ExpandedBottomSheetFragment.kt ← sheets open full height
 └── res/
     ├── layout/                     ← activity_{main,history,bookmarks,tabs} + app_menu_popup +
@@ -174,6 +191,21 @@ extractor (InnerTube + signature deciphering): large, broken by Google on a
 regular schedule, and against YouTube's ToS. The stage above is what actually
 delivers "only the video" everywhere.
 
+## The player's lock owns the system bars
+
+Entering the player does **not** hide the status and navigation bars any more.
+Losing back and home the instant a video opens is disorienting and there is no
+visible way to ask for them back. The 🔒 in the player's top bar is what makes
+the picture edge-to-edge — which is also the moment the user has said they won't
+be touching anything — and it is a real lock: control bars away, every gesture
+swallowed, one floating unlock button left. Back unlocks rather than exiting.
+
+`MainActivity.refreshSystemBars()` derives the state instead of being told it:
+`inVideoFocus && (playerOverlay.isLocked || isInPipMode())`. Three independent
+things move it — entering or leaving video focus, the lock, the PiP transition —
+and they arrive in any order. PiP is in there because the system shrinks us to a
+thumbnail where a navigation bar would be most of the window.
+
 ## API gotchas (these break between a-c versions)
 
 The `Engine` callbacks have shifted between releases. Current expected signatures (a-c 150.x):
@@ -221,9 +253,9 @@ The AMO file id changes per release; the version in the filename is cosmetic.
 - **Tab close → empty state:** `MainActivity.wireBackPress` finishes the activity when the last tab is closed via the system back button. The tabs screen does *not* close itself when `tabs.isEmpty()` — it shows an empty illustration. `TabsActivity.finish()` is overridden to open a fresh HOME tab when the list is empty, because leaving with zero tabs would drop MainActivity onto an unrendered engine view. It's on `finish()` rather than in a click handler since three paths reach it: the back arrow, the back gesture, and picking a tab.
 - **App menu is a `PopupWindow`, not a BottomSheet.** [AppMenuPopup](app/src/main/java/com/upgrid/browser/menu/AppMenuPopup.kt) is a 236dp drop-down anchored to `btnTopMenu` via `showAsDropDown(anchor, 0, 0, Gravity.END)`. Construct a new instance per tap (cheap, avoids stale toggle state) — but note `PopupWindow` keeps its content view between shows, so anything derived from browser state is re-read in `showFrom`, not at construction.
 - **History, bookmarks and tabs are Activities, not sheets.** A sheet gave each list whatever height was left over and put a drag handle where a back arrow belongs. They dispatch to the shared `BrowserStore` and finish — no results to hand back, nothing for MainActivity to keep in sync. They share [view_page_header.xml](app/src/main/res/layout/view_page_header.xml) and [view_page_search.xml](app/src/main/res/layout/view_page_search.xml) via `<include>` so the three can't drift apart. Settings is still a sheet ([ExpandedBottomSheetFragment](app/src/main/java/com/upgrid/browser/ui/ExpandedBottomSheetFragment.kt)) — it's a flat list of switches with no navigation inside it.
-- **Tab previews are memory-only** ([TabThumbnails](app/src/main/java/com/upgrid/browser/tabs/TabThumbnails.kt)), scaled to 360px on the way in, capped at 6 MB. `EngineView.captureThumbnail` can only see the tab currently rendered, so captures happen at the two moments where what's on screen is unambiguous: `onPause`, and the tap that opens the grid. **Don't capture on a selection change** — by the time the store reports one, the engine is already drawing the new tab, so the shot is the old page's pixels filed under the new tab's id.
+- **Tabs are a list, not a grid of previews.** Two preview cards per screen width means eight tabs before scrolling and a title cut to three words, and the preview is a photograph of a page you are one tap from opening for real. The list shows a dozen, keeps the titles, and reads exactly like history and bookmarks. `TabThumbnails` and `EngineView.captureThumbnail` are gone with it — that capture ran on every `onPause` and cost a full-window bitmap each time.
 - **The bookmark star is a toolbar page action**, not a sixth button. Four 44dp targets plus the video button already leave the URL under half a phone screen. `Toolbar.ActionToggleButton` owns its own selected state and only repaints on `invalidateActions()`, so `renderBookmarkAction` drives it and memoises the last URL it looked up — the store observer fires many times per load and each miss is a database round-trip.
-- **One site looks the same everywhere.** [HostTile](app/src/main/java/com/upgrid/browser/ui/HostTile.kt) derives a letter and a color from the host, and history rows, bookmark rows, tab cards and speed-dial tiles all use it. The hash is computed by hand rather than via `String.hashCode()` so the colors can't reshuffle between releases. Favicons are used *on top of* the tile in the tabs grid, never instead of it — they arrive over the network and popping in mid-scroll reads as flicker.
+- **One site looks the same everywhere.** [SiteIconView](app/src/main/java/com/upgrid/browser/ui/SiteIconView.kt) is the leading square in every list — history, bookmarks, tabs, downloads, saved passwords, site data, the omnibar drop-down. It stacks the real favicon **on top of** [HostTile](app/src/main/java/com/upgrid/browser/ui/HostTile.kt)'s letter rather than swapping it in: the letter is there the instant the row binds, the icon covers it when it arrives, and a site with no icon still looks like something. The hash behind the colour is computed by hand rather than via `String.hashCode()` so the colours can't reshuffle between releases. `BrowserIcons.loadIntoView` is not used — in a-c 150 it nulls the ImageView before its fetch starts, which flashes an empty square for every row on the first scroll. Icons whose `source` is `GENERATOR` are dropped: that is BrowserIcons drawing its own letter tile, and we already have one.
 
 ## Chrome: one bar, and where the bottom bar went
 
@@ -348,6 +380,84 @@ connects on its first outbound message, which is observer.js's opening media
 report — about a second after load. Opening find-in-page faster than that used
 to be silence.
 
+## Downloads
+
+No `feature-downloads`. GeckoView has **already made the request** by the time it
+decides it can't render a response: `onExternalResponse` hands a-c a `WebResponse`
+that becomes `DownloadState.response`, an open stream with the page's cookies
+behind it. So `DownloadManager` copies that stream and nothing else is needed —
+a-c's version wraps the same copy in a foreground service, a notification
+channel and three prompt dialogs we would then have to restyle.
+
+Three things to keep in mind:
+
+- **Consume last.** `ContentAction.ConsumeDownloadAction` *closes*
+  `DownloadState.response`. Dispatch it after the copy, never before, and keep a
+  set of ids already started — the store keeps `content.download` set until it is
+  consumed, so every state tick in between would start the file again.
+- **Where the bytes go.** MediaStore's Downloads collection on Android 10+ (no
+  permission, shows up in the system's own list); the app's external files dir
+  below that, because shared storage there needs `WRITE_EXTERNAL_STORAGE` and a
+  runtime prompt on top of a download the user already asked for. The
+  `FileProvider` (`${applicationId}.files`) exists only for that second case.
+- **The filename lives in `Content-Disposition`,** which never reaches
+  `DownloadState`. `DefaultSettings.downloadDelegate` is asked for it at exactly
+  the right moment; ours is `download/FileNames.kt`. With no delegate the engine
+  hands back null and every file is named after its URL's last segment.
+
+## Passwords
+
+`logins.js` in the same content script bundle as find and translate: capture on
+`submit` **and** on a click that looks like one (frameworks that navigate by
+script never fire submit), fill on load after announcing that the page has a
+password field. Values are written through the prototype's own `value` setter —
+React installs its own and ignores plain assignment, so the field would look
+filled and submit empty.
+
+Storage is AES-256-GCM under a key generated in the Android keystore, one
+encrypted JSON blob in app-private prefs (`logins/LoginStore.kt`). If the key
+ever becomes unusable — restoring a device copies the file but not the keystore —
+the store resets itself rather than refusing to start. `androidx.security:security-crypto`
+does the same job with a dependency and more machinery.
+
+One switch (`BrowserPreferences.savePasswords`) gates both halves. A browser that
+keeps filling passwords after you turned saving off is not honouring the switch.
+
+## Clearing data, and what the period really means
+
+`Engine.clearData(data, host)` is everything the engine offers: all of it, or all
+of one host's. **There is no time range** — Gecko's sanitizer has one, GeckoView
+does not expose it. So `BrowsingDataCleaner`:
+
+- deletes our own tables (history, searches) by timestamp, exactly;
+- for "all time", clears the engine's data outright;
+- for a bounded period, clears it **per host, for the hosts visited in that
+  period** — which is the same answer for anyone whose question was "forget where
+  I've been since Monday".
+
+The dialog says so in as many words. The site list is built from history for the
+same reason: the engine can delete a host's data but cannot enumerate hosts that
+have any.
+
+## VPN
+
+`com.wireguard.android:tunnel` — WireGuard's own embeddable backend (wireguard-go
+plus the config parser). It declares `GoBackend$VpnService` in its own manifest,
+so **do not declare a second one** in ours; the merger folds it in and a
+duplicate fails the build.
+
+- `VpnController` is one per process. Two backends would fight over one
+  VpnService, and the tunnel outlives every screen.
+- `setState` is blocking (DNS resolution with retries) — always off the main
+  thread.
+- **`VpnService.prepare` needs an Activity.** It returns an Intent the user has to
+  accept once per install, so connecting lives in `VpnActivity` and in
+  `MainActivity.toggleVpn` (the app menu is a PopupWindow with no lifecycle to
+  register a result contract against). `VpnController` never asks.
+- The profile is stored as fields and rendered to `wg-quick` text on connect;
+  pasting a config parses the same format back into the fields. `Config.parse`
+  validates at connect time, where a bad value can be reported as one.
+
 ## Pull to refresh
 
 `SwipeRefreshFeature` (feature-session) + `androidx.swiperefreshlayout`. The
@@ -394,6 +504,15 @@ ranking all three sources by a relevance score lets a page that got refreshed
 twenty times outrank something deliberately saved. Duplicates are dropped by URL
 as the list is built, so a bookmarked page that's also in history appears once,
 as a bookmark.
+
+**Two rows are the same row in two ways**, and `Suggestions.Dedup` checks both.
+Same destination: `https://ya.ru`, `http://www.ya.ru/` and `ya.ru/#top` are one
+page, and bookmarks store whatever the address bar held while history stores what
+the page settled on — they differ by a trailing slash more often than not, which
+is how the same site used to appear twice. Same row: even when the URLs genuinely
+differ, two entries from one host with the same title read as one thing repeated
+(a feed and its front page are both "Хабр"), and nine slots shouldn't hold three
+of them.
 
 Deliberately **not** `feature-awesomebar`: its suggestion providers are written
 against `concept-storage`'s `HistoryStorage`, which is the Places-backed API this

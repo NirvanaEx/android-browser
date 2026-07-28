@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Innards of SiteIconView: the coloured letter, and the real favicon stacked on
+  top of it.
+
+  Stacked rather than swapped. The letter is derived from the host and is on
+  screen the instant the row binds; the favicon arrives from cache or network a
+  moment later and covers it. Swapping would leave a hole in the list until the
+  fetch lands — and a permanent one on every site that has no icon at all.
+
+  The favicon sits on a white plate because most are drawn for a light
+  background and dark ones vanish into the tile's own colour otherwise.
+
+  A <merge>: SiteIconView is itself the FrameLayout these two live in.
+-->
+<merge xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <TextView
+        android:id="@+id/siteLetter"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:gravity="center"
+        android:textColor="#FFFFFFFF"
+        android:textSize="16sp"
+        android:textStyle="bold"
+        android:fontFamily="sans-serif-medium"
+        android:includeFontPadding="false"
+        tools:text="G" />
+
+    <ImageView
+        android:id="@+id/siteIcon"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:padding="7dp"
+        android:scaleType="fitCenter"
+        android:visibility="gone"
+        android:contentDescription="@null"
+        tools:visibility="visible"
+        tools:src="@drawable/ic_globe" />
+</merge>

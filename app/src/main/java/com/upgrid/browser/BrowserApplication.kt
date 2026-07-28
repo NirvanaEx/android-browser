@@ -62,8 +62,21 @@ class BrowserApplication : Application() {
         // no-op in a-c.
         components.videoPlayerBridge.setupAndInstall()
 
+        // Watches the store for responses the engine decided it can't render.
+        // Process-wide rather than per-Activity: a download has to survive the
+        // screen rotating and the app going to the background.
+        components.downloads.start()
+
         appScope.launch {
             AdblockBootstrap(components, this@BrowserApplication).ensureInstalled()
+        }
+
+        // Bring the tunnel up if the user asked for it. Silent on failure: the
+        // one likely cause is the system's VPN consent never having been given,
+        // and there is no Activity here to ask from — the menu row and the VPN
+        // screen both do it properly.
+        if (components.vpnSettings.autoConnect && components.vpnSettings.isConfigured) {
+            appScope.launch { components.vpn.connect(components.vpnSettings) }
         }
         attachAutosave(components.sessionStorage)
     }

@@ -38,6 +38,8 @@ class BookmarksActivity : AppCompatActivity() {
 
     private val adapter by lazy {
         BookmarkAdapter(
+            icons = components.icons,
+            scope = lifecycleScope,
             onOpen = { bookmark ->
                 components.sessionUseCases.loadUrl(bookmark.url)
                 finish()
@@ -53,9 +55,12 @@ class BookmarksActivity : AppCompatActivity() {
 
         binding.header.pageTitle.setText(R.string.bookmarks_title)
         binding.header.btnBack.setOnClickListener { finish() }
-        binding.header.btnHeaderAction.isVisible = true
-        binding.header.btnHeaderAction.setText(R.string.bookmarks_add_current)
-        binding.header.btnHeaderAction.setOnClickListener { addCurrentPage() }
+        // Saving the open page is an add, so it takes the header's "+" slot —
+        // the same slot the tabs screen uses for a new tab.
+        binding.header.btnHeaderIcon.isVisible = true
+        binding.header.btnHeaderIcon.contentDescription =
+            getString(R.string.bookmarks_add_current)
+        binding.header.btnHeaderIcon.setOnClickListener { addCurrentPage() }
 
         binding.search.searchInput.setHint(R.string.bookmarks_search_hint)
         binding.search.searchInput.doAfterTextChanged {

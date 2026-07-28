@@ -43,6 +43,7 @@
 
         <TextView
             style="@style/Widget.UpgridBrowser.SectionLabel"
+            app:drawableStartCompat="@drawable/ic_sync"
             android:text="@string/settings_section_account" />
 
         <LinearLayout
@@ -144,6 +145,7 @@
 
         <TextView
             style="@style/Widget.UpgridBrowser.SectionLabel"
+            app:drawableStartCompat="@drawable/ic_shield"
             android:text="@string/settings_section_content" />
 
         <com.google.android.material.materialswitch.MaterialSwitch
@@ -168,10 +170,148 @@
 
         <View style="@style/Widget.UpgridBrowser.SheetDivider" />
 
+        <!-- ============== Section: VPN & passwords ============== -->
+
+        <TextView
+            style="@style/Widget.UpgridBrowser.SectionLabel"
+            app:drawableStartCompat="@drawable/ic_key"
+            android:text="@string/settings_section_privacy" />
+
+        <TextView
+            android:id="@+id/vpnSummary"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="20dp"
+            android:layout_marginEnd="20dp"
+            android:layout_marginBottom="8dp"
+            android:textSize="13sp"
+            android:textColor="?attr/colorOnSurface"
+            tools:text="VPN: отключён" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:layout_marginStart="12dp"
+            android:layout_marginEnd="12dp">
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnOpenVpn"
+                style="@style/Widget.Material3.Button.TonalButton"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                app:icon="@drawable/ic_shield"
+                android:text="@string/settings_open_vpn" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnOpenPasswords"
+                style="@style/Widget.Material3.Button.TextButton.Icon"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                app:icon="@drawable/ic_key"
+                android:text="@string/settings_open_passwords" />
+        </LinearLayout>
+
+        <com.google.android.material.materialswitch.MaterialSwitch
+            android:id="@+id/switchSavePasswords"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="20dp"
+            android:layout_marginEnd="20dp"
+            android:layout_marginTop="10dp"
+            android:minHeight="44dp"
+            android:textSize="14sp"
+            android:textColor="?attr/colorOnSurface"
+            android:text="@string/settings_save_passwords" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="20dp"
+            android:layout_marginEnd="20dp"
+            android:textSize="12sp"
+            android:textColor="?attr/colorOnSurfaceVariant"
+            android:text="@string/settings_save_passwords_hint" />
+
+        <View style="@style/Widget.UpgridBrowser.SheetDivider" />
+
+        <!-- ============== Section: Cookies & cache ============== -->
+
+        <TextView
+            style="@style/Widget.UpgridBrowser.SectionLabel"
+            app:drawableStartCompat="@drawable/ic_cookie"
+            android:text="@string/settings_section_data" />
+
+        <TextView
+            android:id="@+id/dataSummary"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="20dp"
+            android:layout_marginEnd="20dp"
+            android:layout_marginBottom="8dp"
+            android:textSize="13sp"
+            android:textColor="?attr/colorOnSurface"
+            tools:text="Кэш и данные сайтов: 128 МБ" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:layout_marginStart="12dp"
+            android:layout_marginEnd="12dp">
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnOpenSiteData"
+                style="@style/Widget.Material3.Button.TonalButton"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/settings_open_site_data" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnClearData"
+                style="@style/Widget.Material3.Button.TextButton.Icon"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                app:icon="@drawable/ic_delete"
+                android:text="@string/settings_clear_data" />
+        </LinearLayout>
+
+        <View style="@style/Widget.UpgridBrowser.SheetDivider" />
+
+        <!-- ============== Section: Downloads ============== -->
+
+        <TextView
+            style="@style/Widget.UpgridBrowser.SectionLabel"
+            app:drawableStartCompat="@drawable/ic_download"
+            android:text="@string/settings_section_downloads" />
+
+        <TextView
+            android:id="@+id/downloadsCount"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="20dp"
+            android:layout_marginEnd="20dp"
+            android:layout_marginBottom="8dp"
+            android:textSize="13sp"
+            android:textColor="?attr/colorOnSurface"
+            tools:text="4 файла" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnOpenDownloads"
+            style="@style/Widget.Material3.Button.TonalButton"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="12dp"
+            android:layout_marginEnd="12dp"
+            android:text="@string/settings_open_downloads" />
+
+        <View style="@style/Widget.UpgridBrowser.SheetDivider" />
+
         <!-- ============== Section: Appearance ============== -->
 
         <TextView
             style="@style/Widget.UpgridBrowser.SectionLabel"
+            app:drawableStartCompat="@drawable/ic_desktop"
             android:text="@string/settings_section_appearance" />
 
         <RadioGroup
@@ -188,6 +328,7 @@
 
         <TextView
             style="@style/Widget.UpgridBrowser.SectionLabel"
+            app:drawableStartCompat="@drawable/ic_find"
             android:text="@string/settings_section_search" />
 
         <RadioGroup
@@ -204,6 +345,7 @@
 
         <TextView
             style="@style/Widget.UpgridBrowser.SectionLabel"
+            app:drawableStartCompat="@drawable/ic_video_play"
             android:text="@string/settings_section_player" />
 
         <TextView
@@ -251,6 +393,7 @@
 
         <TextView
             style="@style/Widget.UpgridBrowser.SectionLabel"
+            app:drawableStartCompat="@drawable/ic_bookmark"
             android:text="@string/settings_section_bookmarks" />
 
         <TextView
@@ -292,6 +435,7 @@
 
         <TextView
             style="@style/Widget.UpgridBrowser.SectionLabel"
+            app:drawableStartCompat="@drawable/ic_history"
             android:text="@string/settings_section_browsing" />
 
         <TextView
@@ -333,6 +477,7 @@
 
         <TextView
             style="@style/Widget.UpgridBrowser.SectionLabel"
+            app:drawableStartCompat="@drawable/ic_find"
             android:text="@string/settings_section_history" />
 
         <TextView
@@ -361,6 +506,7 @@
 
         <TextView
             style="@style/Widget.UpgridBrowser.SectionLabel"
+            app:drawableStartCompat="@drawable/ic_settings"
             android:text="@string/settings_section_about" />
 
         <!-- Which build is actually on the phone — the first question worth

@@ -33,11 +33,18 @@ import androidx.core.content.ContextCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.core.view.isVisible
+import com.google.android.material.snackbar.Snackbar
 import com.upgrid.browser.bookmarks.BookmarkStore
 import com.upgrid.browser.bookmarks.BookmarksActivity
 import com.upgrid.browser.databinding.ActivityMainBinding
 import com.upgrid.browser.databinding.DialogTextInputBinding
+import com.upgrid.browser.download.DownloadManager
+import com.upgrid.browser.download.DownloadsActivity
 import com.upgrid.browser.fullscreen.PlayerOverlayController
+import com.upgrid.browser.logins.LoginStore
+import com.upgrid.browser.logins.LoginsActivity
+import com.upgrid.browser.vpn.VpnActivity
+import org.json.JSONObject
 import com.upgrid.browser.history.HistoryActivity
 import com.upgrid.browser.home.QuickLink
 import com.upgrid.browser.home.StartPagePresenter
@@ -117,7 +124,12 @@ class MainActivity : AppCompatActivity() {
     /** Omnibar drop-down: bookmarks, then visited pages, then past searches. */
     private val suggestionSource by lazy { SuggestionSource(components) }
     private val suggestionAdapter by lazy {
-        SuggestionAdapter(onPick = ::onSuggestionPicked, onFill = ::onSuggestionFilled)
+        SuggestionAdapter(
+            icons = components.icons,
+            scope = lifecycleScope,
+            onPick = ::onSuggestionPicked,
+            onFill = ::onSuggestionFilled,
+        )
     }
     private var suggestionJob: Job? = null
 
@@ -151,6 +163,20 @@ class MainActivity : AppCompatActivity() {
                     }
                 }
                 .onFailure(::showSignInFailure)
+        }
+
+    /**
+     * The system's "allow this app to set up a VPN?" dialog, which is an
+     * activity result and so has to be registered here — the app menu, where
+     * the switch lives, is a PopupWindow with no lifecycle of its own.
+     */
+    private val vpnConsentLauncher =
+        registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+            if (result.resultCode == android.app.Activity.RESULT_OK) {
+                connectVpn()
+            } else {
+                toast(getString(R.string.vpn_permission_denied))
+            }
         }
 
     /**
@@ -236,6 +262,12 @@ class MainActivity : AppCompatActivity() {
     /** URL the page-feature controllers were last told about. */
     private var lastPageUrl: String? = null
 
+    /** Open "save this password?" dialog, so a second report can't stack one. */
+    private var saveLoginDialog: androidx.appcompat.app.AlertDialog? = null
+
+    /** Credentials the user said no to. Session-scoped: a new launch re-asks. */
+    private val declinedLogins = mutableSetOf<String>()
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         binding = ActivityMainBinding.inflate(layoutInflater)
@@ -253,6 +285,7 @@ class MainActivity : AppCompatActivity() {
         )
         wireToolbar()
         wireSuggestions()
+        wireDownloads()
         wirePageFeatures()
         wireFeatures()
         wireDismissKeyboardOnEngineTap()
@@ -281,6 +314,10 @@ class MainActivity : AppCompatActivity() {
         components.videoPlayerBridge.onPlayerEvent = {}
         components.videoPlayerBridge.onMediaStateChanged = {}
         components.videoPlayerBridge.onPageEvent = {}
+        // Same reasoning: the download manager outlives every activity.
+        components.downloads.onEvent = null
+        saveLoginDialog?.dismiss()
+        saveLoginDialog = null
     }
 
     override fun onStart() {
@@ -316,14 +353,6 @@ class MainActivity : AppCompatActivity() {
         pauseMediaUnlessBackgroundAllowed()
     }
 
-    override fun onPause() {
-        super.onPause()
-        // Last unambiguous moment to photograph the current tab: it is still
-        // the rendered one, and whatever comes next (another activity, the
-        // launcher) will cover it.
-        if (::binding.isInitialized) captureCurrentThumbnail()
-    }
-
     // --- View wiring -------------------------------------------------------
 
     private fun wireToolbar() {
@@ -344,10 +373,7 @@ class MainActivity : AppCompatActivity() {
             AppMenuPopup(this@MainActivity).showFrom(it)
         }
 
-        // The tab grid needs a preview of the page we're leaving; capture is
-        // only possible while it's still the rendered one.
         binding.btnTopTabs.setOnClickListener {
-            captureCurrentThumbnail()
             startActivity(TabsActivity.intent(this))
         }
 
@@ -690,8 +716,76 @@ class MainActivity : AppCompatActivity() {
             when (event.optString("t")) {
                 "find" -> findController.render(event)
                 "translate" -> translateController.render(event)
+                "login" -> onLoginEvent(event)
             }
         }
+    }
+
+    /**
+     * Passwords, as reported by logins.js.
+     *
+     * Two verbs. "ready" means the page has somewhere to put a password, so we
+     * send one if we have it; "offer" means the user just submitted a form, so
+     * we ask whether to remember it. Both are ignored outright when the feature
+     * is switched off in settings — including the fill, because a browser that
+     * keeps filling passwords after you turned password saving off is not
+     * honouring the switch.
+     */
+    private fun onLoginEvent(event: JSONObject) {
+        if (!preferences.savePasswords) return
+        val host = LoginStore.normaliseHost(event.optString("host"))
+        if (host.isEmpty()) return
+
+        when (event.optString("action")) {
+            "ready" -> {
+                // Most recent wins when a site has several accounts saved. A
+                // picker would be better and is a bigger feature than this one.
+                val login = components.logins.forHost(host)
+                    .maxByOrNull { it.updatedAt } ?: return
+                components.videoPlayerBridge.sendPageCommand("loginFill") {
+                    put("username", login.username)
+                    put("password", login.password)
+                }
+            }
+            "offer" -> {
+                val username = event.optString("username")
+                val password = event.optString("password")
+                if (password.isEmpty()) return
+                if (components.logins.contains(host, username, password)) return
+                promptSaveLogin(host, username, password)
+            }
+        }
+    }
+
+    /**
+     * "Save this password?"
+     *
+     * logins.js reports on both submit and on a click that looks like one, so
+     * the same credentials can arrive two or three times in a second; the
+     * showing dialog and the declined set between them make sure that produces
+     * one question, asked once.
+     */
+    private fun promptSaveLogin(host: String, username: String, password: String) {
+        val key = "$host $username $password"
+        if (key in declinedLogins) return
+        if (saveLoginDialog?.isShowing == true) return
+
+        saveLoginDialog = MaterialAlertDialogBuilder(this)
+            .setTitle(R.string.logins_save_title)
+            .setIcon(R.drawable.ic_key)
+            .setMessage(
+                getString(
+                    R.string.logins_save_message,
+                    username.ifBlank { getString(R.string.logins_no_username) },
+                    host,
+                ),
+            )
+            .setNegativeButton(R.string.logins_save_decline) { _, _ -> declinedLogins += key }
+            .setPositiveButton(R.string.logins_save_confirm) { _, _ ->
+                components.logins.save(host, username, password)
+                Toast.makeText(this, R.string.logins_saved, Toast.LENGTH_SHORT).show()
+            }
+            .show()
     }
 
     /** True if the page is currently showing translated text. */
@@ -712,6 +806,38 @@ class MainActivity : AppCompatActivity() {
             renderPlayerButton(url.isBlank() || url == HOME_URL)
         }
     }
+
+    /**
+     * Say something when a file starts and finishes arriving.
+     *
+     * The download itself belongs to the process (see [DownloadManager]), but
+     * the sentence about it belongs to whatever is on screen — so the callback
+     * is set here and, like the bridge's, cleared in onDestroy or it would hold
+     * this activity alive for the life of the app.
+     */
+    private fun wireDownloads() {
+        components.downloads.onEvent = { event ->
+            when (event) {
+                is DownloadManager.Event.Started -> toast(
+                    getString(R.string.downloads_started, event.fileName),
+                )
+                is DownloadManager.Event.Finished -> Snackbar
+                    .make(
+                        binding.root,
+                        getString(R.string.downloads_finished, event.record.fileName),
+                        Snackbar.LENGTH_LONG,
+                    )
+                    .setAction(R.string.downloads_open_list) { showDownloads() }
+                    .show()
+                is DownloadManager.Event.Failed -> toast(
+                    getString(R.string.downloads_failed_named, event.fileName),
+                )
+            }
+        }
+    }
+
+    private fun toast(text: String) =
+        Toast.makeText(this, text, Toast.LENGTH_SHORT).show()
 
     private fun wireDismissKeyboardOnEngineTap() {
         binding.engineView.asView().setOnTouchListener { _, event ->
@@ -811,6 +937,10 @@ class MainActivity : AppCompatActivity() {
     private fun wireBackPress() {
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
+                // 0. A locked player consumes back to unlock itself. Leaving
+                //    the video outright is a much bigger undo than "back".
+                if (playerOverlay.onBackPressed()) return
+
                 // 1. If the engine is in fullscreen, ask it to exit.
                 //    FullScreenFeature fires fullScreenChanged(false) →
                 //    chrome restores + overlay hides; the content script's
@@ -877,9 +1007,29 @@ class MainActivity : AppCompatActivity() {
             binding.findBar.root.visibility = View.GONE
             binding.translateBar.root.visibility = View.GONE
         }
+        refreshSystemBars()
+    }
+
+    /**
+     * Show or hide the system status and navigation bars.
+     *
+     * Video focus alone no longer hides them. Losing back and home the instant
+     * a video opens is disorienting — there is no visible way out and no way to
+     * ask for them back — so the bars now stay until the user locks the player,
+     * which is exactly the moment they've said they won't be touching anything.
+     * PiP is the other case: the system shrinks us to a thumbnail where a
+     * navigation bar would be most of the window.
+     *
+     * Derived from state rather than passed in, because three independent
+     * things move it (entering/leaving focus, the lock, the PiP transition) and
+     * they can arrive in any order.
+     */
+    private fun refreshSystemBars() {
+        val locked = ::playerOverlay.isInitialized && playerOverlay.isLocked
+        val hide = inVideoFocus && (locked || isInPipMode())
 
         val controller = WindowInsetsControllerCompat(window, window.decorView)
-        if (focused) {
+        if (hide) {
             // fitsSystemWindows on the root applies the system/IME insets as
             // padding. Hiding the bars re-dispatches zero insets — usually.
             // On MIUI the re-dispatch can lag or be skipped entirely, which
@@ -916,6 +1066,8 @@ class MainActivity : AppCompatActivity() {
             onExit = { exitPlayer() },
             onPip = { enterPipMode() },
             onRotate = { toggleFsOrientation() },
+            // The overlay owns the lock; the window's system bars are ours.
+            onLockChanged = { refreshSystemBars() },
         )
 
         components.videoPlayerBridge.onPlayerEvent = { event ->
@@ -1219,6 +1371,57 @@ class MainActivity : AppCompatActivity() {
     /** Bookmarks. Opened from the app menu and from settings. */
     fun showBookmarks() = startActivity(BookmarksActivity.intent(this))
 
+    /** Downloaded files. Opened from the app menu and from settings. */
+    fun showDownloads() = startActivity(DownloadsActivity.intent(this))
+
+    /** Saved passwords. Opened from settings. */
+    fun showLogins() = startActivity(LoginsActivity.intent(this))
+
+    /** VPN setup. Opened from the app menu and from settings. */
+    fun showVpnSettings() = startActivity(VpnActivity.intent(this))
+
+    /**
+     * Connect or disconnect the VPN from the app menu.
+     *
+     * It lives here rather than in the popup because the first connection needs
+     * the system's consent dialog, and that is an activity result — a
+     * PopupWindow has nowhere to register one. With nothing configured yet
+     * there is nothing to connect, so this opens the setup screen instead of
+     * failing at the user.
+     */
+    fun toggleVpn() {
+        if (components.vpn.isUp) {
+            lifecycleScope.launch {
+                components.vpn.disconnect()
+                toast(getString(R.string.vpn_state_off))
+            }
+            return
+        }
+        if (!components.vpnSettings.isConfigured) {
+            toast(getString(R.string.vpn_incomplete))
+            showVpnSettings()
+            return
+        }
+        val consent = android.net.VpnService.prepare(this)
+        if (consent != null) vpnConsentLauncher.launch(consent) else connectVpn()
+    }
+
+    private fun connectVpn() {
+        toast(getString(R.string.vpn_connecting))
+        lifecycleScope.launch {
+            components.vpn.connect(components.vpnSettings)
+                .onSuccess { toast(getString(R.string.vpn_state_on)) }
+                .onFailure { error ->
+                    toast(
+                        getString(
+                            R.string.vpn_failed,
+                            error.message ?: error.javaClass.simpleName,
+                        ),
+                    )
+                }
+        }
+    }
+
     /** Google sign-in, callable from the app menu (which can't own a launcher). */
     fun connectGoogleAccount() = signInLauncher.launch(GoogleAccounts.signInIntent(this))
 
@@ -1340,25 +1543,6 @@ class MainActivity : AppCompatActivity() {
                 }
             }
             .show()
-    }
-
-    // --- Tab previews ------------------------------------------------------
-
-    /**
-     * Snapshot the rendered tab for the tabs grid.
-     *
-     * `captureThumbnail` can only ever see the tab currently on screen, so this
-     * runs just before leaving for the grid and whenever the selection changes.
-     * Everything else keeps whatever it had when it was last visible.
-     */
-    private fun captureCurrentThumbnail() {
-        val tabId = components.store.state.selectedTabId ?: return
-        if (startPage.isVisible) return
-        runCatching {
-            binding.engineView.captureThumbnail { bitmap ->
-                if (bitmap != null) components.tabThumbnails.put(tabId, bitmap)
-            }
-        }
     }
 
     // --- Sync --------------------------------------------------------------

@@ -92,5 +92,58 @@
             android:windowSoftInputMode="stateAlwaysHidden"
             android:configChanges="screenSize|smallestScreenSize|screenLayout|orientation|keyboard|keyboardHidden|navigation" />
 
+        <activity
+            android:name=".download.DownloadsActivity"
+            android:exported="false"
+            android:parentActivityName=".MainActivity"
+            android:windowSoftInputMode="stateAlwaysHidden"
+            android:configChanges="screenSize|smallestScreenSize|screenLayout|orientation|keyboard|keyboardHidden|navigation" />
+
+        <!-- Saved passwords. excludeFromRecents keeps the list out of the app
+             switcher's screenshot, which is the one place it could be read
+             without unlocking anything. -->
+        <activity
+            android:name=".logins.LoginsActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:parentActivityName=".MainActivity"
+            android:windowSoftInputMode="stateAlwaysHidden"
+            android:configChanges="screenSize|smallestScreenSize|screenLayout|orientation|keyboard|keyboardHidden|navigation" />
+
+        <activity
+            android:name=".privacy.SiteDataActivity"
+            android:exported="false"
+            android:parentActivityName=".MainActivity"
+            android:windowSoftInputMode="stateAlwaysHidden"
+            android:configChanges="screenSize|smallestScreenSize|screenLayout|orientation|keyboard|keyboardHidden|navigation" />
+
+        <!--
+          VPN setup. The VpnService itself is declared by the WireGuard tunnel
+          library's own manifest (com.wireguard.android.backend.GoBackend$VpnService,
+          permission BIND_VPN_SERVICE) and the merger folds it in — declaring a
+          second one here would be a duplicate the build rejects.
+        -->
+        <activity
+            android:name=".vpn.VpnActivity"
+            android:exported="false"
+            android:parentActivityName=".MainActivity"
+            android:windowSoftInputMode="stateAlwaysHidden|adjustResize"
+            android:configChanges="screenSize|smallestScreenSize|screenLayout|orientation|keyboard|keyboardHidden|navigation" />
+
+        <!--
+          Hands a downloaded file to another app. Only needed below Android 10,
+          where downloads land in our own external directory rather than in
+          MediaStore and a file:// URI would be refused by the system.
+        -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.files"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
+
     </application>
 </manifest>

@@ -66,6 +66,7 @@ function postToNative(msg) {
 var PAGE_COMMANDS = {
     find: 1, findNext: 1, findPrev: 1, findClear: 1,
     translate: 1, untranslate: 1, translateState: 1,
+    loginFill: 1,
 };
 
 /**
@@ -175,7 +176,7 @@ browser.runtime.onMessage.addListener(function (msg, sender) {
 
     // Page-feature reports travel straight through: unlike player events they
     // carry no frame lock and mean nothing to the relay itself.
-    if (msg.t === "find" || msg.t === "translate") {
+    if (msg.t === "find" || msg.t === "translate" || msg.t === "login") {
         postToNative(msg);
         return;
     }

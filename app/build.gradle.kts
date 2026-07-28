@@ -229,6 +229,13 @@ dependencies {
     // four requests we actually make.
     implementation("com.google.android.gms:play-services-auth:21.2.0")
 
+    // --- VPN ---
+    // WireGuard's own embeddable tunnel: the userspace wireguard-go
+    // implementation plus the config parser, the same pair the official
+    // WireGuard app uses. It also declares the VpnService in its own manifest,
+    // which the merger folds into ours. ~3.5 MB of native code per ABI split.
+    implementation("com.wireguard.android:tunnel:1.0.20260102")
+
     // Coroutines for async work.
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
 }

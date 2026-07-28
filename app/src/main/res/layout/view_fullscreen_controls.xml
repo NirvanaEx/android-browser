@@ -261,6 +261,31 @@
         </LinearLayout>
     </LinearLayout>
 
+    <!-- ============== Lock ============== -->
+    <!--
+      Shown only while the player is locked. Locking is the one thing that hides
+      the system navigation bar (see MainActivity.refreshSystemBars) and stops
+      taps from reaching the video, so there has to be a way back that is itself
+      immune to the lock — hence a button rather than "tap anywhere".
+    -->
+    <ImageButton
+        android:id="@+id/fsUnlock"
+        android:layout_width="52dp"
+        android:layout_height="52dp"
+        android:layout_marginStart="16dp"
+        android:padding="0dp"
+        android:scaleType="center"
+        android:alpha="0.75"
+        android:background="@drawable/bg_fs_round"
+        android:contentDescription="@string/player_unlock"
+        android:src="@drawable/ic_lock"
+        android:tint="#FFFFFF"
+        android:visibility="gone"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        tools:visibility="visible" />
+
     <!-- ============== Transient gesture indicators ============== -->
     <!-- Flash labels for double-tap seek (left = back, right = forward) and a
          center readout for the volume/brightness vertical-drag gestures.

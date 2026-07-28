@@ -123,6 +123,16 @@ class AppMenuPopup(private val activity: MainActivity) {
             popup.dismiss()
             activity.showHistory()
         }
+        rowDownloads.setOnClickListener {
+            popup.dismiss()
+            activity.showDownloads()
+        }
+        rowVpn.setOnClickListener {
+            // Connecting needs the consent dialog, which needs an Activity —
+            // so the whole decision lives there. Unconfigured goes to setup.
+            popup.dismiss()
+            activity.toggleVpn()
+        }
         rowShare.setOnClickListener {
             shareCurrentUrl()
             popup.dismiss()
@@ -187,6 +197,8 @@ class AppMenuPopup(private val activity: MainActivity) {
 
         renderAdblockState()
         renderDesktopSiteState()
+        renderVpnState()
+        renderDownloadsState()
         renderBookmarkStateFromDb(tab?.content?.url)
 
         // One row, two meanings: on a translated page it offers the original
@@ -229,6 +241,40 @@ class AppMenuPopup(private val activity: MainActivity) {
                 if (on) R.string.menu_adblock_state_on else R.string.menu_adblock_state_off
             )
         }
+    }
+
+    /**
+     * The VPN row: shield on and "ON" when the tunnel is up, and a third state
+     * for "nothing set up yet" — offering to connect a profile that doesn't
+     * exist would be a switch that can only fail.
+     */
+    private fun renderVpnState() {
+        val up = components.vpn.isUp
+        val configured = components.vpnSettings.isConfigured
+        binding.vpnIcon.setImageResource(
+            if (up) R.drawable.ic_shield else R.drawable.ic_shield_off
+        )
+        binding.vpnIcon.setColorFilter(
+            MaterialColors.getColor(
+                binding.vpnIcon,
+                if (up) androidx.appcompat.R.attr.colorPrimary
+                else com.google.android.material.R.attr.colorOnSurfaceVariant,
+            )
+        )
+        binding.vpnState.setText(
+            when {
+                up -> R.string.menu_adblock_state_on
+                configured -> R.string.menu_adblock_state_off
+                else -> R.string.menu_vpn_state_unset
+            }
+        )
+    }
+
+    /** How many files are on the downloads list, or nothing when it's empty. */
+    private fun renderDownloadsState() {
+        val count = components.downloadRecords.records.value.size
+        binding.downloadsState.isVisible = count > 0
+        binding.downloadsState.text = count.toString()
     }
 
     private fun renderDesktopSiteState(value: Boolean? = null) {

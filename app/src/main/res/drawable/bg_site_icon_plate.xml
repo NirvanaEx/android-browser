@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  White plate behind a real favicon inside a SiteIconView. Same corner radius as
+  bg_host_tile so it covers the coloured letter exactly, and white because most
+  favicons are drawn for a light background.
+-->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <solid android:color="#FFFFFFFF" />
+    <corners android:radius="12dp" />
+</shape>

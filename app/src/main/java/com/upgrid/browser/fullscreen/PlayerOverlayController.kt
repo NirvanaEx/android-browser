@@ -30,6 +30,8 @@ import kotlin.math.roundToInt
  *  - double tap center   → play/pause
  *  - vertical drag right → system media volume
  *  - vertical drag left  → screen brightness (this window only)
+ *
+ * …all of which the lock switches off. See [setLocked].
  */
 class PlayerOverlayController(
     private val binding: ViewFullscreenControlsBinding,
@@ -40,9 +42,22 @@ class PlayerOverlayController(
     private val onExit: () -> Unit,
     private val onPip: () -> Unit,
     private val onRotate: () -> Unit,
+    /** Told when the lock flips: the host owns the system bars, not us. */
+    private val onLockChanged: (Boolean) -> Unit,
 ) {
 
     private var barsHidden = false
+
+    /**
+     * Locked: no controls, no gestures, and the host hides the system bars.
+     *
+     * Entering the player no longer hides them by itself — the back and home
+     * buttons vanishing the moment a video starts is disorienting, and there
+     * was no way to ask for them back short of leaving. Now the lock is what
+     * makes the picture edge-to-edge, which is also the moment the user has
+     * said they don't intend to touch anything.
+     */
+    private var locked = false
 
     /** True while the user is dragging the seek bar — state ticks must not
      *  yank the thumb out from under their finger. */
@@ -71,19 +86,26 @@ class PlayerOverlayController(
 
     // --- Public surface (driven by MainActivity) ---------------------------
 
-    /** Outer visibility. Every fresh show resets to bars-visible. */
+    /** Outer visibility. Every fresh show resets to bars-visible and unlocked. */
     fun setVisible(visible: Boolean) {
         binding.root.isVisible = visible
         if (visible) {
+            setLocked(false)
             setBarsHidden(false)
             userSeeking = false
             binding.fsSeekFlashLeft.isVisible = false
             binding.fsSeekFlashRight.isVisible = false
             binding.fsGestureIndicator.isVisible = false
+        } else if (locked) {
+            // Leaving while locked would strand the window without system bars.
+            setLocked(false)
         }
     }
 
     val isVisible: Boolean get() = binding.root.isVisible
+
+    /** True while the controls are locked away. Back consults this first. */
+    val isLocked: Boolean get() = locked
 
     /** Render a "state"/"takeover" snapshot from the content script. */
     fun renderState(s: JSONObject) {
@@ -112,7 +134,8 @@ class PlayerOverlayController(
         fsExit.setOnClickListener { onExit() }
         fsPip.setOnClickListener { onPip() }
         fsRotate.setOnClickListener { onRotate() }
-        fsLock.setOnClickListener { setBarsHidden(true) }
+        fsLock.setOnClickListener { setLocked(true) }
+        fsUnlock.setOnClickListener { setLocked(false) }
 
         fsPlayPause.setOnClickListener { bridge.sendCommand("toggle") }
         fsRepeat.setOnClickListener { bridge.sendCommand("loop") }
@@ -165,11 +188,13 @@ class PlayerOverlayController(
                 override fun onDown(e: MotionEvent): Boolean = true
 
                 override fun onSingleTapConfirmed(e: MotionEvent): Boolean {
+                    if (locked) return true
                     setBarsHidden(!barsHidden)
                     return true
                 }
 
                 override fun onDoubleTap(e: MotionEvent): Boolean {
+                    if (locked) return true
                     val w = binding.root.width
                     when {
                         e.x < w * 0.4f -> seekBy(-prefs.playerSeekSeconds)
@@ -185,6 +210,7 @@ class PlayerOverlayController(
                     distanceX: Float,
                     distanceY: Float,
                 ): Boolean {
+                    if (locked) return true
                     val start = e1 ?: return false
                     val totalDx = e2.x - start.x
                     val totalDy = start.y - e2.y // positive = swipe up
@@ -270,12 +296,40 @@ class PlayerOverlayController(
 
     /**
      * Hide / show just the top + bottom bars while keeping the gesture layer
-     * alive (so taps toggle them back). Triggered by 🔒 or a single tap.
+     * alive (so taps toggle them back). Triggered by a single tap.
      */
     private fun setBarsHidden(hidden: Boolean) {
         barsHidden = hidden
         binding.fsTopBar.isVisible = !hidden
         binding.fsBottomBar.isVisible = !hidden
+    }
+
+    /**
+     * Lock / unlock the player.
+     *
+     * Locked means: no control bars, no gestures — a stray palm can't seek or
+     * change the volume — and the host is told, because that is when the system
+     * bars go away and the video finally fills the whole screen. The unlock
+     * button is the only live target left.
+     */
+    private fun setLocked(value: Boolean) {
+        if (locked == value) return
+        locked = value
+        binding.fsUnlock.isVisible = value
+        setBarsHidden(value)
+        onLockChanged(value)
+    }
+
+    /**
+     * Back while locked unlocks rather than leaving.
+     *
+     * Otherwise the gesture that means "undo the last thing" would exit the
+     * video entirely, which is a much bigger undo than the user asked for.
+     */
+    fun onBackPressed(): Boolean {
+        if (!locked) return false
+        setLocked(false)
+        return true
     }
 
     private fun formatTimePair(posSec: Double): String =

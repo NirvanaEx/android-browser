@@ -20,6 +20,9 @@ import com.upgrid.browser.bookmarks.BookmarkStore
 import com.upgrid.browser.databinding.FragmentSettingsBinding
 import com.upgrid.browser.history.HistoryStore
 import com.upgrid.browser.prefs.BrowserPreferences
+import com.upgrid.browser.privacy.BrowsingDataCleaner
+import com.upgrid.browser.privacy.ClearDataDialog
+import com.upgrid.browser.privacy.SiteDataActivity
 import com.upgrid.browser.search.SearchEngine
 import com.upgrid.browser.search.SearchHistory
 import com.upgrid.browser.sync.GoogleAccounts
@@ -58,6 +61,7 @@ class SettingsBottomSheet : ExpandedBottomSheetFragment() {
     private val browsingHistory by lazy { HistoryStore(app) }
     private val bookmarks by lazy { BookmarkStore(app) }
     private val adblock by lazy { AdblockController(components) }
+    private val cleaner by lazy { BrowsingDataCleaner(app, components) }
 
     /** Guards against a second tap while a sync round-trip is in flight. */
     private var syncing = false
@@ -106,6 +110,7 @@ class SettingsBottomSheet : ExpandedBottomSheetFragment() {
 
         wireAccount()
         wireAdblock()
+        wirePrivacy()
         renderThemes()
         renderEngines()
         renderSeekSteps()
@@ -261,6 +266,48 @@ class SettingsBottomSheet : ExpandedBottomSheetFragment() {
         }
     }
 
+    // --- VPN, passwords, site data, downloads ------------------------------
+
+    /**
+     * The three sections that are really doors to other screens.
+     *
+     * Each keeps its summary line current — how much disk the browser is
+     * sitting on, whether the tunnel is up, how many files are downloaded —
+     * because a row that only says "Site data" makes you open it to find out
+     * whether there's anything to do.
+     */
+    private fun wirePrivacy() {
+        binding.btnOpenVpn.setOnClickListener {
+            dismiss()
+            (requireActivity() as MainActivity).showVpnSettings()
+        }
+        binding.btnOpenPasswords.setOnClickListener {
+            dismiss()
+            (requireActivity() as MainActivity).showLogins()
+        }
+        binding.switchSavePasswords.setCheckedSilently(prefs.savePasswords) { _, on ->
+            prefs.savePasswords = on
+        }
+
+        binding.btnOpenSiteData.setOnClickListener {
+            dismiss()
+            startActivity(SiteDataActivity.intent(requireContext()))
+        }
+        binding.btnClearData.setOnClickListener {
+            ClearDataDialog.show(requireActivity(), cleaner) {
+                if (_binding != null) {
+                    renderCounts()
+                    (activity as? MainActivity)?.refreshStartPage()
+                }
+            }
+        }
+
+        binding.btnOpenDownloads.setOnClickListener {
+            dismiss()
+            (requireActivity() as MainActivity).showDownloads()
+        }
+    }
+
     // --- Pickers -----------------------------------------------------------
 
     /**
@@ -392,6 +439,14 @@ class SettingsBottomSheet : ExpandedBottomSheetFragment() {
         )
         binding.btnClearHistory.isEnabled = searches > 0
 
+        val files = components.downloadRecords.records.value.size
+        binding.downloadsCount.text =
+            resources.getQuantityString(R.plurals.settings_downloads_count, files, files)
+
+        binding.vpnSummary.text = getString(
+            if (components.vpn.isUp) R.string.settings_vpn_on else R.string.settings_vpn_off,
+        )
+
         viewLifecycleOwner.lifecycleScope.launch {
             val pages = browsingHistory.count()
             val saved = bookmarks.count()
@@ -404,6 +459,15 @@ class SettingsBottomSheet : ExpandedBottomSheetFragment() {
                 R.plurals.settings_bookmarks_count, saved, saved
             )
             binding.btnClearBookmarks.isEnabled = saved > 0
+
+            // Walking the profile directory takes long enough to be worth not
+            // blocking the rest of the sheet on it.
+            val bytes = cleaner.approximateCacheBytes()
+            _binding ?: return@launch
+            binding.dataSummary.text = getString(
+                R.string.settings_data_size,
+                android.text.format.Formatter.formatShortFileSize(requireContext(), bytes),
+            )
         }
     }
 

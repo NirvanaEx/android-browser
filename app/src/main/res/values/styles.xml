@@ -83,7 +83,14 @@
 
     <!-- ============== Bottom sheets (settings / tabs / history / bookmarks) ============== -->
 
-    <!-- Section caption above a group of settings. -->
+    <!--
+      Section caption above a group of settings.
+
+      Carries its icon as a start compound drawable rather than as a sibling
+      ImageView: the caption is a TextView in a dozen places and turning each
+      one into a row would be a dozen nested layouts to keep aligned. Tinted to
+      the label's own colour so the pair reads as one thing.
+    -->
     <style name="Widget.UpgridBrowser.SectionLabel" parent="">
         <item name="android:layout_width">wrap_content</item>
         <item name="android:layout_height">wrap_content</item>
@@ -91,6 +98,9 @@
         <item name="android:layout_marginEnd">20dp</item>
         <item name="android:layout_marginTop">4dp</item>
         <item name="android:layout_marginBottom">6dp</item>
+        <item name="android:gravity">center_vertical</item>
+        <item name="android:drawablePadding">10dp</item>
+        <item name="android:drawableTint">?attr/colorPrimary</item>
         <item name="android:textAppearance">?attr/textAppearanceLabelLarge</item>
         <item name="android:textColor">?attr/colorPrimary</item>
     </style>
@@ -104,6 +114,23 @@
         <item name="android:layout_marginEnd">16dp</item>
         <item name="android:background">?attr/colorOutlineVariant</item>
         <item name="android:alpha">0.5</item>
+    </style>
+
+    <!-- ============== Forms ============== -->
+
+    <!--
+      One labelled text field. Filled rather than outlined, and rounded to the
+      same 14dp as the dialogs, so a form reads as a stack of soft blocks rather
+      than a wireframe. Used by the VPN screen and the input dialogs.
+    -->
+    <style name="Widget.UpgridBrowser.Field" parent="Widget.Material3.TextInputLayout.FilledBox">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:layout_marginTop">10dp</item>
+        <item name="boxCornerRadiusTopStart">14dp</item>
+        <item name="boxCornerRadiusTopEnd">14dp</item>
+        <item name="boxCornerRadiusBottomStart">14dp</item>
+        <item name="boxCornerRadiusBottomEnd">14dp</item>
     </style>
 
     <!-- Leading letter tile: history rows, bookmark rows, tab cards. -->

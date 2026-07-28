@@ -105,6 +105,27 @@
                 android:text="@string/menu_history" />
         </LinearLayout>
 
+        <!-- Downloads. The count pill is the reason it's here rather than only
+             in Settings: "did that file arrive?" is a question you ask from the
+             page you were on. -->
+        <LinearLayout
+            android:id="@+id/rowDownloads"
+            style="@style/Widget.UpgridBrowser.MenuRow">
+            <ImageView
+                style="@style/Widget.UpgridBrowser.MenuRowIcon"
+                android:contentDescription="@null"
+                android:src="@drawable/ic_download" />
+            <TextView
+                style="@style/Widget.UpgridBrowser.MenuRowLabel"
+                android:text="@string/menu_downloads" />
+            <TextView
+                android:id="@+id/downloadsState"
+                style="@style/Widget.UpgridBrowser.MenuPill"
+                android:visibility="gone"
+                tools:visibility="visible"
+                tools:text="2" />
+        </LinearLayout>
+
         <View style="@style/Widget.UpgridBrowser.MenuDivider" />
 
         <!-- ============== Group 2: this page ============== -->
@@ -193,6 +214,29 @@
         <View style="@style/Widget.UpgridBrowser.MenuDivider" />
 
         <!-- ============== Group 3: account & settings ============== -->
+
+        <!--
+          VPN. A one-tap connect plus the status, because "am I actually
+          protected right now?" is the only question a VPN switch has to answer,
+          and answering it inside Settings would mean two taps to find out.
+          Tapping when nothing is configured opens the setup screen instead.
+        -->
+        <LinearLayout
+            android:id="@+id/rowVpn"
+            style="@style/Widget.UpgridBrowser.MenuRow">
+            <ImageView
+                android:id="@+id/vpnIcon"
+                style="@style/Widget.UpgridBrowser.MenuRowIcon"
+                android:contentDescription="@null"
+                android:src="@drawable/ic_shield_off" />
+            <TextView
+                style="@style/Widget.UpgridBrowser.MenuRowLabel"
+                android:text="@string/menu_vpn" />
+            <TextView
+                android:id="@+id/vpnState"
+                style="@style/Widget.UpgridBrowser.MenuPill"
+                android:text="@string/menu_adblock_state_off" />
+        </LinearLayout>
 
         <!--
           Connecting an account is a one-time setup step, and burying the only

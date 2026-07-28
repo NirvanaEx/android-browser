@@ -8,6 +8,13 @@ import android.net.Uri
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
+/** One site, as seen across history: how many of its pages, and when last. */
+data class HostEntry(
+    val host: String,
+    val pages: Int,
+    val lastVisit: Long,
+)
+
 /** One visited page. [visits] counts how many times the URL has been opened. */
 data class HistoryEntry(
     val id: Long,
@@ -215,6 +222,56 @@ class HistoryStore(context: Context) {
         Unit
     }
 
+    /** Drop everything visited at or after [since]. Used by "clear last week". */
+    suspend fun deleteSince(since: Long) = withContext(dbContext) {
+        helper.writableDatabase.delete(TABLE, "visited_at >= ?", arrayOf(since.toString()))
+        Unit
+    }
+
+    /**
+     * Distinct hosts, most-recently-visited first, with how many pages of each
+     * are on record.
+     *
+     * This is the closest thing to a list of "sites that have data on this
+     * device": the engine can delete a site's cookies and storage by host but
+     * has no API to enumerate which hosts have any. Every site the browser has
+     * data for is a site it visited, so history is the index.
+     *
+     * [since] of 0 means all of it.
+     */
+    suspend fun hosts(since: Long = 0L, limit: Int = HOST_LIMIT): List<HostEntry> =
+        withContext(dbContext) {
+            helper.readableDatabase.rawQuery(
+                """
+                SELECT host, COUNT(*) AS pages, MAX(visited_at) AS last
+                  FROM $TABLE
+                 WHERE host != '' AND visited_at >= ?
+                 GROUP BY host
+                 ORDER BY last DESC
+                 LIMIT ?
+                """.trimIndent(),
+                arrayOf(since.toString(), limit.toString()),
+            ).use { c ->
+                buildList {
+                    while (c.moveToNext()) {
+                        add(
+                            HostEntry(
+                                host = c.getString(0).orEmpty(),
+                                pages = c.getInt(1),
+                                lastVisit = c.getLong(2),
+                            ),
+                        )
+                    }
+                }
+            }
+        }
+
+    /** Forget every page from one site. Pairs with clearing its site data. */
+    suspend fun deleteHost(host: String) = withContext(dbContext) {
+        helper.writableDatabase.delete(TABLE, "host = ?", arrayOf(host))
+        Unit
+    }
+
     suspend fun count(): Int = withContext(dbContext) {
         helper.readableDatabase.rawQuery("SELECT COUNT(*) FROM $TABLE", null).use { c ->
             if (c.moveToFirst()) c.getInt(0) else 0
@@ -269,6 +326,9 @@ class HistoryStore(context: Context) {
         /** Roughly a year of heavy browsing; the trim keeps writes bounded. */
         private const val MAX_ROWS = 5000
         const val PAGE_SIZE = 500
+
+        /** More sites than anyone will scroll; keeps the grouping query bounded. */
+        private const val HOST_LIMIT = 500
 
         /** Schemes that are chrome, not content — never worth remembering. */
         private val SKIPPED_SCHEMES = setOf("about", "data", "blob", "javascript", "resource")

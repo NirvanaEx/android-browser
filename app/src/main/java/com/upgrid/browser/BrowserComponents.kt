@@ -2,10 +2,15 @@ package com.upgrid.browser
 
 import android.content.Context
 import com.upgrid.browser.bookmarks.BookmarkStore
+import com.upgrid.browser.download.DownloadManager
+import com.upgrid.browser.download.DownloadRecords
+import com.upgrid.browser.download.FileNames
 import com.upgrid.browser.fullscreen.VideoPlayerBridge
 import com.upgrid.browser.history.HistoryStore
+import com.upgrid.browser.logins.LoginStore
 import com.upgrid.browser.search.SearchHistory
-import com.upgrid.browser.tabs.TabThumbnails
+import com.upgrid.browser.vpn.VpnController
+import com.upgrid.browser.vpn.VpnSettings
 import mozilla.components.browser.engine.gecko.GeckoEngine
 import mozilla.components.browser.icons.BrowserIcons
 import mozilla.components.browser.session.storage.SessionStorage
@@ -56,6 +61,11 @@ class BrowserComponents(val context: Context) {
                 webFontsEnabled = true,
                 automaticFontSizeAdjustment = true,
                 trackingProtectionPolicy = EngineSession.TrackingProtectionPolicy.recommended(),
+                // Asked the moment a response turns out to be a download, and
+                // the only point at which Content-Disposition is still around.
+                // Without a delegate the engine hands us a null filename and
+                // every file would be saved as its URL's last path segment.
+                downloadDelegate = FileNames,
             )
         )
     }
@@ -99,8 +109,22 @@ class BrowserComponents(val context: Context) {
     val browsingHistory: HistoryStore by lazy { HistoryStore(context) }
     val searchHistory: SearchHistory by lazy { SearchHistory(context) }
 
-    /** Page previews for the tabs grid. Purely in-memory; see the class doc. */
-    val tabThumbnails: TabThumbnails by lazy { TabThumbnails() }
+    /** Files fetched from pages, and the list of them. */
+    val downloadRecords: DownloadRecords by lazy { DownloadRecords(context) }
+    val downloads: DownloadManager by lazy {
+        DownloadManager(context, store, httpClient, downloadRecords)
+    }
+
+    /** Saved logins, encrypted with a key that never leaves the device. */
+    val logins: LoginStore by lazy { LoginStore(context) }
+
+    /**
+     * The WireGuard tunnel and its profile. Process-wide because the tunnel
+     * outlives every screen — and because two backends would fight over one
+     * VpnService.
+     */
+    val vpnSettings: VpnSettings by lazy { VpnSettings(context) }
+    val vpn: VpnController by lazy { VpnController(context) }
 
     /**
      * Owns the built-in WebExtension behind the built-in video player.

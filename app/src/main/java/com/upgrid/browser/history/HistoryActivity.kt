@@ -40,6 +40,8 @@ class HistoryActivity : AppCompatActivity() {
         HistoryAdapter(
             todayLabel = getString(R.string.history_today),
             yesterdayLabel = getString(R.string.history_yesterday),
+            icons = components.icons,
+            scope = lifecycleScope,
             onOpen = { entry ->
                 components.sessionUseCases.loadUrl(entry.url)
                 finish()
