@@ -42,6 +42,24 @@
         tools:text="История" />
 
     <!--
+      A view-mode switch, when the screen has more than one way to show the
+      same list. Only the tabs screen does (grid ⇄ list); everywhere else this
+      stays gone.
+    -->
+    <ImageButton
+        android:id="@+id/btnHeaderToggle"
+        android:layout_width="44dp"
+        android:layout_height="44dp"
+        android:padding="0dp"
+        android:scaleType="center"
+        android:background="?attr/selectableItemBackgroundBorderless"
+        android:contentDescription="@string/tabs_tray_layout"
+        android:src="@drawable/ic_grid"
+        android:visibility="gone"
+        app:tint="?attr/colorOnSurface"
+        tools:visibility="visible" />
+
+    <!--
       The additive action of the screen, as an icon: new tab, save this page.
       An icon rather than a word because it sits next to a title that is already
       the longest thing in the row, and because "+" is the one label nobody has

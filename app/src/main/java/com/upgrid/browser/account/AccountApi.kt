@@ -105,7 +105,11 @@ class AccountApi(private val client: Client) {
         const val TAG = "AccountApi"
         val SUCCESS = 200..299
 
-        /** Sign-in is in front of a waiting user; a slow answer is a failed one. */
-        val TIMEOUT = 8L to TimeUnit.SECONDS
+        /**
+         * Sign-in is in front of a waiting user; a slow answer is a failed one.
+         * Short, because failing here is cheap — the device signs the user in
+         * anyway and the profile is fetched again next time.
+         */
+        val TIMEOUT = 6L to TimeUnit.SECONDS
     }
 }

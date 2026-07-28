@@ -349,6 +349,14 @@ class MainActivity : AppCompatActivity() {
         maybeAutoSync()
     }
 
+    override fun onPause() {
+        super.onPause()
+        // Last unambiguous moment to photograph the current tab: it is still
+        // the rendered one, and whatever comes next (another activity, the
+        // launcher) will cover it.
+        if (::binding.isInitialized) captureCurrentThumbnail()
+    }
+
     override fun onStop() {
         super.onStop()
         pauseMediaUnlessBackgroundAllowed()
@@ -374,7 +382,10 @@ class MainActivity : AppCompatActivity() {
             AppMenuPopup(this@MainActivity).showFrom(it)
         }
 
+        // The tab grid needs a preview of the page we're leaving, and capture is
+        // only possible while it is still the rendered one.
         binding.btnTopTabs.setOnClickListener {
+            captureCurrentThumbnail()
             startActivity(TabsActivity.intent(this))
         }
 
@@ -767,7 +778,7 @@ class MainActivity : AppCompatActivity() {
      * one question, asked once.
      */
     private fun promptSaveLogin(host: String, username: String, password: String) {
-        val key = "$host $username $password"
+        val key = "$host\u0000$username\u0000$password"
         if (key in declinedLogins) return
         if (saveLoginDialog?.isShowing == true) return
 
@@ -1547,6 +1558,25 @@ class MainActivity : AppCompatActivity() {
                 }
             }
             .show()
+    }
+
+    /**
+     * Photograph the tab on screen for the tabs grid.
+     *
+     * Only while the grid is the chosen view: the engine hands back a
+     * full-window bitmap and paying for that on every pause is not something to
+     * do for a screen the user has switched away from. The start page isn't a
+     * page, so it keeps its letter tile.
+     */
+    private fun captureCurrentThumbnail() {
+        if (!preferences.tabsGrid) return
+        val tabId = components.store.state.selectedTabId ?: return
+        if (startPage.isVisible) return
+        runCatching {
+            binding.engineView.captureThumbnail { bitmap ->
+                if (bitmap != null) components.tabThumbnails.put(tabId, bitmap)
+            }
+        }
     }
 
     // --- Sync --------------------------------------------------------------

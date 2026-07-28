@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Preview area of a tab card. Also the clip outline: the card sets
+  clipToOutline on this frame so a centerCrop screenshot gets the same rounded
+  corners as everything else instead of four square ones.
+-->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <solid android:color="?attr/colorSurface" />
+    <corners android:radius="10dp" />
+</shape>

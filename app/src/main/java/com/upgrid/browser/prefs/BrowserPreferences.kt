@@ -109,6 +109,24 @@ class BrowserPreferences(context: Context) {
         }
 
     /**
+     * Show open tabs as cards with page previews rather than as a list.
+     *
+     * Both views ship and the header switches between them, because which one
+     * is right depends on how many tabs are open: previews are how you find one
+     * of six, a list is how you get through thirty. Cards are the default — they
+     * are what the browser has always shown and what most people recognise.
+     *
+     * Also a real cost switch: previews are captured only while this is on (see
+     * MainActivity.captureCurrentThumbnail), so choosing the list turns off a
+     * full-window bitmap grab on every pause.
+     */
+    var tabsGrid: Boolean
+        get() = prefs.getBoolean(KEY_TABS_GRID, true)
+        set(value) {
+            prefs.edit().putBoolean(KEY_TABS_GRID, value).apply()
+        }
+
+    /**
      * Default speed-dial tiles the user has removed.
      *
      * Only the built-in ones need remembering: a tile the user added is a
@@ -139,6 +157,7 @@ class BrowserPreferences(context: Context) {
         private const val KEY_AUTO_SYNC = "auto_sync"
         private const val KEY_SAVE_PASSWORDS = "save_passwords"
         private const val KEY_ACCOUNT_SERVER = "account_server"
+        private const val KEY_TABS_GRID = "tabs_grid"
 
         /**
          * The owner's own box. Reachable over TLS on the standard port; the

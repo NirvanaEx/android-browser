@@ -194,6 +194,7 @@
     <string name="tabs_tray_close">Close tab</string>
     <string name="tabs_tray_close_all">Close all</string>
     <string name="tabs_tray_new">New</string>
+    <string name="tabs_tray_layout">Grid or list</string>
     <string name="tabs_tray_empty_title">Your tabs will appear here.</string>
     <string name="tabs_tray_empty_subtitle">Use tabs to browse multiple pages at once.</string>
 
@@ -355,8 +356,7 @@
     <string name="account_welcome">Welcome, %1$s</string>
     <string name="account_wrong">Wrong login or password.</string>
     <string name="account_needs_both">Enter the login and the password.</string>
-    <string name="account_offline_cached">Server unreachable — signed in on this phone, using the profile from last time.</string>
-    <string name="account_offline_bare">Server unreachable — signed in on this phone, but no profile was received.</string>
+    <string name="account_signed_in_no_profile">Welcome, %1$s. No VPN profile yet.</string>
     <string name="account_server_section">Server</string>
     <string name="account_server">Account server</string>
     <string name="account_server_hint">Leave empty to sign in on this phone only</string>
