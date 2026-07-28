@@ -17,7 +17,6 @@ import android.media.AudioManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
-import android.os.Environment
 import android.util.Rational
 import android.view.Gravity
 import android.view.MotionEvent
@@ -52,6 +51,7 @@ import com.upgrid.browser.history.HistoryActivity
 import com.upgrid.browser.home.QuickLink
 import com.upgrid.browser.home.StartPagePresenter
 import com.upgrid.browser.menu.AppMenuPopup
+import com.upgrid.browser.menu.LinkContextMenu
 import com.upgrid.browser.prefs.BrowserPreferences
 import com.upgrid.browser.search.SearchEngine
 import com.upgrid.browser.search.Suggestion
@@ -82,9 +82,6 @@ import kotlinx.coroutines.launch
 import mozilla.components.browser.state.action.CrashAction
 import mozilla.components.browser.state.selector.selectedTab
 import mozilla.components.browser.toolbar.display.DisplayToolbar
-import mozilla.components.feature.contextmenu.ContextMenuCandidate
-import mozilla.components.feature.contextmenu.ContextMenuFeature
-import mozilla.components.feature.contextmenu.ContextMenuUseCases
 import mozilla.components.feature.session.FullScreenFeature
 import mozilla.components.feature.session.SessionFeature
 import mozilla.components.feature.session.SwipeRefreshFeature
@@ -102,7 +99,7 @@ import mozilla.components.support.base.feature.ViewBoundFeatureWrapper
  *  - [SessionFeature]      — renders the selected tab's EngineSession into the EngineView
  *  - [SwipeRefreshFeature] — pull down on the page to reload it
  *  - [WindowRequests]      — `target="_blank"` and `window.open` become tabs
- *  - [ContextMenuFeature]  — the long-press menu on a link or an image
+ *  - [LinkContextMenu]     — the long-press menu on a link or an image
  *
  * Notably absent: `ToolbarFeature`. It is the obvious way to bind a
  * BrowserToolbar to the store and we used it for six rounds, but its presenter
@@ -285,7 +282,7 @@ class MainActivity : AppCompatActivity() {
     private val swipeRefreshFeature = ViewBoundFeatureWrapper<SwipeRefreshFeature>()
     private val fullScreenFeature = ViewBoundFeatureWrapper<FullScreenFeature>()
     private val windowRequests = ViewBoundFeatureWrapper<WindowRequests>()
-    private val contextMenuFeature = ViewBoundFeatureWrapper<ContextMenuFeature>()
+    private val contextMenuFeature = ViewBoundFeatureWrapper<LinkContextMenu>()
 
     /** Find in page — our bar, and a search that runs inside the page. */
     private lateinit var findController: FindInPageController
@@ -1057,12 +1054,10 @@ class MainActivity : AppCompatActivity() {
 
         // Long-press on a link or an image.
         contextMenuFeature.set(
-            feature = ContextMenuFeature(
-                fragmentManager = supportFragmentManager,
+            feature = LinkContextMenu(
+                activity = this,
                 store = components.store,
-                candidates = contextMenuCandidates(),
-                engineView = binding.engineView,
-                useCases = ContextMenuUseCases(components.store),
+                tabsUseCases = components.tabsUseCases,
             ),
             owner = this,
             view = binding.root,
@@ -1095,32 +1090,6 @@ class MainActivity : AppCompatActivity() {
             view = binding.root,
         )
     }
-
-    /**
-     * What the long-press menu offers.
-     *
-     * Mozilla's default list, minus three rows that would be a lie here:
-     *
-     *  - **Open in private tab.** There is no private browsing in this browser.
-     *  - **Copy image** and **Share image.** Both hand the work to
-     *    `feature-downloads`, which we don't ship — the download side of this
-     *    app is [DownloadManager], forty lines that copy a stream, rather than
-     *    a foreground service and three prompt dialogs. Those two would dispatch
-     *    an action nobody listens for and appear to do nothing, which is the
-     *    exact failure this whole round is about.
-     *
-     * Saving an image, saving a video and saving a link all stay: they go
-     * through `injectDownload`, which is the store action our own downloads
-     * already watch for.
-     */
-    private fun contextMenuCandidates(): List<ContextMenuCandidate> =
-        ContextMenuCandidate.defaultCandidates(
-            context = this,
-            tabsUseCases = components.tabsUseCases,
-            contextMenuUseCases = ContextMenuUseCases(components.store),
-            snackBarParentView = binding.root,
-            downloadsLocation = { Environment.DIRECTORY_DOWNLOADS },
-        ).filterNot { it.id in UNSUPPORTED_CONTEXT_ITEMS }
 
     private fun wireBackPress() {
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
@@ -2111,13 +2080,6 @@ class MainActivity : AppCompatActivity() {
 
         /** Widest window the system will hand out for PiP, either orientation. */
         private const val MAX_PIP_ASPECT = 2.39f
-
-        /** See [contextMenuCandidates] for why each of these is dropped. */
-        private val UNSUPPORTED_CONTEXT_ITEMS = setOf(
-            "mozac.feature.contextmenu.open_in_private_tab",
-            "mozac.feature.contextmenu.copy_image",
-            "mozac.feature.contextmenu.share_image",
-        )
 
         /**
          * Debounce before querying the omnibar drop-down.

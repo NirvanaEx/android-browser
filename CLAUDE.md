@@ -810,17 +810,30 @@ into that window from script and there is nothing to load anywhere else.
 
 ## The long-press menu
 
-`feature-contextmenu` + `ContextMenuCandidate.defaultCandidates`, minus three
-ids listed in `MainActivity.UNSUPPORTED_CONTEXT_ITEMS`: private-tab (no private
-browsing here) and copy-image / share-image, which dispatch
-`CopyInternetResourceAction` / `ShareResourceAction` — actions `feature-downloads`
-consumes and we don't ship. Shipping a menu row that dispatches an action nobody
-listens for is the same bug as the paragraph above.
+[LinkContextMenu](app/src/main/java/com/upgrid/browser/menu/LinkContextMenu.kt),
+not `feature-contextmenu`. **Do not try to add that artifact back**: it depends
+on `feature-search` → `support-remotesettings` → appservices → Glean, and
+Glean's native library is already inside `geckoview-omni`, so Gradle fails the
+build with
 
-Save-image, save-video and save-link do stay: they go through
-`ContextMenuUseCases.injectDownload`, which dispatches `UpdateDownloadAction` —
-the action our own `DownloadManager` already watches for, and it re-fetches with
-the page's referrer when the engine didn't hand over a response.
+```
+Cannot select module with conflict on capability 'org.mozilla.telemetry:glean-native'
+```
+
+Resolvable with `resolutionStrategy.capabilitiesResolution`, but the answer is
+megabytes of telemetry machinery in a browser whose pitch is that it doesn't
+phone home — for a menu with six rows.
+
+Gecko parks a `HitResult` on the tab; the feature shows a dialog and **consumes
+it either way**, because an unconsumed result means the next long press on the
+same element changes nothing in the store and is silently ignored.
+`HitResult.IMAGE_SRC` is the one to get right — an image inside a link, where
+`src` is the picture and `uri` is the destination, and confusing them is how
+"open in new tab" ends up loading a JPEG.
+
+Saving goes through `ContentAction.UpdateDownloadAction`, which is what
+`DownloadManager` already watches for; it re-fetches with the page as referrer,
+which is what makes an image behind a hotlink check actually arrive.
 
 ## Google account & sync
 
