@@ -92,6 +92,17 @@
             android:windowSoftInputMode="stateAlwaysHidden"
             android:configChanges="screenSize|smallestScreenSize|screenLayout|orientation|keyboard|keyboardHidden|navigation" />
 
+        <!-- Signing in to the browser's own account. adjustResize so the two
+             fields stay above the keyboard; excludeFromRecents keeps a typed
+             password out of the app switcher's screenshot. -->
+        <activity
+            android:name=".account.LoginActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:parentActivityName=".MainActivity"
+            android:windowSoftInputMode="adjustResize"
+            android:configChanges="screenSize|smallestScreenSize|screenLayout|orientation|keyboard|keyboardHidden|navigation" />
+
         <activity
             android:name=".download.DownloadsActivity"
             android:exported="false"

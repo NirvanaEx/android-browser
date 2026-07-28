@@ -39,6 +39,48 @@
             android:textColor="?attr/colorOnSurface"
             android:text="@string/settings_title" />
 
+        <!-- ============== Section: the browser's own account ============== -->
+
+        <TextView
+            style="@style/Widget.UpgridBrowser.SectionLabel"
+            app:drawableStartCompat="@drawable/ic_key"
+            android:text="@string/settings_section_profile" />
+
+        <TextView
+            android:id="@+id/profileName"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="20dp"
+            android:layout_marginEnd="20dp"
+            android:maxLines="1"
+            android:ellipsize="end"
+            android:textSize="14sp"
+            android:textColor="?attr/colorOnSurface"
+            tools:text="superadmin" />
+
+        <TextView
+            android:id="@+id/profileStatus"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="20dp"
+            android:layout_marginEnd="20dp"
+            android:layout_marginTop="1dp"
+            android:layout_marginBottom="8dp"
+            android:textSize="12sp"
+            android:textColor="?attr/colorOnSurfaceVariant"
+            tools:text="VPN настроен этим аккаунтом" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnProfileAction"
+            style="@style/Widget.Material3.Button.TonalButton"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="12dp"
+            android:layout_marginEnd="12dp"
+            android:text="@string/account_sign_in" />
+
+        <View style="@style/Widget.UpgridBrowser.SheetDivider" />
+
         <!-- ============== Section: Google account ============== -->
 
         <TextView

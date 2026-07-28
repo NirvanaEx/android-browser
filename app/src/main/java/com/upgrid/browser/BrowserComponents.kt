@@ -1,6 +1,7 @@
 package com.upgrid.browser
 
 import android.content.Context
+import com.upgrid.browser.account.AccountStore
 import com.upgrid.browser.bookmarks.BookmarkStore
 import com.upgrid.browser.download.DownloadManager
 import com.upgrid.browser.download.DownloadRecords
@@ -117,6 +118,12 @@ class BrowserComponents(val context: Context) {
 
     /** Saved logins, encrypted with a key that never leaves the device. */
     val logins: LoginStore by lazy { LoginStore(context) }
+
+    /**
+     * The browser's own account — who is signed in, and what that sign-in
+     * provisioned. Separate from the Google account, which only syncs data.
+     */
+    val accounts: AccountStore by lazy { AccountStore(context) }
 
     /**
      * The WireGuard tunnel and its profile. Process-wide because the tunnel

@@ -216,6 +216,33 @@
         <!-- ============== Group 3: account & settings ============== -->
 
         <!--
+          The browser's own account. First in this group because it is what the
+          rest of the group depends on: signing in is what hands the VPN its
+          profile. The Google row below is a different thing entirely — it syncs
+          bookmarks, and it is optional.
+        -->
+        <LinearLayout
+            android:id="@+id/rowProfile"
+            style="@style/Widget.UpgridBrowser.MenuRow">
+            <ImageView
+                style="@style/Widget.UpgridBrowser.MenuRowIcon"
+                android:contentDescription="@null"
+                android:src="@drawable/ic_key" />
+            <TextView
+                android:id="@+id/profileLabel"
+                style="@style/Widget.UpgridBrowser.MenuRowLabel"
+                android:maxLines="1"
+                android:ellipsize="end"
+                android:text="@string/menu_account_sign_in" />
+            <TextView
+                android:id="@+id/profileState"
+                style="@style/Widget.UpgridBrowser.MenuPill"
+                android:visibility="gone"
+                tools:visibility="visible"
+                tools:text="ВХОД" />
+        </LinearLayout>
+
+        <!--
           VPN. A one-tap connect plus the status, because "am I actually
           protected right now?" is the only question a VPN switch has to answer,
           and answering it inside Settings would mean two taps to find out.

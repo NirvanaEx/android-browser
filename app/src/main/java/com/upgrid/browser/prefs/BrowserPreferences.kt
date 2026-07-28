@@ -81,6 +81,21 @@ class BrowserPreferences(context: Context) {
         }
 
     /**
+     * Where the browser's own account lives.
+     *
+     * A static JSON per account behind HTTP basic auth — see
+     * [com.upgrid.browser.account.AccountApi]. Editable because the address of
+     * somebody's own server is not something to bake in for good, and blank is
+     * allowed: with no server, sign-in falls back to the device's own copy of
+     * the account and whatever profile it already holds.
+     */
+    var accountServer: String
+        get() = prefs.getString(KEY_ACCOUNT_SERVER, DEFAULT_ACCOUNT_SERVER).orEmpty()
+        set(value) {
+            prefs.edit().putString(KEY_ACCOUNT_SERVER, value.trim()).apply()
+        }
+
+    /**
      * Offer to save passwords, and fill saved ones.
      *
      * One switch for both halves on purpose: a browser that keeps filling
@@ -123,6 +138,13 @@ class BrowserPreferences(context: Context) {
         private const val KEY_LAST_SYNC = "last_sync_at"
         private const val KEY_AUTO_SYNC = "auto_sync"
         private const val KEY_SAVE_PASSWORDS = "save_passwords"
+        private const val KEY_ACCOUNT_SERVER = "account_server"
+
+        /**
+         * The owner's own box. Reachable over TLS on the standard port; the
+         * WireGuard endpoint on the same machine is UDP, so they don't collide.
+         */
+        const val DEFAULT_ACCOUNT_SERVER = "https://ai-game.193-160-119-15.sslip.io/upgrid"
 
         const val PLAYER_SEEK_DEFAULT = 10
         val PLAYER_SEEK_OPTIONS = listOf(5, 10, 15, 30)

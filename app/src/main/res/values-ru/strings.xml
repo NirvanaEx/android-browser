@@ -322,4 +322,36 @@
     <string name="settings_data_size">Кэш и данные сайтов: %1$s</string>
     <string name="settings_open_downloads">Открыть загрузки</string>
 
+
+    <!-- ============== Аккаунт браузера ============== -->
+    <string name="menu_account_sign_in">Войти</string>
+    <string name="account_title">Аккаунт</string>
+    <string name="account_tagline">Войдите — браузер настроит себя сам, начиная с VPN.</string>
+    <string name="account_login">Логин</string>
+    <string name="account_password">Пароль</string>
+    <string name="account_sign_in">Войти</string>
+    <string name="account_sign_in_again">Войти заново</string>
+    <string name="account_sign_out">Выйти</string>
+    <string name="account_sign_out_title">Выйти из аккаунта?</string>
+    <string name="account_sign_out_message">%1$s выйдет из аккаунта, а профиль VPN будет удалён с телефона.</string>
+    <string name="account_signing_in">Вхожу…</string>
+    <string name="account_signed_in_as">Вы вошли как %1$s</string>
+    <string name="account_welcome">С возвращением, %1$s</string>
+    <string name="account_wrong">Неверный логин или пароль.</string>
+    <string name="account_needs_both">Введите логин и пароль.</string>
+    <string name="account_offline_cached">Сервер недоступен — вошли по данным телефона, профиль взят прошлый.</string>
+    <string name="account_offline_bare">Сервер недоступен — вошли по данным телефона, но профиль не получен.</string>
+    <string name="account_server_section">Сервер</string>
+    <string name="account_server">Сервер аккаунтов</string>
+    <string name="account_server_hint">Оставьте пустым, чтобы входить только по данным телефона</string>
+    <string name="settings_section_profile">Аккаунт</string>
+    <string name="settings_profile_none">Вы не вошли</string>
+    <string name="settings_profile_hint">После входа VPN настроится сам.</string>
+    <string name="settings_profile_provisioned">VPN настроен этим аккаунтом.</string>
+    <string name="settings_profile_bare">Профиль пока не получен.</string>
+    <string name="vpn_advanced">Расширенные настройки</string>
+    <string name="vpn_provisioned_by">Настроено аккаунтом %1$s.</string>
+    <string name="vpn_provision_none">Аккаунт пока не прислал профиль — заполните поля ниже или вставьте конфиг.</string>
+    <string name="vpn_provision_sign_in">Войдите в аккаунт — профиль подставится сам.</string>
+
 </resources>

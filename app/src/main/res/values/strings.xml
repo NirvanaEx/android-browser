@@ -338,4 +338,36 @@
     <string name="settings_data_size">Cache and site data: %1$s</string>
     <string name="settings_open_downloads">Open downloads</string>
 
+
+    <!-- ============== The browser's own account ============== -->
+    <string name="menu_account_sign_in">Sign in</string>
+    <string name="account_title">Account</string>
+    <string name="account_tagline">Sign in and the browser sets itself up — starting with the VPN.</string>
+    <string name="account_login">Login</string>
+    <string name="account_password">Password</string>
+    <string name="account_sign_in">Sign in</string>
+    <string name="account_sign_in_again">Sign in again</string>
+    <string name="account_sign_out">Sign out</string>
+    <string name="account_sign_out_title">Sign out?</string>
+    <string name="account_sign_out_message">%1$s will be signed out and the VPN profile removed from this phone.</string>
+    <string name="account_signing_in">Signing in…</string>
+    <string name="account_signed_in_as">Signed in as %1$s</string>
+    <string name="account_welcome">Welcome, %1$s</string>
+    <string name="account_wrong">Wrong login or password.</string>
+    <string name="account_needs_both">Enter the login and the password.</string>
+    <string name="account_offline_cached">Server unreachable — signed in on this phone, using the profile from last time.</string>
+    <string name="account_offline_bare">Server unreachable — signed in on this phone, but no profile was received.</string>
+    <string name="account_server_section">Server</string>
+    <string name="account_server">Account server</string>
+    <string name="account_server_hint">Leave empty to sign in on this phone only</string>
+    <string name="settings_section_profile">Account</string>
+    <string name="settings_profile_none">Not signed in</string>
+    <string name="settings_profile_hint">Signing in sets up the VPN by itself.</string>
+    <string name="settings_profile_provisioned">The VPN is set up by this account.</string>
+    <string name="settings_profile_bare">No profile received yet.</string>
+    <string name="vpn_advanced">Advanced settings</string>
+    <string name="vpn_provisioned_by">Set up by the %1$s account.</string>
+    <string name="vpn_provision_none">The account has not sent a profile yet — fill it in below or paste a config.</string>
+    <string name="vpn_provision_sign_in">Sign in and the profile fills itself in.</string>
+
 </resources>

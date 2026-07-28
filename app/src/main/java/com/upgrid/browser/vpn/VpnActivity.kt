@@ -10,9 +10,11 @@ import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.view.isVisible
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
+import com.upgrid.browser.account.LoginActivity
 import com.google.android.material.color.MaterialColors
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.upgrid.browser.BrowserApplication
@@ -61,6 +63,7 @@ class VpnActivity : AppCompatActivity() {
 
         load()
         wireButtons()
+        renderProvision()
 
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
@@ -74,6 +77,30 @@ class VpnActivity : AppCompatActivity() {
     override fun onPause() {
         super.onPause()
         save()
+    }
+
+    /** Signing in elsewhere can fill the whole form in while we're away. */
+    override fun onResume() {
+        super.onResume()
+        load()
+        renderProvision()
+    }
+
+    /**
+     * Say where the profile came from.
+     *
+     * The difference matters: a profile that came with the account will come
+     * back by itself on a new phone, and one typed in by hand will not.
+     */
+    private fun renderProvision() {
+        val account = components.accounts.current
+        val provisioned = account != null && components.accounts.vpnConfig != null
+        binding.vpnProvision.text = when {
+            provisioned -> getString(R.string.vpn_provisioned_by, account!!.name)
+            account != null -> getString(R.string.vpn_provision_none)
+            else -> getString(R.string.vpn_provision_sign_in)
+        }
+        binding.btnVpnSignIn.isVisible = !provisioned
     }
 
     // --- Form --------------------------------------------------------------
@@ -122,6 +149,23 @@ class VpnActivity : AppCompatActivity() {
 
     private fun wireButtons() = with(binding) {
         btnVpnToggle.setOnClickListener { toggle() }
+
+        btnVpnSignIn.setOnClickListener {
+            startActivity(LoginActivity.intent(this@VpnActivity))
+        }
+
+        // Everything below the divider is the part nobody should have to open.
+        btnVpnAdvanced.setOnClickListener {
+            val open = !vpnAdvanced.isVisible
+            vpnAdvanced.isVisible = open
+            btnVpnAdvanced.setIconResource(
+                if (open) R.drawable.ic_chevron_up else R.drawable.ic_chevron_down,
+            )
+        }
+
+        vpnAutoConnect.setOnCheckedChangeListener { _, checked ->
+            settings.autoConnect = checked
+        }
 
         btnVpnPaste.setOnClickListener { pasteConfig() }
 
