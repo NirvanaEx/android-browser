@@ -3,6 +3,7 @@ package com.upgrid.browser.prefs
 import android.content.Context
 import android.content.SharedPreferences
 import com.upgrid.browser.search.SearchEngine
+import com.upgrid.browser.ui.ThemeMode
 
 /**
  * Single typed entry point for app-wide settings backed by SharedPreferences.
@@ -15,6 +16,17 @@ class BrowserPreferences(context: Context) {
 
     private val prefs: SharedPreferences =
         context.applicationContext.getSharedPreferences(FILE, Context.MODE_PRIVATE)
+
+    /**
+     * Light, dark, or whatever the phone is doing. Applied by
+     * [com.upgrid.browser.ui.ThemeMode.applyStored] on app start and again by
+     * the settings sheet when it changes.
+     */
+    var themeMode: ThemeMode
+        get() = ThemeMode.fromKeyOrDefault(prefs.getString(KEY_THEME, null))
+        set(value) {
+            prefs.edit().putString(KEY_THEME, value.key).apply()
+        }
 
     /** Default search engine for omnibar queries. Yandex out of the box. */
     var searchEngine: SearchEngine
@@ -79,6 +91,7 @@ class BrowserPreferences(context: Context) {
         private const val FILE = "upgrid_prefs"
         private const val KEY_HIDDEN_LINKS = "hidden_quick_links"
         private const val KEY_SEARCH_ENGINE = "search_engine"
+        private const val KEY_THEME = "theme_mode"
         private const val KEY_PLAYER_SEEK = "player_seek_seconds"
         private const val KEY_LAST_SYNC = "last_sync_at"
         private const val KEY_AUTO_SYNC = "auto_sync"

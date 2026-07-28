@@ -243,6 +243,17 @@ Two consequences worth knowing before you "restore" something:
 
 - **`applyVideoFocus` only hides `toolbarWrapper` + `toolbarDivider` now.** Any
   new chrome that should vanish in video focus has to be added there explicitly.
+- **`BrowserToolbar` must be given 56dp. Never shrink it.** Its layouts are
+  built for exactly that height and nothing in them re-centres:
+  `mozac_browser_toolbar_displaytoolbar.xml` top-anchors every child with a
+  hard-coded margin (8dp for the 40dp indicators, 4dp for the 48dp action
+  containers — both land on the 28dp centre line of a 56dp bar and nowhere
+  else), and the edit layout is a flat `layout_height="56dp"`. `onMeasure`
+  honours an EXACTLY spec, so a 44dp container silently drags the URL text 6dp
+  below the middle of the chip and clips the bottom of the star. That is what
+  the "text sits low in the search field" bug was. The visible pill is 40dp
+  because `bg_toolbar.xml` is an `<inset>`, not because the view is short —
+  same 40dp slot the library reserves for its own `..._background` ImageView.
 - **Nothing on a store tick may read uBO's state.** That lookup is async through
   the engine and firing one per tick ANRs the UI (see the AdblockController
   section above). The switch renders when the menu or Settings opens — that's

@@ -44,9 +44,20 @@
     <string name="settings_account_cancelled">Sign-in cancelled</string>
     <string name="settings_account_connected">Account connected</string>
     <string name="settings_account_failed">Couldn\'t connect the account</string>
+    <!-- Play services reports failures as bare integers. Carrying the number
+         through is the difference between a reportable bug and a shrug. -->
+    <string name="settings_account_failed_code">Couldn\'t connect the account (Google error %1$d)</string>
     <!-- Shown for DEVELOPER_ERROR (code 10): this build's app id + signing key
          aren't registered as an OAuth client. A setup step, not a user error. -->
     <string name="settings_account_not_configured">Google sign-in isn\'t set up for this build yet — the OAuth client is missing.</string>
+
+    <!-- The DEVELOPER_ERROR dialog: what to do about it, and the two values to
+         do it with. Read off the installed package, so they're always right. -->
+    <string name="account_setup_title">Google sign-in isn\'t set up</string>
+    <string name="account_setup_message">Google refuses the sign-in because this build isn\'t registered. In Google Cloud Console, create an OAuth client of type Android with the values below, enable the Drive API, and add your account as a test user.</string>
+    <string name="account_setup_details">Package: %1$s\nSHA-1: %2$s</string>
+    <string name="account_setup_copy">Copy</string>
+    <string name="account_setup_copied">Copied</string>
     <string name="settings_sync_now">Sync now</string>
     <string name="settings_sync_never">Not synced yet</string>
     <string name="settings_sync_last">Last sync: %1$s</string>
@@ -59,6 +70,11 @@
     <string name="settings_section_content">Content blocking</string>
     <string name="settings_adblock">Block ads and trackers</string>
     <string name="settings_adblock_hint">uBlock Origin runs on every page. Turning it off also stops cosmetic filtering.</string>
+
+    <string name="settings_section_appearance">Appearance</string>
+    <string name="settings_theme_system">Follow the system</string>
+    <string name="settings_theme_light">Light</string>
+    <string name="settings_theme_dark">Dark</string>
 
     <string name="settings_section_search">Search engine</string>
 

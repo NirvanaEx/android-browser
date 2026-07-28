@@ -43,7 +43,14 @@
     <string name="settings_account_cancelled">Вход отменён</string>
     <string name="settings_account_connected">Аккаунт подключён</string>
     <string name="settings_account_failed">Не удалось подключить аккаунт</string>
+    <string name="settings_account_failed_code">Не удалось подключить аккаунт (ошибка Google %1$d)</string>
     <string name="settings_account_not_configured">Вход через Google для этой сборки ещё не настроен — нет OAuth-клиента.</string>
+
+    <string name="account_setup_title">Вход через Google не настроен</string>
+    <string name="account_setup_message">Google отклоняет вход, потому что эта сборка не зарегистрирована. В Google Cloud Console создайте OAuth-клиент типа Android с данными ниже, включите Drive API и добавьте свой аккаунт в тестовые пользователи.</string>
+    <string name="account_setup_details">Пакет: %1$s\nSHA-1: %2$s</string>
+    <string name="account_setup_copy">Скопировать</string>
+    <string name="account_setup_copied">Скопировано</string>
     <string name="settings_sync_now">Синхронизировать</string>
     <string name="settings_sync_never">Ещё не синхронизировалось</string>
     <string name="settings_sync_last">Последняя синхронизация: %1$s</string>
@@ -56,6 +63,11 @@
     <string name="settings_section_content">Блокировка контента</string>
     <string name="settings_adblock">Блокировать рекламу и трекеры</string>
     <string name="settings_adblock_hint">uBlock Origin работает на каждой странице. Если выключить, перестанет работать и косметическая фильтрация.</string>
+
+    <string name="settings_section_appearance">Оформление</string>
+    <string name="settings_theme_system">Как в системе</string>
+    <string name="settings_theme_light">Светлая</string>
+    <string name="settings_theme_dark">Тёмная</string>
 
     <string name="settings_section_search">Поисковая система</string>
 

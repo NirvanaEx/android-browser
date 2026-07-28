@@ -10,7 +10,6 @@ import android.widget.RadioButton
 import android.widget.RadioGroup
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.lifecycle.lifecycleScope
-import com.google.android.gms.common.api.ApiException
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.upgrid.browser.AdblockController
 import com.upgrid.browser.BrowserApplication
@@ -24,9 +23,12 @@ import com.upgrid.browser.prefs.BrowserPreferences
 import com.upgrid.browser.search.SearchEngine
 import com.upgrid.browser.search.SearchHistory
 import com.upgrid.browser.sync.GoogleAccounts
+import com.upgrid.browser.sync.SignInDiagnostics
 import com.upgrid.browser.sync.SyncEngine
 import com.upgrid.browser.sync.SyncOutcome
 import com.upgrid.browser.ui.ExpandedBottomSheetFragment
+import com.upgrid.browser.ui.ThemeMode
+import com.upgrid.browser.ui.applyColorScheme
 import kotlinx.coroutines.launch
 import java.time.Instant
 import java.time.ZoneId
@@ -104,6 +106,7 @@ class SettingsBottomSheet : ExpandedBottomSheetFragment() {
 
         wireAccount()
         wireAdblock()
+        renderThemes()
         renderEngines()
         renderSeekSteps()
         wireDataButtons()
@@ -225,25 +228,17 @@ class SettingsBottomSheet : ExpandedBottomSheetFragment() {
     }
 
     /**
-     * Turn a sign-in failure into something actionable.
+     * A sign-in failure, in the status row.
      *
-     * DEVELOPER_ERROR is the one worth spelling out: it means no OAuth client
-     * in Cloud Console matches this build's application id and signing
-     * certificate, which is a setup step, not something the user did wrong.
+     * The wording lives in [SignInDiagnostics] because the app menu can start a
+     * sign-in too, and two screens explaining the same Play-services status
+     * code in two different ways is how one of them ends up wrong.
+     * MainActivity goes further and offers the setup values for the
+     * missing-OAuth-client case; here a line of text is enough, since Settings
+     * is where you'd already be looking.
      */
     private fun showSignInFailure(error: Throwable) {
-        val code = (error as? ApiException)?.statusCode
-        setSyncStatus(
-            when (code) {
-                GoogleAccounts.DEVELOPER_ERROR ->
-                    getString(R.string.settings_account_not_configured)
-                SIGN_IN_CANCELLED -> getString(R.string.settings_account_cancelled)
-                else -> getString(
-                    R.string.settings_sync_failed,
-                    error.message?.take(120).orEmpty(),
-                )
-            }
-        )
+        setSyncStatus(SignInDiagnostics.describe(requireContext(), error))
     }
 
     // --- AdBlock -----------------------------------------------------------
@@ -266,6 +261,29 @@ class SettingsBottomSheet : ExpandedBottomSheetFragment() {
     }
 
     // --- Pickers -----------------------------------------------------------
+
+    /**
+     * Light / dark / system.
+     *
+     * Picking one recreates every activity underneath this sheet, which takes
+     * the sheet with it — that's AppCompat's doing and it's the right
+     * behaviour, since a half-repainted browser would be worse. The engine gets
+     * told separately so pages switch too; it survives the recreation because
+     * it lives in the Application.
+     */
+    private fun renderThemes() {
+        val current = prefs.themeMode
+        binding.themeGroup.removeAllViews()
+        ThemeMode.entries.forEach { mode ->
+            binding.themeGroup.addView(
+                radio(getString(mode.label), mode == current) {
+                    prefs.themeMode = mode
+                    components.engine.applyColorScheme(mode)
+                    ThemeMode.apply(mode)
+                }
+            )
+        }
+    }
 
     /**
      * One radio per [SearchEngine], in declaration order. The list is short and
@@ -393,9 +411,6 @@ class SettingsBottomSheet : ExpandedBottomSheetFragment() {
 
     companion object {
         const val TAG = "settings"
-
-        /** `CommonStatusCodes.SIGN_IN_CANCELLED` — the user backed out. */
-        private const val SIGN_IN_CANCELLED = 12501
 
         private val SYNC_TIME_FORMAT: DateTimeFormatter =
             DateTimeFormatter.ofPattern("d MMM, HH:mm", Locale.getDefault())
