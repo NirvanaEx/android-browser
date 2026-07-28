@@ -758,8 +758,11 @@ class MainActivity : AppCompatActivity() {
         // already scrolled to the top AND the page didn't consume the scroll
         // itself — SwipeRefreshFeature asks the engine view, which is why the
         // engine view has to be the refresh layout's direct child.
+        // colorPrimary comes from appcompat, not from material: with
+        // nonTransitiveRClass every attribute has to be named through the
+        // library that actually declares it.
         binding.swipeRefresh.setColorSchemeColors(
-            MaterialColors.getColor(binding.root, com.google.android.material.R.attr.colorPrimary),
+            MaterialColors.getColor(binding.root, androidx.appcompat.R.attr.colorPrimary),
         )
         binding.swipeRefresh.setProgressBackgroundColorSchemeColor(
             MaterialColors.getColor(
