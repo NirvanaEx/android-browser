@@ -1,25 +1,34 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  One speed-dial tile. The 64dp filled rounded square holds the brand letter;
-  its tint is applied programmatically per QuickLink.color in the adapter.
-  Whole row is borderless-ripple clickable so the letter+label feel like one
-  cohesive button.
+  One speed-dial tile: a 60dp rounded square, then the label.
+
+  The letter and the favicon are STACKED, not swapped. The coloured letter tile
+  is drawn immediately from the URL's host; the real favicon arrives from the
+  network a moment later and covers it. Swapping instead would leave the tile
+  blank until the fetch lands, and blank on every site that has no icon.
+
+  The favicon sits on a white plate because most are designed for a light
+  background and half of them vanish into the tile's colour otherwise.
+
+  Tints and visibility are set per tile in StartPagePresenter.
 -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="80dp"
     android:layout_height="wrap_content"
     android:orientation="vertical"
     android:gravity="center_horizontal"
-    android:paddingVertical="8dp"
+    android:paddingTop="8dp"
+    android:paddingBottom="8dp"
     android:background="?attr/selectableItemBackgroundBorderless"
     android:clickable="true"
     android:focusable="true">
 
     <FrameLayout
+        android:id="@+id/tileBg"
         android:layout_width="60dp"
         android:layout_height="60dp"
-        android:background="@drawable/bg_quick_link"
-        android:id="@+id/tileBg">
+        android:background="@drawable/bg_quick_link">
 
         <TextView
             android:id="@+id/tileLetter"
@@ -29,7 +38,21 @@
             android:textColor="#FFFFFFFF"
             android:textSize="26sp"
             android:textStyle="bold"
-            android:fontFamily="sans-serif-medium" />
+            android:fontFamily="sans-serif-medium"
+            tools:text="G" />
+
+        <ImageView
+            android:id="@+id/tileIcon"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:layout_gravity="center"
+            android:padding="12dp"
+            android:scaleType="fitCenter"
+            android:background="@drawable/bg_quick_link_icon"
+            android:visibility="gone"
+            android:contentDescription="@null"
+            tools:visibility="visible"
+            tools:src="@drawable/ic_globe" />
     </FrameLayout>
 
     <TextView
@@ -41,5 +64,6 @@
         android:maxLines="1"
         android:ellipsize="end"
         android:textSize="12sp"
-        android:textColor="?attr/colorOnSurface" />
+        android:textColor="?attr/colorOnSurface"
+        tools:text="github.com" />
 </LinearLayout>

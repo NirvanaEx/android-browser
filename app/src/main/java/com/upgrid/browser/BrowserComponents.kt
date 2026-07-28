@@ -1,7 +1,11 @@
 package com.upgrid.browser
 
 import android.content.Context
+import com.upgrid.browser.bookmarks.BookmarkStore
 import com.upgrid.browser.fullscreen.VideoPlayerBridge
+import com.upgrid.browser.history.HistoryStore
+import com.upgrid.browser.search.SearchHistory
+import com.upgrid.browser.tabs.TabThumbnails
 import mozilla.components.browser.engine.gecko.GeckoEngine
 import mozilla.components.browser.icons.BrowserIcons
 import mozilla.components.browser.session.storage.SessionStorage
@@ -79,8 +83,24 @@ class BrowserComponents(val context: Context) {
     /** Disk-backed session/tab persistence. Snapshot on pause, restore on cold start. */
     val sessionStorage: SessionStorage by lazy { SessionStorage(context, engine) }
 
-    /** Favicon loader used by toolbar + tabs tray. */
+    /** Favicon loader used by the toolbar, the tabs grid and the speed dial. */
     val icons: BrowserIcons by lazy { BrowserIcons(context, httpClient) }
+
+    /**
+     * The user's own data, process-wide.
+     *
+     * These used to be constructed per screen — MainActivity, the menu, each
+     * sheet — and every instance opened its own `SQLiteOpenHelper`, i.e. its own
+     * connection and its own page cache against the same file. Opening the
+     * bookmarks list meant a second connection to a database the activity
+     * already had open. One instance each, shared.
+     */
+    val bookmarks: BookmarkStore by lazy { BookmarkStore(context) }
+    val browsingHistory: HistoryStore by lazy { HistoryStore(context) }
+    val searchHistory: SearchHistory by lazy { SearchHistory(context) }
+
+    /** Page previews for the tabs grid. Purely in-memory; see the class doc. */
+    val tabThumbnails: TabThumbnails by lazy { TabThumbnails() }
 
     /**
      * Owns the built-in WebExtension behind the built-in video player.

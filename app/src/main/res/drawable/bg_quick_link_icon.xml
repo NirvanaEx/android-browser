@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  White plate behind a real favicon on a speed-dial tile. Most favicons are
+  drawn for a light background — on the tile's own brand colour, dark ones
+  disappear entirely. Same corner radius as bg_quick_link so it covers it
+  exactly.
+-->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <solid android:color="#FFFFFFFF" />
+    <corners android:radius="20dp" />
+</shape>

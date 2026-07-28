@@ -55,8 +55,29 @@ class BrowserPreferences(context: Context) {
             prefs.edit().putBoolean(KEY_AUTO_SYNC, value).apply()
         }
 
+    /**
+     * Default speed-dial tiles the user has removed.
+     *
+     * Only the built-in ones need remembering: a tile the user added is a
+     * bookmark, and removing it deletes the bookmark. There's nothing to delete
+     * for a default, so the fact that it's gone has to be stored somewhere.
+     *
+     * SharedPreferences hands back its own internal set — mutating it corrupts
+     * the in-memory copy without ever reaching disk — so both accessors copy.
+     */
+    var hiddenQuickLinks: Set<String>
+        get() = prefs.getStringSet(KEY_HIDDEN_LINKS, emptySet())?.toSet() ?: emptySet()
+        set(value) {
+            prefs.edit().putStringSet(KEY_HIDDEN_LINKS, value.toSet()).apply()
+        }
+
+    fun hideQuickLink(url: String) {
+        hiddenQuickLinks = hiddenQuickLinks + url
+    }
+
     companion object {
         private const val FILE = "upgrid_prefs"
+        private const val KEY_HIDDEN_LINKS = "hidden_quick_links"
         private const val KEY_SEARCH_ENGINE = "search_engine"
         private const val KEY_PLAYER_SEEK = "player_seek_seconds"
         private const val KEY_LAST_SYNC = "last_sync_at"

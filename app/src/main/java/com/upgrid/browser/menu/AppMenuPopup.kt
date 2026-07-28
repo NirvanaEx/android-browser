@@ -144,6 +144,18 @@ class AppMenuPopup(private val activity: MainActivity) {
                 renderAdblockState()
             }
         }
+        rowAccount.setOnClickListener {
+            popup.dismiss()
+            if (GoogleAccounts.current(activity) == null) {
+                // The launcher has to live on the activity — a PopupWindow has
+                // no lifecycle to register an activity-result contract against.
+                activity.connectGoogleAccount()
+            } else {
+                // Already connected: the only thing left to do here is manage
+                // it, which lives in Settings next to sync-now and auto-sync.
+                SettingsBottomSheet().show(activity.supportFragmentManager, SettingsBottomSheet.TAG)
+            }
+        }
         rowSettings.setOnClickListener {
             popup.dismiss()
             SettingsBottomSheet().show(activity.supportFragmentManager, SettingsBottomSheet.TAG)
@@ -158,8 +170,16 @@ class AppMenuPopup(private val activity: MainActivity) {
         binding.quickForward.setEnabledLook(tab?.content?.canGoForward == true)
 
         // Signed-in state is a cheap local lookup (Play services caches it), so
-        // it's safe on the main thread here.
-        binding.syncBadge.isVisible = GoogleAccounts.current(activity) != null
+        // it's safe on the main thread here. The row shows the account's own
+        // address when connected — that IS the status indicator.
+        val account = GoogleAccounts.current(activity)
+        binding.accountState.isVisible = account != null
+        if (account != null) {
+            binding.accountLabel.text =
+                account.email ?: activity.getString(R.string.menu_account_connected)
+        } else {
+            binding.accountLabel.setText(R.string.menu_account_connect)
+        }
 
         renderAdblockState()
         renderDesktopSiteState()

@@ -12,6 +12,12 @@
 
     <!-- Start page -->
     <string name="start_page_tagline">Search the web. Quietly ad-free.</string>
+    <string name="start_page_add">Add</string>
+    <string name="start_page_add_hint">Address or search term</string>
+    <string name="start_page_add_confirm">Add</string>
+    <string name="start_page_remove_title">Remove shortcut?</string>
+    <string name="start_page_remove_message">“%1$s” will disappear from the start page.</string>
+    <string name="start_page_remove_confirm">Remove</string>
 
     <!-- Toolbar -->
     <string name="nav_back">Back</string>
@@ -36,6 +42,8 @@
     <string name="settings_account_disconnect_message">Syncing stops. Everything already saved stays on this device, and the copy in Drive is left untouched.</string>
     <string name="settings_account_disconnected">Account disconnected</string>
     <string name="settings_account_cancelled">Sign-in cancelled</string>
+    <string name="settings_account_connected">Account connected</string>
+    <string name="settings_account_failed">Couldn\'t connect the account</string>
     <!-- Shown for DEVELOPER_ERROR (code 10): this build's app id + signing key
          aren't registered as an OAuth client. A setup step, not a user error. -->
     <string name="settings_account_not_configured">Google sign-in isn\'t set up for this build yet — the OAuth client is missing.</string>
@@ -128,7 +136,9 @@
     <string name="menu_bookmark_remove">Remove bookmark</string>
     <string name="menu_history">History</string>
     <string name="menu_settings">Settings</string>
-    <!-- Shown on the Settings row while a Google account is connected. -->
+    <string name="menu_account_connect">Connect Google</string>
+    <string name="menu_account_connected">Google account</string>
+    <!-- Pill on the account row while it is connected. -->
     <string name="menu_sync_badge" translatable="false">SYNC</string>
 
     <!-- Tabs tray -->
