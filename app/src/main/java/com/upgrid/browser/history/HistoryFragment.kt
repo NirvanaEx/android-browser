@@ -39,6 +39,8 @@ class HistoryFragment : BottomSheetDialogFragment() {
 
     private val adapter by lazy {
         HistoryAdapter(
+            todayLabel = getString(R.string.history_today),
+            yesterdayLabel = getString(R.string.history_yesterday),
             onOpen = { entry ->
                 components.sessionUseCases.loadUrl(entry.url)
                 dismiss()
@@ -73,7 +75,7 @@ class HistoryFragment : BottomSheetDialogFragment() {
             reloadJob?.cancel()
             reloadJob = viewLifecycleOwner.lifecycleScope.launch {
                 delay(SEARCH_DEBOUNCE_MS)
-                reload()
+                render()
             }
         }
 
@@ -96,24 +98,32 @@ class HistoryFragment : BottomSheetDialogFragment() {
             .show()
     }
 
+    /** Cancel any pending search and redraw now. Safe from click handlers. */
     private fun reload() {
         reloadJob?.cancel()
-        reloadJob = viewLifecycleOwner.lifecycleScope.launch {
-            val query = binding.searchInput.text?.toString().orEmpty()
-            val entries = store.entries(query)
-            adapter.submit(entries)
+        reloadJob = viewLifecycleOwner.lifecycleScope.launch { render() }
+    }
 
-            binding.historyList.isVisible = entries.isNotEmpty()
-            binding.emptyState.isVisible = entries.isEmpty()
-            binding.emptyTitle.setText(
-                if (query.isBlank()) R.string.history_empty_title
-                else R.string.history_empty_search
-            )
-            // Nothing to wipe on an empty table, but a filtered-to-empty view
-            // still has rows behind it — key the button off the table, not the
-            // current filter.
-            binding.btnClearAll.isVisible = query.isNotBlank() || entries.isNotEmpty()
-        }
+    /**
+     * Query and draw. Kept separate from [reload] because the debounce
+     * coroutine calls it directly — going through [reload] would have that
+     * coroutine cancel its own job on the way in.
+     */
+    private suspend fun render() {
+        val query = binding.searchInput.text?.toString().orEmpty()
+        val entries = store.entries(query)
+        adapter.submit(entries)
+
+        binding.historyList.isVisible = entries.isNotEmpty()
+        binding.emptyState.isVisible = entries.isEmpty()
+        binding.emptyTitle.setText(
+            if (query.isBlank()) R.string.history_empty_title
+            else R.string.history_empty_search
+        )
+        // A filtered-to-empty view still has rows behind it, so key the button
+        // off the table rather than the visible list — but hide it once the
+        // table is genuinely empty, including right after a clear-all.
+        binding.btnClearAll.isVisible = store.count() > 0
     }
 
     override fun onDestroyView() {

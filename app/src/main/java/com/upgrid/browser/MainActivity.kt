@@ -90,12 +90,15 @@ class MainActivity : AppCompatActivity() {
     private val browsingHistory by lazy { HistoryStore(this) }
 
     /**
-     * Last (url, title) pair actually written to history. The store ticks many
-     * times per page load with the same content; without this the same page is
-     * re-recorded on every progress update, inflating its visit counter and
+     * Last (url, title) written to history, per tab id. The store ticks many
+     * times per page load with identical content; without a memo the same page
+     * is re-recorded on every progress update, inflating its visit counter and
      * churning the DB.
+     *
+     * Keyed by tab rather than held as a single slot so that switching A → B →
+     * A doesn't read as a fresh visit to A. Bounded by the open tab count.
      */
-    private var lastRecordedVisit: Pair<String, String>? = null
+    private val lastRecordedVisit = mutableMapOf<String, Pair<String, String>>()
 
     /**
      * True while the activity is in immersive "video focus" mode — chrome +
@@ -116,6 +119,19 @@ class MainActivity : AppCompatActivity() {
      * whether to restore the overlay or tear the player down.
      */
     private var playerActive = false
+
+    /**
+     * True from the moment we ask the content script to drop DOM fullscreen
+     * for PiP until the PiP transition settles.
+     *
+     * That exit travels back through the engine as a perfectly ordinary "page
+     * left fullscreen", so [FullScreenFeature] would clear the video focus and
+     * hide the overlay right as we're moving into the floating window — and
+     * the content script's own watcher can report a release if it loses the
+     * race with the activity resize. Both are our own doing, not the user's,
+     * and both are ignored while this is set.
+     */
+    private var pipTransition = false
 
     /** Latest playback state, mirrored from the content script's snapshots.
      *  Feeds the PiP window's aspect ratio and its play/pause action icon. */
@@ -174,6 +190,12 @@ class MainActivity : AppCompatActivity() {
     override fun onDestroy() {
         super.onDestroy()
         runCatching { unregisterReceiver(playerControlReceiver) }
+        // The bridge lives in BrowserComponents, i.e. for the whole process —
+        // a stale lambda here keeps this activity (and its whole view tree)
+        // reachable until some later instance overwrites it. Recreation is not
+        // hypothetical: `configChanges` doesn't list uiMode, so flipping system
+        // dark mode rebuilds the activity.
+        components.videoPlayerBridge.onPlayerEvent = {}
     }
 
     override fun onStart() {
@@ -338,8 +360,15 @@ class MainActivity : AppCompatActivity() {
                 tabId = null,
                 viewportFitChanged = { /* notch handling not needed for MVP */ },
                 fullScreenChanged = { fs ->
-                    setVideoFocus(fs)
-                    if (!fs) playerOverlay.setVisible(false)
+                    // Entering PiP means asking the page to leave fullscreen,
+                    // and the engine reports that here as if the page gave up
+                    // on its own. Acting on it would restore the chrome under
+                    // the overlay the moment we come back from the floating
+                    // window. Only a real exit — one we didn't cause — counts.
+                    if (fs || !(pipTransition || isInPipMode())) {
+                        setVideoFocus(fs)
+                        if (!fs) playerOverlay.setVisible(false)
+                    }
                 },
             ),
             owner = this,
@@ -532,7 +561,12 @@ class MainActivity : AppCompatActivity() {
                     rememberPlayerState(event)
                     playerOverlay.renderState(event)
                 }
-                "released" -> {
+                // A release landing mid-PiP-handoff is the content script's
+                // fullscreen watcher losing a race with the activity resize,
+                // not the page actually taking its video back. Once we're in
+                // PiP the script's own pipMode guard holds, so a release from
+                // there (navigation, tab close) is genuine and honoured.
+                "released" -> if (!pipTransition) {
                     playerActive = false
                     playerOverlay.setVisible(false)
                     setVideoFocus(false)
@@ -650,15 +684,15 @@ class MainActivity : AppCompatActivity() {
         val title = content.title
         if (url == HOME_URL || !HistoryStore.isRecordable(url)) return
 
-        val previous = lastRecordedVisit
+        val previous = lastRecordedVisit[tab.id]
         if (previous?.first == url) {
             if (title.isBlank() || title == previous.second) return
-            lastRecordedVisit = url to title
+            lastRecordedVisit[tab.id] = url to title
             lifecycleScope.launch { browsingHistory.updateTitle(url, title) }
             return
         }
 
-        lastRecordedVisit = url to title
+        lastRecordedVisit[tab.id] = url to title
         lifecycleScope.launch { browsingHistory.record(url, title) }
     }
 
@@ -708,14 +742,20 @@ class MainActivity : AppCompatActivity() {
             return
         }
 
+        pipTransition = true
         components.videoPlayerBridge.sendCommand("pip") { put("on", true) }
         val entered = runCatching { enterPictureInPictureMode(buildPipParams()) }
             .getOrDefault(false)
         if (!entered) {
-            // Denied (per-app PiP permission off, or the system refused) —
-            // undo the content-script side so we stay in normal fullscreen
-            // instead of a fullscreen with no DOM fullscreen behind it.
+            // Denied — per-app PiP permission off, or the system refused.
+            // The content script has already left DOM fullscreen by now and
+            // there's no gesture left to re-enter it, so settle back into our
+            // own fullscreen presentation: the video is still styled to fill
+            // the viewport, so chrome-off plus the overlay looks the same.
+            pipTransition = false
             components.videoPlayerBridge.sendCommand("pip") { put("on", false) }
+            playerOverlay.setVisible(true)
+            setVideoFocus(true)
             Toast.makeText(this, R.string.pip_failed, Toast.LENGTH_SHORT).show()
         }
     }
@@ -803,6 +843,8 @@ class MainActivity : AppCompatActivity() {
      */
     override fun onPictureInPictureModeChanged(isInPip: Boolean, newConfig: Configuration) {
         super.onPictureInPictureModeChanged(isInPip, newConfig)
+        // Handoff is over either way: from here isInPipMode() is authoritative.
+        pipTransition = false
 
         if (isInPip) {
             applyVideoFocus(true)

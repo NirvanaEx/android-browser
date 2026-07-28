@@ -62,6 +62,8 @@
     <string name="history_clear_all_message">Every page you\'ve visited will be removed from this list.</string>
     <string name="history_clear_all_confirm">Clear</string>
     <string name="history_delete_entry">Remove from history</string>
+    <string name="history_today">Today</string>
+    <string name="history_yesterday">Yesterday</string>
     <string name="history_empty_title">Pages you visit will show up here.</string>
     <string name="history_empty_search">Nothing matches that search.</string>
 

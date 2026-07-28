@@ -4,9 +4,9 @@
   header row with a title + "Clear all", then the list. A search field sits
   between the header and the list; typing filters URL and title.
 
-  The list is capped via maxHeight so a handful of entries renders compact
-  while a long history scrolls inside the sheet instead of shoving the system
-  bars off screen.
+  The list wraps its content, so a handful of entries renders compact while a
+  long history scrolls inside the sheet. (RecyclerView ignores maxHeight — the
+  real bound is the sheet's own measure spec.)
 
   IDs are referenced by HistoryFragment.kt via ViewBinding.
 -->
