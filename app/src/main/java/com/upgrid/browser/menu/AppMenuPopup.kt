@@ -19,6 +19,7 @@ import com.upgrid.browser.bookmarks.BookmarkStore
 import com.upgrid.browser.databinding.AppMenuPopupBinding
 import com.upgrid.browser.settings.SettingsBottomSheet
 import com.upgrid.browser.sync.GoogleAccounts
+import com.upgrid.browser.translate.PageTranslator
 import kotlinx.coroutines.launch
 import mozilla.components.browser.state.selector.selectedTab
 
@@ -131,6 +132,10 @@ class AppMenuPopup(private val activity: MainActivity) {
             activity.showFindInPage()
             popup.dismiss()
         }
+        rowTranslate.setOnClickListener {
+            popup.dismiss()
+            activity.toggleTranslation()
+        }
         rowDesktopSite.setOnClickListener {
             // Toggle in place; don't dismiss so the user sees the pill flip.
             val tab = components.store.state.selectedTab ?: return@setOnClickListener
@@ -184,6 +189,17 @@ class AppMenuPopup(private val activity: MainActivity) {
         renderAdblockState()
         renderDesktopSiteState()
         renderBookmarkStateFromDb(tab?.content?.url)
+
+        // One row, two meanings: on a translated page it offers the original
+        // back. Anywhere the proxy can't go — the start page, a file:// URL —
+        // the row is hidden rather than shown doing nothing.
+        val url = tab?.content?.url.orEmpty()
+        val translated = PageTranslator.isTranslated(url)
+        binding.rowTranslate.isVisible =
+            translated || PageTranslator.toTranslated(url) != null
+        binding.translateLabel.setText(
+            if (translated) R.string.menu_translate_original else R.string.menu_translate
+        )
     }
 
     private fun View.setEnabledLook(enabled: Boolean) {

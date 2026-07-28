@@ -133,6 +133,24 @@
                 android:text="@string/menu_find_in_page" />
         </LinearLayout>
 
+        <!--
+          Translate is a per-page action and a toggle: tapping it again on a
+          translated page goes back to the original. The label flips with the
+          state, so there is one row rather than two.
+        -->
+        <LinearLayout
+            android:id="@+id/rowTranslate"
+            style="@style/Widget.UpgridBrowser.MenuRow">
+            <ImageView
+                style="@style/Widget.UpgridBrowser.MenuRowIcon"
+                android:contentDescription="@null"
+                android:src="@drawable/ic_translate" />
+            <TextView
+                android:id="@+id/translateLabel"
+                style="@style/Widget.UpgridBrowser.MenuRowLabel"
+                android:text="@string/menu_translate" />
+        </LinearLayout>
+
         <!-- Desktop site is per-tab, so it stays here rather than moving to
              Settings with the other toggles. -->
         <LinearLayout

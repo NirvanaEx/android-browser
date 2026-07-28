@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Surface behind the omnibar drop-down.
+
+  A step up from colorSurface on purpose. Painted in the page's own colour the
+  panel had no edge at all — the rows read as text scattered over the start
+  page rather than as a list hanging off the address bar. The rounded bottom
+  corners finish it: the top is square because it meets the toolbar divider.
+-->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <solid android:color="?attr/colorSurfaceContainerHigh" />
+    <corners
+        android:topLeftRadius="0dp"
+        android:topRightRadius="0dp"
+        android:bottomLeftRadius="18dp"
+        android:bottomRightRadius="18dp" />
+</shape>

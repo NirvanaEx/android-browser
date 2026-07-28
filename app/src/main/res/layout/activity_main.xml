@@ -29,6 +29,8 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="?attr/colorSurface"
+    android:focusableInTouchMode="true"
+    android:descendantFocusability="beforeDescendants"
     android:fitsSystemWindows="true">
 
     <LinearLayout
@@ -132,13 +134,54 @@
             android:tint="?attr/colorOnSurface" />
     </LinearLayout>
 
+    <!--
+      Page load progress. Ours rather than the toolbar's built-in one, which is
+      a child of BrowserToolbar and therefore only as wide as the URL chip —
+      a progress bar that stops two thirds of the way across the screen reads
+      as a stuck load. The library's copy is suppressed by overriding
+      mozac_browser_toolbar_progress_bar_height to 0dp in values/dimens.xml.
+    -->
+    <ProgressBar
+        android:id="@+id/pageProgress"
+        style="?android:attr/progressBarStyleHorizontal"
+        android:layout_width="0dp"
+        android:layout_height="3dp"
+        android:max="100"
+        android:indeterminate="false"
+        android:visibility="gone"
+        android:progressTint="?attr/colorPrimary"
+        android:progressBackgroundTint="@android:color/transparent"
+        app:layout_constraintTop_toBottomOf="@id/toolbarWrapper"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        tools:visibility="visible"
+        tools:progress="40" />
+
     <View
         android:id="@+id/toolbarDivider"
         android:layout_width="0dp"
         android:layout_height="1dp"
         android:background="?attr/colorOutlineVariant"
         android:alpha="0.6"
-        app:layout_constraintTop_toBottomOf="@id/toolbarWrapper"
+        app:layout_constraintTop_toBottomOf="@id/pageProgress"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent" />
+
+    <!--
+      Mozilla's find-in-page bar, directly under the toolbar. It used to be
+      pinned to the bottom of the window, where the keyboard covered it
+      completely — the window is adjustNothing, so nothing moves out of the
+      IME's way and the bar you were meant to type into was behind it. Up here
+      it sits next to the field it searches. Height collapses when GONE, so the
+      page takes the full screen in the normal case.
+    -->
+    <mozilla.components.feature.findinpage.view.FindInPageBar
+        android:id="@+id/findInPageBar"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:visibility="gone"
+        android:background="?attr/colorSurfaceContainer"
+        app:layout_constraintTop_toBottomOf="@id/toolbarDivider"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent" />
 
@@ -151,8 +194,8 @@
         android:id="@+id/engineView"
         android:layout_width="0dp"
         android:layout_height="0dp"
-        app:layout_constraintTop_toBottomOf="@id/toolbarDivider"
-        app:layout_constraintBottom_toTopOf="@id/findInPageBar"
+        app:layout_constraintTop_toBottomOf="@id/findInPageBar"
+        app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent" />
 
@@ -163,58 +206,51 @@
         android:layout_width="0dp"
         android:layout_height="0dp"
         android:visibility="gone"
-        app:layout_constraintTop_toBottomOf="@id/toolbarDivider"
-        app:layout_constraintBottom_toTopOf="@id/findInPageBar"
+        app:layout_constraintTop_toBottomOf="@id/findInPageBar"
+        app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent" />
 
     <!--
       Omnibar suggestions: bookmarks, then visited pages, then past searches,
-      then what the search engine thinks you're typing. Sits over the page
-      while the URL bar is being edited and collapses to nothing otherwise.
-      Opaque on purpose — it is read against whatever the page happens to be
-      showing underneath.
+      then what the search engine thinks you're typing.
+
+      Two things here are corrections, not preferences:
+
+        - vertical_bias=0. A wrap_content view constrained top AND bottom is
+          *centred* by ConstraintLayout, which parked the whole list halfway
+          down the screen, floating above the keyboard instead of hanging off
+          the address bar. The bottom constraint has to stay (it's what caps
+          the height), so the bias is what pins it up.
+        - its own surface colour. On colorSurface the panel was the same shade
+          as the page behind it and read as loose text scattered over the start
+          page rather than as a drop-down.
 
       The max height is because the window is adjustNothing (GeckoView does its
       own keyboard handling and reflowing the page under it is worse). Nothing
       shrinks the layout when the IME comes up, so without a cap the list would
-      happily draw rows behind the keyboard where they can't be tapped. ~5 rows
-      fit above a phone keyboard; the rest scroll.
+      draw rows behind the keyboard where they can't be tapped.
     -->
     <androidx.recyclerview.widget.RecyclerView
         android:id="@+id/suggestionsList"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
         android:visibility="gone"
-        android:background="?attr/colorSurface"
-        android:elevation="6dp"
-        android:paddingTop="4dp"
-        android:paddingBottom="4dp"
+        android:background="@drawable/bg_suggestions"
+        android:elevation="8dp"
+        android:paddingTop="6dp"
+        android:paddingBottom="6dp"
         android:clipToPadding="false"
         android:overScrollMode="never"
         app:layout_constraintTop_toBottomOf="@id/toolbarDivider"
-        app:layout_constraintBottom_toTopOf="@id/findInPageBar"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintHeight_default="wrap"
-        app:layout_constrainedHeight="true"
-        app:layout_constraintHeight_max="288dp"
-        tools:visibility="visible" />
-
-    <!--
-      Mozilla's built-in find-in-page bar, pinned to the bottom of the window.
-      Height collapses when GONE, so the engine view takes the full screen in
-      the normal case.
-    -->
-    <mozilla.components.feature.findinpage.view.FindInPageBar
-        android:id="@+id/findInPageBar"
-        android:layout_width="0dp"
-        android:layout_height="wrap_content"
-        android:visibility="gone"
-        android:background="?attr/colorSurfaceContainer"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent" />
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintVertical_bias="0"
+        app:layout_constraintHeight_default="wrap"
+        app:layout_constrainedHeight="true"
+        app:layout_constraintHeight_max="300dp"
+        tools:visibility="visible" />
 
     <!--
       Fullscreen video controls overlay. Last child so it draws on top of the

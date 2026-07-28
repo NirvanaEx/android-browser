@@ -109,6 +109,7 @@ class SettingsBottomSheet : ExpandedBottomSheetFragment() {
         renderThemes()
         renderEngines()
         renderSeekSteps()
+        wireBackgroundPlayback()
         wireDataButtons()
         renderAbout()
 
@@ -297,6 +298,16 @@ class SettingsBottomSheet : ExpandedBottomSheetFragment() {
             binding.engineGroup.addView(
                 radio(engine.displayName, engine == current) { prefs.searchEngine = engine }
             )
+        }
+    }
+
+    /**
+     * Keep-playing-in-the-background switch, next to the player's other
+     * settings because that is where somebody looking for it would go.
+     */
+    private fun wireBackgroundPlayback() {
+        binding.switchBackgroundPlayback.setCheckedSilently(prefs.backgroundPlayback) { _, on ->
+            prefs.backgroundPlayback = on
         }
     }
 

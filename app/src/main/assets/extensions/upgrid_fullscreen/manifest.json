@@ -1,7 +1,7 @@
 {
   "manifest_version": 2,
   "name": "Upgrid Player Helper",
-  "version": "2.0.0",
+  "version": "3.0.0",
   "description": "Takes over the page's <video> for the built-in player overlay. The topbar button fires browser_action.onClicked, which preserves the user-gesture token Gecko needs for requestFullscreen/play; state and commands flow over a native-messaging port.",
   "applications": {
     "gecko": {
@@ -10,7 +10,9 @@
     }
   },
   "background": {
-    "scripts": ["background.js"],
+    "scripts": [
+      "background.js"
+    ],
     "persistent": true
   },
   "browser_action": {
@@ -22,5 +24,17 @@
     "activeTab",
     "nativeMessaging",
     "geckoViewAddons"
+  ],
+  "content_scripts": [
+    {
+      "matches": [
+        "<all_urls>"
+      ],
+      "all_frames": true,
+      "js": [
+        "observer.js"
+      ],
+      "run_at": "document_idle"
+    }
   ]
 }

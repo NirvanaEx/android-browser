@@ -20,7 +20,7 @@ GeckoView-based Android browser whose only "killer feature" is **uBlock Origin r
 ```
 app/src/main/
 ├── AndroidManifest.xml             ← intent-filters for VIEW http(s), default browser
-├── assets/extensions/upgrid_fullscreen/  ← built-in player WebExtension (manifest + background.js + player.js)
+├── assets/extensions/upgrid_fullscreen/  ← built-in player WebExtension (manifest + background.js + player.js + observer.js)
 ├── java/com/upgrid/browser/
 │   ├── BrowserApplication.kt       ← components; restore session; uBO bootstrap; autosave
 │   ├── BrowserComponents.kt        ← single source of truth for runtime/engine/store/tabs
@@ -110,6 +110,9 @@ The topbar ▶ button hands the page's `<video>` to OUR overlay player. Key fact
 - **Takeover = fullscreen the `<video>` element itself + `v.controls = false`.** The page's custom control DOM (YouTube/VK/video.js) lives *outside* the video element, so it simply never renders in fullscreen — no z-index fights. `player.js` remembers the original `controls` value and restores it on release.
 - **State/commands flow over a native-messaging port** (`upgridPlayer`): content script streams `{t:"state", pos, dur, paused…}` every 500 ms; native sends `{cmd:"toggle"|"seekBy"|"seekTo"|"loop"|"release"}`. Native side: `VideoPlayerBridge.registerBackgroundMessageHandler`; manifest needs `nativeMessaging` + `geckoViewAddons` (privileged, OK for built-in extensions only).
 - **Frame locking.** `player.js` is injected `allFrames:true` (videos live in embed iframes). background.js locks onto the first frame reporting takeover-ok and silently releases any later claimant; commands are routed with `{frameId}`.
+- **`observer.js` is a *separate*, always-on content script**, declared in the manifest rather than injected. It watches `<video>`/`<audio>` and reports presence + playing to the port. Three features need that answer before the user has touched anything: the ▶ button (which shows only while something is playing), pausing on tab switch, and not claiming the player "is still starting" over a running video. Don't try to derive it from `tab.mediaSessionState` — that's only populated for sites that opt into the MediaSession API, and plenty of plain `<video>` pages never do. That was the original bug.
+- **`browser_action` announcement races app start.** `onBrowserAction` may fire before `registerActionHandler` runs, and then the click handle is lost for the whole session — that's what produced "player is still starting" on a page that was visibly playing. `requestTakeover` now queues the request and re-arms the delegate; the queued tap still works because the user-gesture token Gecko needs comes from the browser-action click itself, not from the Android touch that asked for it.
+- **`pauseAll` is a broadcast, not a routed command.** The native side has no way to name a Gecko tab (we don't run `WebExtensionSupport`, so tabs aren't even marked active for the extension APIs), and a tab that isn't on screen has no business making noise regardless of which one it is.
 - **Exit is multi-path and must stay idempotent.** System back / fsExit button / page exiting fullscreen all converge: content script's `fullscreenchange` listener auto-releases → `"released"` event → MainActivity hides overlay + restores chrome. `exitPlayer()` also restores chrome optimistically without waiting for the round-trip.
 - Seek step for double-tap/skip buttons is `BrowserPreferences.playerSeekSeconds` (5/10/15/30 s, settings sheet).
 
@@ -238,6 +241,21 @@ Its contents were redistributed, not deleted — if you're looking for one:
 | bookmarks | app menu row + the star in that same quick strip |
 | reader view | dropped — it was never implemented |
 | tabs + counter | top bar (`btnTopTabs`, same `tabCount` TextView) |
+
+**The window is `adjustNothing`, so anything you have to type into lives at the
+TOP.** GeckoView does its own keyboard handling and reflowing the page under the
+IME is worse than covering it — but that means nothing moves out of the
+keyboard's way, ever. Find-in-page spent a release pinned to the bottom of the
+window where the IME covered it completely, which read as "not implemented".
+The omnibar drop-down is capped at 300dp for the same reason: rows below the
+keyboard line can't be tapped. New chrome that takes focus goes under the
+toolbar, not above the nav bar.
+
+**A `wrap_content` view constrained top *and* bottom is centred.** That's
+ConstraintLayout doing what it's told, and it parked the whole suggestion list
+halfway down the screen. The bottom constraint has to stay — it's what
+`layout_constrainedHeight` measures against — so the fix is
+`layout_constraintVertical_bias="0"`, not removing the constraint.
 
 Two consequences worth knowing before you "restore" something:
 

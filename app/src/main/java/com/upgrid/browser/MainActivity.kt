@@ -18,13 +18,16 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.util.Rational
+import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
 import android.view.inputmethod.InputMethodManager
+import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
 import androidx.annotation.RequiresApi
 import androidx.appcompat.app.AppCompatActivity
+import androidx.constraintlayout.widget.ConstraintLayout
 import androidx.core.content.ContextCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
@@ -32,6 +35,7 @@ import androidx.core.view.isVisible
 import com.upgrid.browser.bookmarks.BookmarkStore
 import com.upgrid.browser.bookmarks.BookmarksActivity
 import com.upgrid.browser.databinding.ActivityMainBinding
+import com.upgrid.browser.databinding.DialogTextInputBinding
 import com.upgrid.browser.fullscreen.PlayerOverlayController
 import com.upgrid.browser.history.HistoryActivity
 import com.upgrid.browser.home.QuickLink
@@ -45,8 +49,8 @@ import com.upgrid.browser.sync.GoogleAccounts
 import com.upgrid.browser.sync.SignInDiagnostics
 import com.upgrid.browser.sync.SyncEngine
 import com.upgrid.browser.tabs.TabsActivity
+import com.upgrid.browser.translate.PageTranslator
 import com.upgrid.browser.history.HistoryStore
-import android.widget.EditText
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
@@ -121,6 +125,9 @@ class MainActivity : AppCompatActivity() {
 
     /** URL whose bookmarked state [bookmarkAction] currently reflects. */
     private var bookmarkedUrl: String? = null
+
+    /** Last tab the chrome rendered, so a switch can be told from a redraw. */
+    private var lastSelectedTabId: String? = null
 
     /**
      * Google sign-in, launched from the app menu as well as from Settings.
@@ -235,6 +242,7 @@ class MainActivity : AppCompatActivity() {
         wireFeatures()
         wireDismissKeyboardOnEngineTap()
         wirePlayerOverlay()
+        wireMediaWatch()
         wireBackPress()
         observeStore()
         refreshStartPage()
@@ -256,6 +264,7 @@ class MainActivity : AppCompatActivity() {
         // hypothetical: `configChanges` doesn't list uiMode, so flipping system
         // dark mode rebuilds the activity.
         components.videoPlayerBridge.onPlayerEvent = {}
+        components.videoPlayerBridge.onMediaStateChanged = {}
     }
 
     override fun onStart() {
@@ -284,6 +293,11 @@ class MainActivity : AppCompatActivity() {
         // from them.
         refreshStartPage()
         maybeAutoSync()
+    }
+
+    override fun onStop() {
+        super.onStop()
+        pauseMediaUnlessBackgroundAllowed()
     }
 
     override fun onPause() {
@@ -322,6 +336,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         addBookmarkAction()
+        centreToolbarText()
 
         // Topbar video button → take over the page's video with the built-in
         // player. Fires the bundled extension's browser_action; Mozilla
@@ -336,12 +351,61 @@ class MainActivity : AppCompatActivity() {
         // want to hide chrome optimistically before knowing whether the
         // request succeeded (silently misleading if Gecko rejects it).
         binding.btnTopVideo.setOnClickListener {
-            // The extension announces its browser action a beat after install,
-            // so a tap during the first seconds of a cold start has no gesture
-            // path to travel. Say so rather than swallowing the tap.
+            // The extension announces its browser action asynchronously, so a
+            // tap can land before there's a path for it to travel. The bridge
+            // now holds onto the request and fires it the moment there is one,
+            // so this is "in a second", not "that didn't work" — which is what
+            // it used to say, while a video was visibly playing.
             if (!components.videoPlayerBridge.requestTakeover()) {
-                Toast.makeText(this, R.string.player_not_ready, Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, R.string.player_starting, Toast.LENGTH_SHORT).show()
             }
+        }
+    }
+
+    /**
+     * Put the URL text on the same centre line as everything around it.
+     *
+     * Giving the toolbar its designed 56dp fixed the *display* half. The edit
+     * half still sat low, because its EditText is a 40dp box pinned 8dp from
+     * the top of the bar while the clear button next to it is centred in the
+     * full height — two different rules for two views that read as one row.
+     * Rather than guess at Mozilla's margins, stretch the field across the
+     * whole bar and let `center_vertical` do the work: then the text, the star
+     * and the ✕ are all centred in the same box, which is also the box the pill
+     * is drawn around.
+     *
+     * The zeroed vertical padding matters for the same reason — an EditText
+     * inherits padding from whatever background style it was given, and any of
+     * it here reintroduces the offset this method exists to remove. Horizontal
+     * padding is left alone; that one is deliberate spacing.
+     */
+    private fun centreToolbarText() {
+        val edit = binding.toolbar.findViewById<TextView>(
+            mozilla.components.browser.toolbar.R.id.mozac_browser_toolbar_edit_url_view,
+        )
+        edit?.apply {
+            setPadding(paddingLeft, 0, paddingRight, 0)
+            includeFontPadding = false
+            gravity = Gravity.CENTER_VERTICAL
+            (layoutParams as? ConstraintLayout.LayoutParams)?.let { lp ->
+                lp.topMargin = 0
+                lp.bottomMargin = 0
+                lp.height = 0 // MATCH_CONSTRAINT — top and bottom now pin it.
+                lp.topToTop = ConstraintLayout.LayoutParams.PARENT_ID
+                lp.bottomToBottom = ConstraintLayout.LayoutParams.PARENT_ID
+                layoutParams = lp
+            }
+        }
+
+        // The display half is already full height, but it carries the same
+        // font padding, and a 1-2px difference between the two modes shows up
+        // as a jump the moment you tap the field.
+        binding.toolbar.findViewById<TextView>(
+            mozilla.components.browser.toolbar.R.id.mozac_browser_toolbar_url_view,
+        )?.apply {
+            setPadding(paddingLeft, 0, paddingRight, 0)
+            includeFontPadding = false
+            gravity = Gravity.CENTER_VERTICAL
         }
     }
 
@@ -529,6 +593,55 @@ class MainActivity : AppCompatActivity() {
      * Returns false from the listener so the engine still receives the touch
      * event for normal page interaction (link taps, scrolling, ...).
      */
+    /**
+     * A tap anywhere that isn't the address bar leaves edit mode.
+     *
+     * Done at the activity's touch entry point rather than with a listener per
+     * view: the things you can tap while the URL bar has focus are the page,
+     * the start page, its tiles, the home button, the tab counter, the menu —
+     * and any new one added later would have needed remembering. Only the
+     * toolbar row itself and the suggestion list are exempt, because those are
+     * the two places where a tap is part of what you're typing.
+     *
+     * ACTION_DOWN, so the keyboard is on its way out before the tap resolves
+     * into a click.
+     */
+    override fun dispatchTouchEvent(event: MotionEvent): Boolean {
+        if (event.action == MotionEvent.ACTION_DOWN &&
+            ::binding.isInitialized &&
+            binding.toolbar.hasFocus() &&
+            !isInside(binding.toolbarWrapper, event) &&
+            !(binding.suggestionsList.isVisible && isInside(binding.suggestionsList, event))
+        ) {
+            binding.toolbar.displayMode()
+            hideKeyboard()
+        }
+        return super.dispatchTouchEvent(event)
+    }
+
+    private fun isInside(view: View, event: MotionEvent): Boolean {
+        val bounds = IntArray(2).also { view.getLocationOnScreen(it) }
+        val x = event.rawX.toInt()
+        val y = event.rawY.toInt()
+        return x >= bounds[0] && x <= bounds[0] + view.width &&
+            y >= bounds[1] && y <= bounds[1] + view.height
+    }
+
+    /**
+     * Redraw the ▶ button when the page starts or stops playing something.
+     *
+     * The bridge outlives this activity, so the lambda has to be cleared in
+     * onDestroy — see the note there. `isHome` is re-derived from the store
+     * rather than remembered, because a media report and a navigation are
+     * independent events and either can arrive first.
+     */
+    private fun wireMediaWatch() {
+        components.videoPlayerBridge.onMediaStateChanged = {
+            val url = currentUrl()
+            renderPlayerButton(url.isBlank() || url == HOME_URL)
+        }
+    }
+
     private fun wireDismissKeyboardOnEngineTap() {
         binding.engineView.asView().setOnTouchListener { _, event ->
             if (event.action == MotionEvent.ACTION_DOWN && binding.toolbar.hasFocus()) {
@@ -575,8 +688,14 @@ class MainActivity : AppCompatActivity() {
                 store = components.store,
                 view = binding.findInPageBar,
                 engineView = binding.engineView,
-                // The bar's "X" → unbind() → we hide the bar in the dismiss callback below.
-            ) { binding.findInPageBar.visibility = View.GONE },
+                // The bar's "X" → unbind() → we hide the bar in the dismiss
+                // callback below. The keyboard has to go with it: the bar had
+                // focus, and leaving the IME up over a page with no visible
+                // input is the kind of thing that reads as a freeze.
+            ) {
+                binding.findInPageBar.visibility = View.GONE
+                hideKeyboard()
+            },
             owner = this,
             view = binding.root,
         )
@@ -817,6 +936,8 @@ class MainActivity : AppCompatActivity() {
                                 tabCount = state.tabs.size,
                                 selectedTabId = state.selectedTabId,
                                 url = tab?.content?.url.orEmpty(),
+                                loading = tab?.content?.loading == true,
+                                progress = tab?.content?.progress ?: 0,
                             )
                         }
                         .distinctUntilChanged()
@@ -835,10 +956,13 @@ class MainActivity : AppCompatActivity() {
         val tabCount: Int,
         val selectedTabId: String?,
         val url: String,
+        val loading: Boolean,
+        val progress: Int,
     )
 
     private fun renderChrome(state: ChromeState) {
         binding.tabCount.text = state.tabCount.toString()
+        renderProgress(state.loading, state.progress)
 
         // NOTE: nothing here may read uBO's state. That lookup is async through
         // the engine, and firing one per store tick backs the engine queue up
@@ -850,14 +974,16 @@ class MainActivity : AppCompatActivity() {
         startPage.setVisible(isHome)
         renderSecurityIndicator(isHome)
 
-        // Topbar player button. This used to be gated on tab.mediaSessionState,
-        // but that's only populated for pages that opt into the MediaSession
-        // API — plenty of sites with a plain <video> never set it, so the button
-        // silently never appeared and the whole feature read as broken. Show it
-        // on any real page instead; tapping with nothing to grab answers with
-        // the "no video" toast, which is far better feedback than an invisible
-        // control.
-        binding.btnTopVideo.isVisible = !isHome && !isInPipMode()
+        renderPlayerButton(isHome)
+
+        // Leaving a tab stops its video. Detected here because the store is the
+        // only thing that knows a switch happened — it can come from the tab
+        // grid, from a link opening in a new tab, or from closing one.
+        if (state.selectedTabId != lastSelectedTabId) {
+            val hadPrevious = lastSelectedTabId != null
+            lastSelectedTabId = state.selectedTabId
+            if (hadPrevious) pauseMediaUnlessBackgroundAllowed()
+        }
 
         renderBookmarkAction(state.url)
 
@@ -868,6 +994,47 @@ class MainActivity : AppCompatActivity() {
         // filed under the new tab's id. Previews are taken at the two moments
         // where what's on screen is unambiguous — onPause, and the tap that
         // opens the grid.
+    }
+
+    /**
+     * The topbar ▶ button.
+     *
+     * Gated on something actually playing. It used to show on every page,
+     * because the obvious signal — `tab.mediaSessionState` — is only populated
+     * for sites that opt into the MediaSession API, and plenty of plain
+     * `<video>` pages never do. The answer was a button that was always there
+     * and often did nothing. observer.js now watches the media elements
+     * themselves, which is the same question asked of the only party that
+     * knows.
+     */
+    private fun renderPlayerButton(isHome: Boolean) {
+        binding.btnTopVideo.isVisible =
+            !isHome && !isInPipMode() && components.videoPlayerBridge.isMediaPlaying
+    }
+
+    /**
+     * Stop playback unless the user asked for it to continue.
+     *
+     * Off by default: a video that keeps talking after you've left the tab is
+     * a bug in every reading except one, and that one — listening to YouTube
+     * with the screen off — is a preference.
+     */
+    private fun pauseMediaUnlessBackgroundAllowed() {
+        if (preferences.backgroundPlayback) return
+        components.videoPlayerBridge.pauseAllMedia()
+    }
+
+    /**
+     * The page-load bar under the top panel.
+     *
+     * Shown only while a load is actually in flight. `progress` keeps its last
+     * value after a load finishes, so gating on [loading] rather than on
+     * `progress < 100` is what stops a full bar from sitting under the toolbar
+     * for the rest of the page's life.
+     */
+    private fun renderProgress(loading: Boolean, progress: Int) {
+        binding.pageProgress.isVisible = loading
+        if (loading) binding.pageProgress.progress = progress
     }
 
     /**
@@ -996,21 +1163,21 @@ class MainActivity : AppCompatActivity() {
      * two would drift apart the first time one was edited.
      */
     private fun promptAddQuickLink() {
-        val input = EditText(this).apply {
-            setHint(R.string.start_page_add_hint)
-            inputType = android.text.InputType.TYPE_TEXT_VARIATION_URI
-            setSingleLine()
-            val pad = (20 * resources.displayMetrics.density).toInt()
-            setPadding(pad, pad / 2, pad, 0)
-            // Pre-fill with the page they're on, which is the common case.
-            currentUrl().takeIf { BookmarkStore.isBookmarkable(it) }?.let { setText(it) }
-        }
+        // Inflated rather than built by hand: a bare EditText handed to
+        // setView() gets none of the dialog's own margins, so its underline ran
+        // edge to edge and struck through the hint.
+        val body = DialogTextInputBinding.inflate(layoutInflater)
+        body.inputLayout.hint = getString(R.string.start_page_add_hint)
+        // Pre-fill with the page they're on, which is the common case.
+        currentUrl().takeIf { BookmarkStore.isBookmarkable(it) }
+            ?.let { body.inputField.setText(it) }
+
         MaterialAlertDialogBuilder(this)
             .setTitle(R.string.start_page_add)
-            .setView(input)
+            .setView(body.root)
             .setNegativeButton(android.R.string.cancel, null)
             .setPositiveButton(R.string.start_page_add_confirm) { _, _ ->
-                val url = normalizeToUrl(input.text?.toString()?.trim().orEmpty())
+                val url = normalizeToUrl(body.inputField.text?.toString()?.trim().orEmpty())
                 if (!BookmarkStore.isBookmarkable(url)) {
                     Toast.makeText(this, R.string.bookmark_not_saveable, Toast.LENGTH_SHORT).show()
                     return@setPositiveButton
@@ -1094,10 +1261,48 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    /**
+     * Open the find-in-page bar and put the cursor in it.
+     *
+     * The bar was already wired but effectively unreachable: it used to sit at
+     * the bottom of the window, and since the window is adjustNothing the
+     * keyboard covered it completely the moment it took focus. It now lives
+     * under the toolbar (see activity_main.xml). Focus is requested here
+     * because `bind` doesn't do it, and a search bar you have to tap before
+     * you can type into isn't finished.
+     */
     fun showFindInPage() {
         val tab = components.store.state.selectedTab ?: return
+        binding.toolbar.displayMode()
+        hideSuggestions()
         binding.findInPageBar.visibility = View.VISIBLE
         findInPageFeature.get()?.bind(tab)
+        // FindInPageBar.focus() is the view's own "put the cursor here and
+        // raise the keyboard". stateAlwaysHidden on the window only governs
+        // the *initial* IME state, so an explicit request still works.
+        binding.findInPageBar.focus()
+    }
+
+    /**
+     * Translate the current page, or go back to the original if it's already
+     * translated.
+     *
+     * A plain navigation, so back/forward and the toggle agree with each other
+     * without any extra state to keep: the untranslated page is still sitting
+     * in session history where the user left it.
+     */
+    fun toggleTranslation() {
+        val url = currentUrl()
+        val target = if (PageTranslator.isTranslated(url)) {
+            PageTranslator.toOriginal(url)
+        } else {
+            PageTranslator.toTranslated(url)
+        }
+        if (target == null) {
+            Toast.makeText(this, R.string.translate_unavailable, Toast.LENGTH_SHORT).show()
+            return
+        }
+        components.sessionUseCases.loadUrl(target)
     }
 
     // --- Picture-in-Picture ------------------------------------------------

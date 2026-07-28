@@ -36,6 +36,19 @@ class BrowserPreferences(context: Context) {
         }
 
     /**
+     * Keep playing after leaving the tab or locking the screen.
+     *
+     * Off by default. A video that carries on talking once you've navigated
+     * away is a bug in every reading but one — listening to a YouTube tab with
+     * the screen off — and that one is worth a switch rather than a guess.
+     */
+    var backgroundPlayback: Boolean
+        get() = prefs.getBoolean(KEY_BACKGROUND_PLAYBACK, false)
+        set(value) {
+            prefs.edit().putBoolean(KEY_BACKGROUND_PLAYBACK, value).apply()
+        }
+
+    /**
      * Seconds the built-in player skips on a double-tap (left = back,
      * right = forward) and on the ⏮/⏭ buttons. One of [PLAYER_SEEK_OPTIONS].
      */
@@ -93,6 +106,7 @@ class BrowserPreferences(context: Context) {
         private const val KEY_SEARCH_ENGINE = "search_engine"
         private const val KEY_THEME = "theme_mode"
         private const val KEY_PLAYER_SEEK = "player_seek_seconds"
+        private const val KEY_BACKGROUND_PLAYBACK = "background_playback"
         private const val KEY_LAST_SYNC = "last_sync_at"
         private const val KEY_AUTO_SYNC = "auto_sync"
 
