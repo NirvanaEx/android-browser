@@ -5,4 +5,10 @@
         <item quantity="one">%d saved search</item>
         <item quantity="other">%d saved searches</item>
     </plurals>
+
+    <plurals name="settings_pages_count">
+        <item quantity="zero">No pages visited yet</item>
+        <item quantity="one">%d page in history</item>
+        <item quantity="other">%d pages in history</item>
+    </plurals>
 </resources>

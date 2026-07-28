@@ -6,6 +6,7 @@
   IDs are referenced by SettingsBottomSheet.kt via ViewBinding.
 -->
 <androidx.core.widget.NestedScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:background="?attr/colorSurfaceContainer"
@@ -111,8 +112,6 @@
             android:layout_marginBottom="10dp"
             android:textSize="13sp"
             android:textColor="?attr/colorOnSurface"
-            tools:ignore="MissingPrefix"
-            xmlns:tools="http://schemas.android.com/tools"
             tools:text="3 saved searches" />
 
         <com.google.android.material.button.MaterialButton
@@ -122,5 +121,85 @@
             android:layout_height="wrap_content"
             android:layout_marginHorizontal="12dp"
             android:text="@string/settings_clear_history" />
+
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:layout_marginVertical="14dp"
+            android:layout_marginHorizontal="16dp"
+            android:background="?attr/colorOutlineVariant"
+            android:alpha="0.5" />
+
+        <!-- ============== Section: Browsing history ============== -->
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginHorizontal="20dp"
+            android:layout_marginBottom="6dp"
+            android:textAppearance="?attr/textAppearanceLabelLarge"
+            android:textColor="?attr/colorOnSurfaceVariant"
+            android:text="@string/settings_section_browsing" />
+
+        <TextView
+            android:id="@+id/browsingCount"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginHorizontal="20dp"
+            android:layout_marginBottom="10dp"
+            android:textSize="13sp"
+            android:textColor="?attr/colorOnSurface"
+            tools:text="128 pages in history" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:layout_marginHorizontal="12dp">
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnOpenHistory"
+                style="@style/Widget.Material3.Button.TonalButton"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/settings_open_history" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnClearBrowsing"
+                style="@style/Widget.Material3.Button.TextButton"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/settings_clear_browsing" />
+        </LinearLayout>
+
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:layout_marginVertical="14dp"
+            android:layout_marginHorizontal="16dp"
+            android:background="?attr/colorOutlineVariant"
+            android:alpha="0.5" />
+
+        <!-- ============== Section: About ============== -->
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginHorizontal="20dp"
+            android:layout_marginBottom="6dp"
+            android:textAppearance="?attr/textAppearanceLabelLarge"
+            android:textColor="?attr/colorOnSurfaceVariant"
+            android:text="@string/settings_section_about" />
+
+        <!-- Which build is actually on the phone — the first question worth
+             answering when a bug report comes in over Telegram. -->
+        <TextView
+            android:id="@+id/versionLabel"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginHorizontal="20dp"
+            android:textSize="13sp"
+            android:textColor="?attr/colorOnSurfaceVariant"
+            tools:text="Version 0.2.0.12 · a1b2c3d" />
     </LinearLayout>
 </androidx.core.widget.NestedScrollView>

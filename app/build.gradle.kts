@@ -5,6 +5,45 @@ plugins {
     id("org.jetbrains.kotlin.android")
 }
 
+// --- Build identity -------------------------------------------------------
+//
+// Every build that lands on a phone needs to be identifiable from the phone —
+// "which APK is this?" is the first question behind any bug report that
+// arrives over Telegram. Settings → About shows VERSION_NAME + GIT_SHA, and CI
+// stamps the same pair into the APK filename and the message it posts.
+//
+// versionCode has to increase monotonically or Android refuses the upgrade
+// install. The commit count does that for free and, unlike a timestamp, is
+// identical on every machine that builds the same commit. CI checks out with
+// `fetch-depth: 0` precisely so this counts the real history and not the 1
+// commit a shallow clone would see.
+val baseVersion = "0.2.0"
+
+// Both of these are `val` initialisers rather than a shared helper function on
+// purpose: a top-level `fun` in a .gradle.kts script does not reliably see the
+// script's Project receiver, so `providers` fails to resolve inside one.
+//
+// runCatching covers git being absent entirely (source zips, exported trees) —
+// isIgnoreExitValue only handles a non-zero exit, not a failure to start the
+// process. Missing provenance degrades to 0/"nogit"; it never fails the build.
+val gitCommitCount: Int = runCatching {
+    val out = providers.exec {
+        commandLine("git", "rev-list", "--count", "HEAD")
+        isIgnoreExitValue = true
+    }
+    if (out.result.get().exitValue != 0) 0
+    else out.standardOutput.asText.get().trim().toIntOrNull() ?: 0
+}.getOrDefault(0)
+
+val gitSha: String = runCatching {
+    val out = providers.exec {
+        commandLine("git", "rev-parse", "--short=7", "HEAD")
+        isIgnoreExitValue = true
+    }
+    if (out.result.get().exitValue != 0) "nogit"
+    else out.standardOutput.asText.get().trim().ifEmpty { "nogit" }
+}.getOrDefault("nogit")
+
 android {
     namespace = "com.upgrid.browser"
     compileSdk = 36
@@ -13,8 +52,12 @@ android {
         applicationId = "com.upgrid.browser"
         minSdk = 26          // Android 8.0+ — GeckoView's floor.
         targetSdk = 36
-        versionCode = 1
-        versionName = "0.1.0"
+        // coerceAtLeast(1): versionCode 0 is legal but sorts below every
+        // installed build, so a git-less build could never be upgraded over.
+        versionCode = gitCommitCount.coerceAtLeast(1)
+        versionName = "$baseVersion.$gitCommitCount"
+
+        buildConfigField("String", "GIT_SHA", "\"$gitSha\"")
 
         // GeckoView ships native code for these ABIs; keep splits enabled for size.
         ndk {
