@@ -180,4 +180,146 @@
     <string name="tabs_tray_new">Новая</string>
     <string name="tabs_tray_empty_title">Здесь будут ваши вкладки.</string>
     <string name="tabs_tray_empty_subtitle">Вкладки нужны, чтобы держать несколько страниц открытыми сразу.</string>
+
+    <!-- ============== Вкладки ============== -->
+    <string name="tabs_tray_blank_subtitle">Пустая вкладка</string>
+
+    <!-- ============== Плеер ============== -->
+    <string name="player_unlock">Разблокировать управление</string>
+
+    <!-- ============== Загрузки ============== -->
+    <string name="menu_downloads">Загрузки</string>
+    <string name="downloads_title">Загрузки</string>
+    <string name="downloads_clear">Очистить список</string>
+    <string name="downloads_clear_title">Очистить список?</string>
+    <string name="downloads_clear_message">Файлы останутся на телефоне, очистится только список.</string>
+    <string name="downloads_clear_confirm">Очистить</string>
+    <string name="downloads_delete">Удалить файл</string>
+    <string name="downloads_delete_title">Удалить файл?</string>
+    <string name="downloads_delete_message">%1$s будет удалён с телефона.</string>
+    <string name="downloads_delete_confirm">Удалить</string>
+    <string name="downloads_empty_title">Загрузок пока нет.</string>
+    <string name="downloads_empty_subtitle">Файлы, сохранённые со страниц, появятся здесь.</string>
+    <string name="downloads_progress">%1$s из %2$s</string>
+    <string name="downloads_running">Загружено %1$s</string>
+    <string name="downloads_failed">Не удалось загрузить</string>
+    <string name="downloads_started">Загружается %1$s</string>
+    <string name="downloads_finished">%1$s сохранён</string>
+    <string name="downloads_failed_named">Не удалось загрузить %1$s</string>
+    <string name="downloads_open_list">Открыть</string>
+    <string name="downloads_missing">Файла больше нет на телефоне.</string>
+    <string name="downloads_no_app">Нет приложения, которое откроет этот файл.</string>
+
+    <!-- ============== Пароли ============== -->
+    <string name="action_close">Закрыть</string>
+    <string name="logins_title">Пароли</string>
+    <string name="logins_clear">Удалить все</string>
+    <string name="logins_clear_title">Удалить все пароли?</string>
+    <string name="logins_clear_message">Сохранённые входы будут удалены с этого телефона.</string>
+    <string name="logins_clear_confirm">Удалить</string>
+    <string name="logins_delete">Удалить</string>
+    <string name="logins_delete_title">Удалить пароль?</string>
+    <string name="logins_delete_message">Вход, сохранённый для %1$s, будет удалён.</string>
+    <string name="logins_empty_title">Сохранённых паролей нет.</string>
+    <string name="logins_empty_subtitle">Войдите на сайт — браузер предложит запомнить пароль.</string>
+    <string name="logins_field_user">Логин</string>
+    <string name="logins_field_password">Пароль</string>
+    <string name="logins_copy_user">Скопировать логин</string>
+    <string name="logins_copy_password">Скопировать пароль</string>
+    <string name="logins_copied_user">Логин скопирован</string>
+    <string name="logins_copied_password">Пароль скопирован</string>
+    <string name="logins_no_username">без логина</string>
+    <string name="logins_save_title">Сохранить пароль?</string>
+    <string name="logins_save_message">%1$s — для %2$s</string>
+    <string name="logins_save_confirm">Сохранить</string>
+    <string name="logins_save_decline">Не сейчас</string>
+    <string name="logins_saved">Пароль сохранён</string>
+
+    <!-- ============== VPN ============== -->
+    <string name="menu_vpn">VPN</string>
+    <string name="menu_vpn_state_unset">НАСТРОИТЬ</string>
+    <string name="vpn_title">VPN</string>
+    <string name="vpn_connect">Подключить</string>
+    <string name="vpn_disconnect">Отключить</string>
+    <string name="vpn_connecting">Подключаюсь…</string>
+    <string name="vpn_state_on">Подключено</string>
+    <string name="vpn_state_off">Отключено</string>
+    <string name="vpn_not_configured">Пока не настроено</string>
+    <string name="vpn_section_device">Это устройство</string>
+    <string name="vpn_section_server">Сервер</string>
+    <string name="vpn_paste">Вставить конфиг</string>
+    <string name="vpn_generate">Новый ключ</string>
+    <string name="vpn_generated">Ключ создан. Добавьте публичный ключ на сервере.</string>
+    <string name="vpn_paste_ok">Конфиг загружен</string>
+    <string name="vpn_paste_bad">Это не конфиг WireGuard.</string>
+    <string name="vpn_paste_empty">В буфере обмена пусто.</string>
+    <string name="vpn_private_key">Приватный ключ</string>
+    <string name="vpn_public_key">Публичный ключ</string>
+    <string name="vpn_public_key_hint">Его нужно добавить на сервере</string>
+    <string name="vpn_public_key_none">—</string>
+    <string name="vpn_copy_public">Скопировать публичный ключ</string>
+    <string name="vpn_copied">Скопировано</string>
+    <string name="vpn_address">Адрес в туннеле</string>
+    <string name="vpn_dns">DNS</string>
+    <string name="vpn_mtu">MTU</string>
+    <string name="vpn_endpoint">Адрес сервера</string>
+    <string name="vpn_endpoint_hint">хост:порт</string>
+    <string name="vpn_peer_key">Публичный ключ сервера</string>
+    <string name="vpn_preshared">Общий ключ (необязательно)</string>
+    <string name="vpn_allowed">Что идёт через туннель</string>
+    <string name="vpn_allowed_hint">0.0.0.0/0, ::/0 — весь трафик</string>
+    <string name="vpn_keepalive">Keepalive, секунды</string>
+    <string name="vpn_auto_connect">Подключаться при запуске</string>
+    <string name="vpn_save">Сохранить</string>
+    <string name="vpn_saved">Сохранено</string>
+    <string name="vpn_forget">Забыть профиль</string>
+    <string name="vpn_forget_title">Забыть профиль?</string>
+    <string name="vpn_forget_message">Все поля будут очищены, туннель отключён.</string>
+    <string name="vpn_forget_confirm">Забыть</string>
+    <string name="vpn_incomplete">Сначала заполните ключ, адрес и сервер.</string>
+    <string name="vpn_failed">Не удалось подключиться: %1$s</string>
+    <string name="vpn_permission_denied">Android не разрешил VPN.</string>
+    <string name="vpn_transfer">Принято %1$s · отправлено %2$s</string>
+
+    <!-- ============== Куки, кэш, данные сайтов ============== -->
+    <string name="site_data_title">Данные сайтов</string>
+    <string name="site_data_clear_all">Очистить…</string>
+    <string name="site_data_delete">Очистить этот сайт</string>
+    <string name="site_data_delete_title">Очистить сайт?</string>
+    <string name="site_data_delete_message">Куки, хранилище и кэш %1$s будут удалены, а его страницы — убраны из истории. Вход на сайт слетит.</string>
+    <string name="site_data_delete_confirm">Очистить</string>
+    <string name="site_data_empty_title">Данных сайтов нет.</string>
+    <string name="site_data_empty_subtitle">Сайты, на которые вы заходите, появятся здесь.</string>
+    <string name="site_data_size">Кэш и данные сайтов: %1$s</string>
+    <string name="site_data_detail">%1$s · %2$s</string>
+    <string name="clear_title">Очистить данные</string>
+    <string name="clear_confirm">Удалить</string>
+    <string name="clear_running">Удаляю…</string>
+    <string name="clear_done">Готово</string>
+    <string name="clear_period_note">Если период не «за всё время», куки и кэш чистятся у сайтов, которые вы открывали за этот период: движок не умеет удалять их по дате.</string>
+    <string name="clear_period_day">День</string>
+    <string name="clear_period_week">Неделя</string>
+    <string name="clear_period_month">Месяц</string>
+    <string name="clear_period_all">За всё время</string>
+    <string name="clear_type_history">История посещений</string>
+    <string name="clear_type_searches">Поисковые запросы</string>
+    <string name="clear_type_cookies">Куки и данные сайтов</string>
+    <string name="clear_type_cache">Кэш</string>
+    <string name="clear_type_passwords">Сохранённые пароли</string>
+
+    <!-- ============== Настройки: новые разделы ============== -->
+    <string name="settings_section_privacy">VPN и пароли</string>
+    <string name="settings_section_data">Куки и кэш</string>
+    <string name="settings_section_downloads">Загрузки</string>
+    <string name="settings_open_vpn">VPN</string>
+    <string name="settings_open_passwords">Пароли</string>
+    <string name="settings_save_passwords">Сохранять и подставлять пароли</string>
+    <string name="settings_save_passwords_hint">Хранятся только на этом телефоне и зашифрованы ключом, который его не покидает.</string>
+    <string name="settings_vpn_on">VPN: подключён</string>
+    <string name="settings_vpn_off">VPN: отключён</string>
+    <string name="settings_open_site_data">Данные сайтов</string>
+    <string name="settings_clear_data">Очистить данные</string>
+    <string name="settings_data_size">Кэш и данные сайтов: %1$s</string>
+    <string name="settings_open_downloads">Открыть загрузки</string>
+
 </resources>

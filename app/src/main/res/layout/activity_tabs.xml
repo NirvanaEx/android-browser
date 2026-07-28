@@ -1,96 +1,82 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  Tabs, as a full screen with a two-column grid of preview cards.
+  Tabs, as a full screen list.
 
-  Was a bottom sheet; a sheet showed about four cards and resized itself as tabs
-  were closed, which made the remaining ones jump under the finger. A screen
-  shows eight and holds still.
+  Was a two-column grid of preview cards, and before that a bottom sheet. The
+  grid showed eight tabs to a screen with their titles cut short, and the
+  previews were pictures of pages the user was one tap away from opening for
+  real. The list shows a dozen, keeps the titles, and looks like the history and
+  bookmarks screens — which is the point: three lists of pages, one layout.
 
-  "New tab" is a FAB rather than a header button: it's the one action here that
-  isn't about the tabs already on screen, and it stays reachable with a thumb
-  after scrolling a long grid.
+  "New tab" is an icon in the header (see view_page_header). It used to be a
+  floating button at the bottom, which is the far corner of a screen whose every
+  other control is at the top.
 
   IDs are referenced by TabsActivity via ViewBinding.
 -->
-<androidx.coordinatorlayout.widget.CoordinatorLayout
+<LinearLayout
     xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
+    android:orientation="vertical"
     android:background="?attr/colorSurface"
     android:fitsSystemWindows="true">
 
-    <LinearLayout
+    <include
+        android:id="@+id/header"
+        layout="@layout/view_page_header" />
+
+    <FrameLayout
         android:layout_width="match_parent"
-        android:layout_height="match_parent"
-        android:orientation="vertical">
+        android:layout_height="0dp"
+        android:layout_weight="1">
 
-        <include
-            android:id="@+id/header"
-            layout="@layout/view_page_header" />
-
-        <FrameLayout
+        <androidx.recyclerview.widget.RecyclerView
+            android:id="@+id/tabsList"
             android:layout_width="match_parent"
-            android:layout_height="0dp"
-            android:layout_weight="1">
+            android:layout_height="match_parent"
+            android:paddingBottom="16dp"
+            android:clipToPadding="false"
+            android:overScrollMode="never" />
 
-            <androidx.recyclerview.widget.RecyclerView
-                android:id="@+id/tabsList"
-                android:layout_width="match_parent"
-                android:layout_height="match_parent"
-                android:paddingStart="9dp"
-                android:paddingEnd="9dp"
-                android:paddingBottom="88dp"
-                android:clipToPadding="false"
-                android:overScrollMode="never" />
+        <LinearLayout
+            android:id="@+id/emptyState"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:orientation="vertical"
+            android:gravity="center"
+            android:paddingStart="32dp"
+            android:paddingEnd="32dp"
+            android:visibility="gone"
+            tools:visibility="visible">
 
-            <LinearLayout
-                android:id="@+id/emptyState"
-                android:layout_width="match_parent"
-                android:layout_height="match_parent"
-                android:orientation="vertical"
+            <ImageView
+                android:layout_width="110dp"
+                android:layout_height="110dp"
+                android:alpha="0.4"
+                android:contentDescription="@null"
+                android:src="@drawable/ic_empty_tabs"
+                app:tint="?attr/colorOnSurface" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="20dp"
                 android:gravity="center"
-                android:paddingStart="32dp"
-                android:paddingEnd="32dp"
-                android:visibility="gone"
-                tools:visibility="visible">
+                android:textAppearance="?attr/textAppearanceTitleMedium"
+                android:textColor="?attr/colorOnSurface"
+                android:text="@string/tabs_tray_empty_title" />
 
-                <ImageView
-                    android:layout_width="110dp"
-                    android:layout_height="110dp"
-                    android:alpha="0.4"
-                    android:contentDescription="@null"
-                    android:src="@drawable/ic_empty_tabs"
-                    app:tint="?attr/colorOnSurface" />
-
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="20dp"
-                    android:gravity="center"
-                    android:textAppearance="?attr/textAppearanceTitleMedium"
-                    android:textColor="?attr/colorOnSurface"
-                    android:text="@string/tabs_tray_empty_title" />
-
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="8dp"
-                    android:gravity="center"
-                    android:textAppearance="?attr/textAppearanceBodyMedium"
-                    android:textColor="?attr/colorOnSurfaceVariant"
-                    android:text="@string/tabs_tray_empty_subtitle" />
-            </LinearLayout>
-        </FrameLayout>
-    </LinearLayout>
-
-    <com.google.android.material.floatingactionbutton.ExtendedFloatingActionButton
-        android:id="@+id/btnNewTab"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_gravity="bottom|center_horizontal"
-        android:layout_marginBottom="20dp"
-        app:icon="@drawable/ic_add"
-        android:text="@string/tabs_tray_new" />
-</androidx.coordinatorlayout.widget.CoordinatorLayout>
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:gravity="center"
+                android:textAppearance="?attr/textAppearanceBodyMedium"
+                android:textColor="?attr/colorOnSurfaceVariant"
+                android:text="@string/tabs_tray_empty_subtitle" />
+        </LinearLayout>
+    </FrameLayout>
+</LinearLayout>

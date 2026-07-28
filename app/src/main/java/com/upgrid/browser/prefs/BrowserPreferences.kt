@@ -81,6 +81,19 @@ class BrowserPreferences(context: Context) {
         }
 
     /**
+     * Offer to save passwords, and fill saved ones.
+     *
+     * One switch for both halves on purpose: a browser that keeps filling
+     * passwords after you told it to stop saving them is not honouring the
+     * switch, whatever the wording says.
+     */
+    var savePasswords: Boolean
+        get() = prefs.getBoolean(KEY_SAVE_PASSWORDS, true)
+        set(value) {
+            prefs.edit().putBoolean(KEY_SAVE_PASSWORDS, value).apply()
+        }
+
+    /**
      * Default speed-dial tiles the user has removed.
      *
      * Only the built-in ones need remembering: a tile the user added is a
@@ -109,6 +122,7 @@ class BrowserPreferences(context: Context) {
         private const val KEY_BACKGROUND_PLAYBACK = "background_playback"
         private const val KEY_LAST_SYNC = "last_sync_at"
         private const val KEY_AUTO_SYNC = "auto_sync"
+        private const val KEY_SAVE_PASSWORDS = "save_passwords"
 
         const val PLAYER_SEEK_DEFAULT = 10
         val PLAYER_SEEK_OPTIONS = listOf(5, 10, 15, 30)

@@ -1,36 +1,35 @@
 package com.upgrid.browser.tabs
 
-import android.content.res.ColorStateList
 import android.view.LayoutInflater
+import android.view.View
 import android.view.ViewGroup
-import androidx.core.view.isVisible
 import androidx.recyclerview.widget.RecyclerView
 import com.upgrid.browser.MainActivity
 import com.upgrid.browser.R
-import com.upgrid.browser.databinding.ItemTabCardBinding
+import com.upgrid.browser.databinding.ItemTabRowBinding
 import com.upgrid.browser.ui.HostTile
+import kotlinx.coroutines.CoroutineScope
+import mozilla.components.browser.icons.BrowserIcons
 import mozilla.components.browser.state.state.TabSessionState
 
 /**
- * One tab card in the grid.
+ * One tab row.
  *
- * Three layers of identity, best first: the page preview if we have one, the
- * favicon in the footer, and the coloured letter tile behind both. Favicons are
- * read straight off [TabSessionState.content]'s icon — GeckoView populates it on
- * `<link rel=icon>` parse and it lives in the BrowserStore, so it costs nothing
- * here. We deliberately skip
- * [mozilla.components.browser.icons.BrowserIcons.loadIntoView]: in a-c 150 it
- * nulls the ImageView before its async fetch starts, which flashed an empty
- * circle for every tab whose favicon hadn't loaded yet.
+ * The favicon comes from [TabSessionState.content] when the tab has one —
+ * GeckoView fills it in on `<link rel=icon>` parse and it lives in the
+ * BrowserStore, so it costs nothing here and it is the exact icon that tab is
+ * showing. Tabs restored from a previous session have none yet, and those fall
+ * through to the shared favicon loader like every other list in the app.
  */
 class TabViewHolder private constructor(
-    private val binding: ItemTabCardBinding,
+    private val binding: ItemTabRowBinding,
 ) : RecyclerView.ViewHolder(binding.root) {
 
     fun bind(
         tab: TabSessionState,
         isSelected: Boolean,
-        thumbnails: TabThumbnails,
+        icons: BrowserIcons,
+        scope: CoroutineScope,
         onClick: (TabSessionState) -> Unit,
         onClose: (TabSessionState) -> Unit,
     ) {
@@ -43,46 +42,26 @@ class TabViewHolder private constructor(
             isBlank -> context.getString(R.string.menu_new_tab)
             else -> tab.content.title.ifBlank { host.ifBlank { url } }
         }
-
-        // A brand-new tab has no host to take a letter or a colour from, so it
-        // gets the app's own accent and a "+" rather than the "?" an unknown
-        // host would produce — it isn't unknown, it's empty.
-        binding.tabInitial.text = if (isBlank) "+" else HostTile.letterFor(host)
-        binding.tabInitial.backgroundTintList = ColorStateList.valueOf(
-            if (isBlank) NEW_TAB_TILE else HostTile.colorFor(host)
-        )
-
-        val preview = thumbnails[tab.id]
-        binding.tabThumb.isVisible = preview != null
-        if (preview != null) binding.tabThumb.setImageBitmap(preview)
-
-        val icon = tab.content.icon
-        if (icon != null) {
-            binding.tabFavicon.setImageBitmap(icon)
-            // Real favicons are full-colour — drop the placeholder tint, which
-            // would otherwise repaint them a flat grey.
-            binding.tabFavicon.imageTintList = null
-        } else {
-            binding.tabFavicon.setImageResource(R.drawable.ic_globe)
-            binding.tabFavicon.imageTintList = ColorStateList.valueOf(
-                if (isBlank) NEW_TAB_TILE else HostTile.colorFor(host)
-            )
+        binding.tabHost.text = when {
+            isBlank -> context.getString(R.string.tabs_tray_blank_subtitle)
+            else -> host.ifBlank { url }
         }
 
-        binding.root.isSelected = isSelected
+        if (isBlank) {
+            binding.tabIcon.bindGlyph(R.drawable.ic_add)
+        } else {
+            binding.tabIcon.bindSite(url, tab.content.icon, icons, scope)
+        }
+
+        binding.tabSelectedBar.visibility = if (isSelected) View.VISIBLE else View.INVISIBLE
         binding.root.setOnClickListener { onClick(tab) }
         binding.btnClose.setOnClickListener { onClose(tab) }
     }
 
     companion object {
-        /** Brand blue; matches colors.xml's brand_blue without a resource lookup.
-         *  Not `const` — `.toInt()` on an out-of-Int-range literal isn't a
-         *  compile-time constant. */
-        private val NEW_TAB_TILE = 0xFF1F6FEB.toInt()
-
         fun inflate(parent: ViewGroup): TabViewHolder {
             val inflater = LayoutInflater.from(parent.context)
-            return TabViewHolder(ItemTabCardBinding.inflate(inflater, parent, false))
+            return TabViewHolder(ItemTabRowBinding.inflate(inflater, parent, false))
         }
     }
 }

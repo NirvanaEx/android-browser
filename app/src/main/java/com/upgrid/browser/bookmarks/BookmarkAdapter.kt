@@ -1,11 +1,11 @@
 package com.upgrid.browser.bookmarks
 
-import android.content.res.ColorStateList
 import android.view.LayoutInflater
 import android.view.ViewGroup
 import androidx.recyclerview.widget.RecyclerView
 import com.upgrid.browser.databinding.ItemBookmarkRowBinding
-import com.upgrid.browser.ui.HostTile
+import kotlinx.coroutines.CoroutineScope
+import mozilla.components.browser.icons.BrowserIcons
 
 /**
  * Flat list of saved pages, newest first.
@@ -15,6 +15,10 @@ import com.upgrid.browser.ui.HostTile
  * headers.
  */
 class BookmarkAdapter(
+    /** Favicon loader; rows show the site's real icon over the letter tile. */
+    private val icons: BrowserIcons,
+    /** Host's lifecycle scope — icon fetches must die with the screen. */
+    private val scope: CoroutineScope,
     private val onOpen: (Bookmark) -> Unit,
     private val onDelete: (Bookmark) -> Unit,
 ) : RecyclerView.Adapter<BookmarkAdapter.Holder>() {
@@ -42,9 +46,7 @@ class BookmarkAdapter(
             bookmarkUrl.text =
                 bookmark.url.removePrefix("https://").removePrefix("http://")
 
-            bookmarkInitial.text = HostTile.letterFor(bookmark.host)
-            bookmarkInitial.backgroundTintList =
-                ColorStateList.valueOf(HostTile.colorFor(bookmark.host))
+            bookmarkIcon.bindSite(bookmark.url, icons, scope)
 
             root.setOnClickListener { onOpen(bookmark) }
             btnDeleteBookmark.setOnClickListener { onDelete(bookmark) }

@@ -1,12 +1,12 @@
 package com.upgrid.browser.history
 
-import android.content.res.ColorStateList
 import android.view.LayoutInflater
 import android.view.ViewGroup
 import androidx.recyclerview.widget.RecyclerView
 import com.upgrid.browser.databinding.ItemHistoryHeaderBinding
 import com.upgrid.browser.databinding.ItemHistoryRowBinding
-import com.upgrid.browser.ui.HostTile
+import kotlinx.coroutines.CoroutineScope
+import mozilla.components.browser.icons.BrowserIcons
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
@@ -24,6 +24,10 @@ import java.util.Locale
 class HistoryAdapter(
     private val todayLabel: String,
     private val yesterdayLabel: String,
+    /** Favicon loader; rows show the site's real icon over the letter tile. */
+    private val icons: BrowserIcons,
+    /** Host's lifecycle scope — icon fetches must die with the screen. */
+    private val scope: CoroutineScope,
     private val onOpen: (HistoryEntry) -> Unit,
     private val onDelete: (HistoryEntry) -> Unit,
 ) : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
@@ -102,9 +106,7 @@ class HistoryAdapter(
                 .atZone(ZoneId.systemDefault())
                 .format(TIME_FORMAT)
 
-            historyInitial.text = HostTile.letterFor(entry.host)
-            historyInitial.backgroundTintList =
-                ColorStateList.valueOf(HostTile.colorFor(entry.host))
+            historyIcon.bindSite(entry.url, icons, scope)
 
             root.setOnClickListener { onOpen(entry) }
             btnDeleteEntry.setOnClickListener { onDelete(entry) }

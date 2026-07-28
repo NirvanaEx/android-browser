@@ -11,6 +11,7 @@
   Ids are bound in SuggestionAdapter.
 -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
@@ -25,19 +26,10 @@
     android:paddingTop="6dp"
     android:paddingBottom="6dp">
 
-    <FrameLayout
-        android:layout_width="34dp"
-        android:layout_height="34dp"
-        android:background="@drawable/bg_suggestion_icon">
-
-        <ImageView
-            android:id="@+id/suggestionIcon"
-            android:layout_width="18dp"
-            android:layout_height="18dp"
-            android:layout_gravity="center"
-            android:contentDescription="@null"
-            tools:src="@drawable/ic_history" />
-    </FrameLayout>
+    <com.upgrid.browser.ui.SiteIconView
+        android:id="@+id/suggestionIcon"
+        android:layout_width="36dp"
+        android:layout_height="36dp" />
 
     <LinearLayout
         android:layout_width="0dp"
@@ -67,6 +59,19 @@
             android:textColor="?attr/colorOnSurfaceVariant"
             tools:text="github.com/NirvanaEx/android-browser" />
     </LinearLayout>
+
+    <!-- Saved-page marker. The row's icon is the site's own now, so "this one
+         is a bookmark" needs saying somewhere else. -->
+    <ImageView
+        android:id="@+id/suggestionBadge"
+        android:layout_width="16dp"
+        android:layout_height="16dp"
+        android:layout_marginStart="6dp"
+        android:contentDescription="@null"
+        android:src="@drawable/ic_bookmark_filled"
+        android:visibility="gone"
+        app:tint="?attr/colorPrimary"
+        tools:visibility="visible" />
 
     <ImageButton
         android:id="@+id/suggestionFill"

@@ -151,7 +151,7 @@ class VideoPlayerBridge(private val components: BrowserComponents) {
                             return
                         }
                         val type = json.optString("t")
-                        if (type == "find" || type == "translate") {
+                        if (type == "find" || type == "translate" || type == "login") {
                             mainHandler.post { runCatching { onPageEvent(json) } }
                             return
                         }
