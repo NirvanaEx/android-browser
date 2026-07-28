@@ -118,10 +118,14 @@ class AppMenuPopup(private val activity: MainActivity) {
             popup.dismiss()
         }
 
+        rowHistory.setOnClickListener {
+            popup.dismiss()
+            activity.showHistory()
+        }
+
         // Phase-3 stubs — toast for now, dismissed so the toast isn't trapped
         // behind the popup.
         rowBookmarks.setOnClickListener { stubToast(); popup.dismiss() }
-        rowHistory.setOnClickListener { stubToast(); popup.dismiss() }
         rowDownloads.setOnClickListener { stubToast(); popup.dismiss() }
 
         // Settings now leads somewhere real: search-engine picker + history.

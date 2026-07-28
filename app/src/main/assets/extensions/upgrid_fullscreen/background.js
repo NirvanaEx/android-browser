@@ -89,4 +89,30 @@ browser.browserAction.onClicked.addListener(function (tab) {
         });
 });
 
+// The controlled document can go away without player.js ever getting to say
+// so — a navigation tears the content script down mid-flight, and closing the
+// tab takes the whole frame with it. Neither fires our "released" event, which
+// used to strand the native overlay on top of a completely different page.
+// Report the release ourselves so the native side always converges.
+function dropIfControlled(tabId, reason) {
+    if (!locked || tabId !== playerTabId) return;
+    console.log("[upgrid-player] drop (" + reason + ") tab " + tabId);
+    locked = false;
+    playerTabId = null;
+    playerFrameId = null;
+    postToNative({ t: "released" });
+}
+
+browser.tabs.onUpdated.addListener(function (tabId, changeInfo) {
+    // Only a committed load counts. Title/favicon/audible updates fire
+    // constantly on video pages and must not kill an active takeover.
+    if (changeInfo.status === "loading" && changeInfo.url) {
+        dropIfControlled(tabId, "navigated");
+    }
+});
+
+browser.tabs.onRemoved.addListener(function (tabId) {
+    dropIfControlled(tabId, "tab closed");
+});
+
 console.log("[upgrid-player] background ready");

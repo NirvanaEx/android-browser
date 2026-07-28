@@ -6,13 +6,18 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.RadioButton
 import android.widget.RadioGroup
+import androidx.lifecycle.lifecycleScope
 import com.google.android.material.bottomsheet.BottomSheetDialogFragment
 import com.upgrid.browser.BrowserApplication
+import com.upgrid.browser.BuildConfig
+import com.upgrid.browser.MainActivity
 import com.upgrid.browser.R
 import com.upgrid.browser.databinding.FragmentSettingsBinding
+import com.upgrid.browser.history.HistoryStore
 import com.upgrid.browser.prefs.BrowserPreferences
 import com.upgrid.browser.search.SearchEngine
 import com.upgrid.browser.search.SearchHistory
+import kotlinx.coroutines.launch
 
 /**
  * Single-screen settings as a bottom sheet. For now: pick search engine and
@@ -27,6 +32,7 @@ class SettingsBottomSheet : BottomSheetDialogFragment() {
     private val app get() = requireActivity().application as BrowserApplication
     private val prefs by lazy { BrowserPreferences(app) }
     private val history by lazy { SearchHistory(app) }
+    private val browsingHistory by lazy { HistoryStore(app) }
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -42,10 +48,24 @@ class SettingsBottomSheet : BottomSheetDialogFragment() {
         renderEngines()
         renderSeekSteps()
         renderHistorySection()
+        renderBrowsingSection()
+        renderAbout()
 
         binding.btnClearHistory.setOnClickListener {
             history.clear()
             renderHistorySection()
+        }
+
+        binding.btnOpenHistory.setOnClickListener {
+            dismiss()
+            (requireActivity() as MainActivity).showHistory()
+        }
+
+        binding.btnClearBrowsing.setOnClickListener {
+            viewLifecycleOwner.lifecycleScope.launch {
+                browsingHistory.clearAll()
+                renderBrowsingSection()
+            }
         }
     }
 
@@ -123,6 +143,23 @@ class SettingsBottomSheet : BottomSheetDialogFragment() {
             R.plurals.settings_history_count, count, count
         )
         binding.btnClearHistory.isEnabled = count > 0
+    }
+
+    private fun renderBrowsingSection() {
+        viewLifecycleOwner.lifecycleScope.launch {
+            val count = browsingHistory.count()
+            binding.browsingCount.text = resources.getQuantityString(
+                R.plurals.settings_pages_count, count, count
+            )
+            binding.btnClearBrowsing.isEnabled = count > 0
+        }
+    }
+
+    /** Which build this is. Pairs with the version stamped on the APK that CI
+     *  posts to Telegram, so a bug report can name an exact commit. */
+    private fun renderAbout() {
+        binding.versionLabel.text =
+            getString(R.string.settings_version, BuildConfig.VERSION_NAME, BuildConfig.GIT_SHA)
     }
 
     private fun dp(v: Int): Int =

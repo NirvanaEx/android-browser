@@ -31,6 +31,10 @@ app/src/main/
 │   ├── fullscreen/
 │   │   ├── VideoPlayerBridge.kt    ← native ⇆ extension port; takeover trigger
 │   │   └── PlayerOverlayController.kt ← overlay buttons, seek bar, gestures
+│   ├── history/
+│   │   ├── HistoryStore.kt         ← SQLite visits table (one row per URL)
+│   │   ├── HistoryAdapter.kt       ← day headers + rows
+│   │   └── HistoryFragment.kt      ← bottom-sheet history browser
 │   ├── home/                       ← speed-dial start page
 │   ├── menu/AppMenuPopup.kt        ← Banana-style drop-down menu (PopupWindow, not BottomSheet)
 │   ├── prefs/BrowserPreferences.kt ← typed SharedPreferences façade (all settings)
@@ -95,6 +99,32 @@ The topbar ▶ button hands the page's `<video>` to OUR overlay player. Key fact
 - **Exit is multi-path and must stay idempotent.** System back / fsExit button / page exiting fullscreen all converge: content script's `fullscreenchange` listener auto-releases → `"released"` event → MainActivity hides overlay + restores chrome. `exitPlayer()` also restores chrome optimistically without waiting for the round-trip.
 - Seek step for double-tap/skip buttons is `BrowserPreferences.playerSeekSeconds` (5/10/15/30 s, settings sheet).
 
+### Two invariants that cost real debugging time
+
+**Never let a fullscreen transition we caused reach the auto-release watcher.**
+`player.js` releases the video whenever `fullscreenchange` reports no
+fullscreen element — that's how system back and page-driven exits are caught.
+But a re-entrant takeover exits the old fullscreen before requesting a new one,
+and PiP exits it on purpose. Both used to trip the watcher, which handed the
+video back mid-transition and left the overlay on a page that no longer had it.
+Every deliberate transition arms `ignoreFsFor(ms)` first; `exitFullscreenQuietly()`
+does it for you. The internal `release({keepFullscreen: true})` at takeover
+entry exists for the same reason.
+
+**Android PiP and DOM fullscreen cannot coexist.** The system resizes the
+activity, Gecko drops fullscreen, and (before `pipMode`) the watcher fired.
+`MainActivity.enterPipMode()` therefore sends `{cmd:"pip", on:true}` *before*
+calling `enterPictureInPictureMode`, so the content script leaves fullscreen on
+its own terms and keeps the takeover. The video still fills the PiP window
+because the window is the viewport. Coming back from PiP we do **not** try to
+re-enter DOM fullscreen — there's no gesture to do it with, and the nuke style
+plus hidden chrome already looks identical.
+
+Related: `MainActivity` distinguishes `playerActive` (took over, not yet
+released) from `playerOverlay.isVisible` (false in PiP while the player runs).
+`setVideoFocus` owns the `inVideoFocus` state; `applyVideoFocus` re-pushes it
+onto the window without touching the state, which is what PiP transitions need.
+
 ## API gotchas (these break between a-c versions)
 
 The `Engine` callbacks have shifted between releases. Current expected signatures (a-c 150.x):
@@ -128,7 +158,7 @@ The AMO file id changes per release; the version in the filename is cosmetic.
 
 - **Phase 1 — MVP.** Single session, omnibar, silent uBO. **Done.**
 - **Phase 2 — Tabs + persistence.** `BrowserStore`-driven; `BrowserToolbar`; `SessionFeature`/`ToolbarFeature`; bottom-sheet tabs tray; `SessionStorage` autosave/restore; AdBlock on/off in app menu. **Done.**
-- **Phase 3 — History & bookmarks.** `browser-storage-sync` (Places-backed) for history + bookmarks; downloads via `feature-downloads`.
+- **Phase 3 — History & bookmarks.** History **done**, but *not* on `browser-storage-sync` as originally planned — see below. Bookmarks + downloads (`feature-downloads`) still open.
 - **Phase 4 — Settings.** Theme picker, search engine, default-browser prompt, "use system dark mode", about-page. Move the AdBlock toggle from popup menu into the settings screen.
 - **Phase 5 — Optional extensions.** Surface a curated list (Dark Reader, Bitwarden, Tampermonkey) via `feature-addons`'s `AddonManager`. Behind a "Power user" setting.
 
@@ -139,6 +169,50 @@ The AMO file id changes per release; the version in the filename is cosmetic.
 - **`BrowserApplication.restorePreviousSession`** restores tabs *before* the bootstrap installs uBO — this guarantees tabs are visible the moment the user sees the activity even if AMO is unreachable.
 - **Tab close → empty state:** `MainActivity.wireBackPress` finishes the activity when the last tab is closed via the system back button. The tabs tray itself does *not* auto-dismiss when `tabs.isEmpty()` — it shows a Banana-style empty illustration. If the user swipes the tray away with zero tabs, `TabsTrayFragment.onDismiss` opens a fresh HOME tab so MainActivity isn't left empty-handed.
 - **App menu is a `PopupWindow`, not a BottomSheet.** [AppMenuPopup](app/src/main/java/com/upgrid/browser/menu/AppMenuPopup.kt) is a 300dp drop-down anchored to `btnMenu` via `showAsDropDown(anchor, 0, 0, Gravity.END)`. The auto-flip-above behavior places it correctly even though the anchor is at the bottom of the screen. Construct a new instance per tap (cheap, avoids stale toggle state).
+
+## History: why not `browser-storage-sync`
+
+The phase-3 plan said Places. We shipped a plain SQLite table instead
+([HistoryStore.kt](app/src/main/java/com/upgrid/browser/history/HistoryStore.kt)).
+`browser-storage-sync` drags in the application-services megazord — tens of MB
+of native code *per ABI*, stacked on GeckoView's — and pins yet another native
+artifact to the a-c version we already bump by hand. We use none of what it
+buys: no Firefox Sync account, no frecency ranking, no bookmark tree. Revisit
+if Sync ever lands on the roadmap; until then a table is the honest tool.
+
+Shape worth knowing: **one row per URL, not one per visit.** Re-visiting bumps
+`visited_at` and increments `visits`. A visit log would bury everything else
+the moment someone refreshes a page ten times. `record()` counts a visit;
+`updateTitle()` exists so the late-arriving `<title>` (and SPA title rewrites)
+don't each count as new visits. Everything suspends onto `Dispatchers.IO` —
+`MainActivity.recordVisit` is called from the store observer, which ticks dozens
+of times per page load.
+
+## Build identity & delivery
+
+`versionCode` is the git commit count and `versionName` is
+`$baseVersion.$commitCount`, both resolved in
+[app/build.gradle.kts](app/build.gradle.kts); `BuildConfig.GIT_SHA` carries the
+short sha. Settings → About shows the pair, which is the first thing to ask for
+in a bug report. Bump `baseVersion` there — CI greps that same line, so there's
+nothing to keep in sync.
+
+Two consequences to respect:
+
+- **CI must check out with `fetch-depth: 0`.** A shallow clone counts 1 commit,
+  so every build would be versionCode 1 and Android would refuse the upgrade.
+- **Don't hand-edit `versionCode`.** It's derived; an edit is silently lost.
+
+[.github/workflows/android.yml](.github/workflows/android.yml) builds on every
+branch, publishes the rolling `latest-debug` pre-release only from `main`, and
+posts the APK to Telegram (secrets `TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID`).
+The Bot API caps uploads at **50 MB** and GeckoView debug APKs sit near that
+line — over the limit the job sends a download link instead of the file, so
+don't "simplify" that branch away.
+
+Builds run in GitHub Actions, not on the VPS: the repo is public (free
+unlimited minutes) and a Gecko-dependent Gradle build wants more RAM than that
+box has spare.
 
 ## Testing notes
 

@@ -315,14 +315,7 @@
                 android:textSize="14sp"
                 android:textColor="?attr/colorOnSurface"
                 android:text="@string/menu_history" />
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:paddingHorizontal="8dp"
-                android:paddingVertical="2dp"
-                android:textSize="10sp"
-                android:textColor="?attr/colorOnSurfaceVariant"
-                android:text="@string/menu_pill_soon" />
+            <!-- No "Soon" pill here: history is implemented and this row opens it. -->
         </LinearLayout>
 
         <LinearLayout

@@ -1,31 +1,51 @@
-# Android CI — builds a debug APK on every push to main (and on demand via
-# the "Run workflow" button on the Actions tab).
+# Android CI — builds a debug APK and delivers it to the phone.
 #
-# Two ways to get the APK:
-#   1. Releases page (easiest from a phone): every main push updates the
-#      rolling "latest-debug" pre-release with a direct .apk link —
-#      https://github.com/NirvanaEx/android-browser/releases
-#   2. Actions tab → pick a run → "Artifacts" (requires GitHub login,
-#      downloads as a zip).
+# Three ways to get the APK, in order of convenience:
+#   1. Telegram: every build is posted to the bot configured in repo secrets
+#      (TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID) with its version and changelog.
+#      GeckoView APKs run large and the Bot API caps uploads at 50 MB — over
+#      that the bot sends a download link instead of the file.
+#   2. Releases page: pushes to main update the rolling "latest-debug"
+#      pre-release — https://github.com/NirvanaEx/android-browser/releases
+#   3. Actions tab → a run → "Artifacts" (needs a GitHub login, ships a zip).
 #
 # Only the arm64-v8a APK is published — that's what real phones run. The
 # x86_64 build for emulators is still produced locally by assembleDebug.
+#
+# Builds run on branches too, so a change can be tested on the phone before it
+# lands on main; only main updates the rolling release.
 
 name: Android CI
 
 on:
   push:
-    branches: [ main ]
+    branches: [ "**" ]
   workflow_dispatch:
 
 permissions:
   contents: write # update the rolling latest-debug release
 
+# A newer push makes an in-flight build irrelevant — don't pay for both.
+concurrency:
+  group: android-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build:
     runs-on: ubuntu-latest
+
+    # Job-level so the delivery step can gate on them in its `if:` — step-level
+    # env is not visible to that step's own condition.
+    env:
+      TG_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      TG_CHAT: ${{ secrets.TELEGRAM_CHAT_ID }}
+
     steps:
       - uses: actions/checkout@v4
+        with:
+          # versionCode is the commit count (see app/build.gradle.kts) — the
+          # default shallow clone would make every build version 1.
+          fetch-depth: 0
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
@@ -36,27 +56,122 @@ jobs:
       - name: Set up Gradle (with build cache)
         uses: gradle/actions/setup-gradle@v4
 
+      - name: Resolve build identity
+        id: ver
+        run: |
+          set -euo pipefail
+          # Single source of truth: the base version lives in the Gradle file,
+          # so bumping it there is enough — nothing to keep in sync here.
+          BASE=$(grep -oP 'val baseVersion = "\K[^"]+' app/build.gradle.kts)
+          COUNT=$(git rev-list --count HEAD)
+          SHA=$(git rev-parse --short=7 HEAD)
+
+          # Every branch gets its own rolling pre-release. GeckoView APKs
+          # usually exceed Telegram's 50 MB upload cap, and the fallback link
+          # has to be something openable from a phone — a release asset is a
+          # public direct download, whereas Actions artifacts need a login.
+          if [ "${GITHUB_REF_NAME}" = "main" ]; then
+            TAG="latest-debug"
+            TITLE="Latest debug build"
+          else
+            TAG="latest-$(printf '%s' "${GITHUB_REF_NAME}" | tr -c 'A-Za-z0-9._-' '-')"
+            TITLE="Debug build · ${GITHUB_REF_NAME}"
+          fi
+
+          {
+            echo "version=${BASE}.${COUNT}"
+            echo "sha=${SHA}"
+            echo "apk=upgrid-${BASE}.${COUNT}-${SHA}-arm64.apk"
+            echo "tag=${TAG}"
+            echo "title=${TITLE}"
+          } >> "$GITHUB_OUTPUT"
+          {
+            echo "subject<<APK_EOF"
+            git log -1 --pretty=%s
+            echo "APK_EOF"
+          } >> "$GITHUB_OUTPUT"
+
       - name: Build debug APK
         run: |
           chmod +x gradlew
           ./gradlew assembleDebug --console=plain
 
+      - name: Stage APK under its version name
+        id: apk
+        run: |
+          set -euo pipefail
+          cp app/build/outputs/apk/debug/app-arm64-v8a-debug.apk "${{ steps.ver.outputs.apk }}"
+          SIZE=$(stat -c%s "${{ steps.ver.outputs.apk }}")
+          {
+            echo "size=$SIZE"
+            echo "size_mb=$(( SIZE / 1048576 ))"
+          } >> "$GITHUB_OUTPUT"
+
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: upgrid-browser-arm64-debug
-          path: app/build/outputs/apk/debug/app-arm64-v8a-debug.apk
+          path: ${{ steps.ver.outputs.apk }}
           retention-days: 14
 
+      # Publish BEFORE notifying: the oversized-APK path links straight at this
+      # release asset, so it has to exist by the time the message goes out.
       - name: Update rolling release
-        if: github.ref == 'refs/heads/main'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: latest-debug
-          name: Latest debug build
+          tag_name: ${{ steps.ver.outputs.tag }}
+          name: ${{ steps.ver.outputs.title }}
           prerelease: true
           body: |
-            Автосборка из последнего коммита в main.
-            Скачай `app-arm64-v8a-debug.apk` и установи (нужно разрешить
-            установку из неизвестных источников).
-          files: app/build/outputs/apk/debug/app-arm64-v8a-debug.apk
+            Автосборка из ветки `${{ github.ref_name }}`.
+
+            **Версия:** ${{ steps.ver.outputs.version }} (`${{ steps.ver.outputs.sha }}`)
+            **Изменения:** ${{ steps.ver.outputs.subject }}
+
+            Скачай `.apk` и установи — нужно разрешить установку из неизвестных
+            источников.
+          files: ${{ steps.ver.outputs.apk }}
+
+      - name: Send build to Telegram
+        # Secrets are absent on forks; skip rather than fail the build there.
+        if: ${{ success() && env.TG_TOKEN != '' && env.TG_CHAT != '' }}
+        env:
+          APK: ${{ steps.ver.outputs.apk }}
+          SIZE: ${{ steps.apk.outputs.size }}
+          SIZE_MB: ${{ steps.apk.outputs.size_mb }}
+          VERSION: ${{ steps.ver.outputs.version }}
+          SHA: ${{ steps.ver.outputs.sha }}
+          SUBJECT: ${{ steps.ver.outputs.subject }}
+          BRANCH: ${{ github.ref_name }}
+          RELEASE_URL: ${{ github.server_url }}/${{ github.repository }}/releases/download/${{ steps.ver.outputs.tag }}
+        run: |
+          set -euo pipefail
+          API="https://api.telegram.org/bot${TG_TOKEN}"
+
+          # Commit subjects are free text; a stray < or & would make Telegram
+          # reject the whole message as malformed HTML.
+          esc() { printf '%s' "$1" | sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g'; }
+
+          CAPTION=$(printf '<b>Upgrid Browser %s</b>\n<code>%s</code> · %s\n\n%s' \
+            "$(esc "$VERSION")" "$(esc "$SHA")" "$(esc "$BRANCH")" "$(esc "$SUBJECT")")
+
+          # Bot API hard-caps uploads at 50 MB. GeckoView debug builds sit close
+          # to that line, so fall back to a link rather than failing the job.
+          LIMIT=$((50 * 1024 * 1024))
+          if [ "$SIZE" -lt "$LIMIT" ]; then
+            curl -sS -f -X POST "${API}/sendDocument" \
+              -F "chat_id=${TG_CHAT}" \
+              -F "parse_mode=HTML" \
+              -F "caption=${CAPTION}" \
+              -F "document=@${APK}" > /dev/null
+            echo "Sent ${APK} (${SIZE_MB} MB) to Telegram."
+          else
+            TEXT=$(printf '%s\n\n⚠️ APK весит %s МБ — больше лимита Telegram в 50 МБ.\nСкачать: %s' \
+              "$CAPTION" "$SIZE_MB" "${RELEASE_URL}/${APK}")
+            curl -sS -f -X POST "${API}/sendMessage" \
+              -F "chat_id=${TG_CHAT}" \
+              -F "parse_mode=HTML" \
+              -F "disable_web_page_preview=true" \
+              -F "text=${TEXT}" > /dev/null
+            echo "APK is ${SIZE_MB} MB — sent a link instead."
+          fi

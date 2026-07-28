@@ -1,10 +1,16 @@
 package com.upgrid.browser
 
+import android.app.PendingIntent
 import android.app.PictureInPictureParams
+import android.app.RemoteAction
+import android.content.BroadcastReceiver
+import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.ActivityInfo
 import android.content.pm.PackageManager
 import android.content.res.Configuration
+import android.graphics.drawable.Icon
 import android.media.AudioManager
 import android.net.Uri
 import android.os.Build
@@ -17,12 +23,16 @@ import android.view.View
 import android.view.inputmethod.InputMethodManager
 import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
+import androidx.annotation.RequiresApi
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.ContextCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.core.view.isVisible
 import com.upgrid.browser.databinding.ActivityMainBinding
 import com.upgrid.browser.fullscreen.PlayerOverlayController
+import com.upgrid.browser.history.HistoryFragment
+import com.upgrid.browser.history.HistoryStore
 import com.upgrid.browser.home.QuickLink
 import com.upgrid.browser.home.StartPagePresenter
 import com.upgrid.browser.menu.AppMenuPopup
@@ -76,6 +86,17 @@ class MainActivity : AppCompatActivity() {
     /** Recent omnibar queries. Recorded in the URL-commit listener. */
     private val searchHistory by lazy { SearchHistory(this) }
 
+    /** Visited pages. Written from the store observer once a load settles. */
+    private val browsingHistory by lazy { HistoryStore(this) }
+
+    /**
+     * Last (url, title) pair actually written to history. The store ticks many
+     * times per page load with the same content; without this the same page is
+     * re-recorded on every progress update, inflating its visit counter and
+     * churning the DB.
+     */
+    private var lastRecordedVisit: Pair<String, String>? = null
+
     /**
      * True while the activity is in immersive "video focus" mode — chrome +
      * system bars hidden so the video fills the screen. Driven by
@@ -87,6 +108,39 @@ class MainActivity : AppCompatActivity() {
 
     /** Built-in player overlay: buttons, seek bar, gesture layer. */
     private lateinit var playerOverlay: PlayerOverlayController
+
+    /**
+     * True between a successful takeover and the matching release. Distinct
+     * from `playerOverlay.isVisible`, which goes false in PiP while the player
+     * is very much still running — PiP transitions consult this to decide
+     * whether to restore the overlay or tear the player down.
+     */
+    private var playerActive = false
+
+    /** Latest playback state, mirrored from the content script's snapshots.
+     *  Feeds the PiP window's aspect ratio and its play/pause action icon. */
+    private var playerIsPlaying = false
+    private var playerVideoWidth = 0
+    private var playerVideoHeight = 0
+
+    /**
+     * Handles taps on the PiP window's action buttons. Registered
+     * NOT_EXPORTED — these intents only ever come from our own PendingIntents.
+     */
+    private val playerControlReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            val bridge = components.videoPlayerBridge
+            when (intent?.getStringExtra(EXTRA_CONTROL)) {
+                CONTROL_TOGGLE -> bridge.sendCommand("toggle")
+                CONTROL_REWIND -> bridge.sendCommand("seekBy") {
+                    put("delta", -preferences.playerSeekSeconds)
+                }
+                CONTROL_FORWARD -> bridge.sendCommand("seekBy") {
+                    put("delta", preferences.playerSeekSeconds)
+                }
+            }
+        }
+    }
 
     private val sessionFeature = ViewBoundFeatureWrapper<SessionFeature>()
     private val toolbarFeature = ViewBoundFeatureWrapper<ToolbarFeature>()
@@ -108,6 +162,18 @@ class MainActivity : AppCompatActivity() {
         wirePlayerOverlay()
         wireBackPress()
         observeStore()
+
+        ContextCompat.registerReceiver(
+            this,
+            playerControlReceiver,
+            IntentFilter(ACTION_PLAYER_CONTROL),
+            ContextCompat.RECEIVER_NOT_EXPORTED,
+        )
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        runCatching { unregisterReceiver(playerControlReceiver) }
     }
 
     override fun onStart() {
@@ -167,7 +233,12 @@ class MainActivity : AppCompatActivity() {
         // want to hide chrome optimistically before knowing whether the
         // request succeeded (silently misleading if Gecko rejects it).
         binding.btnTopVideo.setOnClickListener {
-            components.videoPlayerBridge.requestTakeover()
+            // The extension announces its browser action a beat after install,
+            // so a tap during the first seconds of a cold start has no gesture
+            // path to travel. Say so rather than swallowing the tap.
+            if (!components.videoPlayerBridge.requestTakeover()) {
+                Toast.makeText(this, R.string.player_not_ready, Toast.LENGTH_SHORT).show()
+            }
         }
     }
 
@@ -382,6 +453,17 @@ class MainActivity : AppCompatActivity() {
     private fun setVideoFocus(focused: Boolean) {
         if (focused == inVideoFocus) return
         inVideoFocus = focused
+        applyVideoFocus(focused)
+    }
+
+    /**
+     * Push the chrome + system-bar state onto the window WITHOUT touching
+     * [inVideoFocus]. Entering and leaving PiP resizes the activity out from
+     * under us, so the state has to be re-applied on each transition — but PiP
+     * is not itself a change of video focus, and folding it into
+     * [setVideoFocus] would make the idempotence guard swallow the re-apply.
+     */
+    private fun applyVideoFocus(focused: Boolean) {
         val v = if (focused) View.GONE else View.VISIBLE
         binding.toolbarWrapper.visibility = v
         binding.toolbarDivider.visibility = v
@@ -431,6 +513,8 @@ class MainActivity : AppCompatActivity() {
         components.videoPlayerBridge.onPlayerEvent = { event ->
             when (event.optString("t")) {
                 "takeover" -> if (event.optBoolean("ok")) {
+                    playerActive = true
+                    rememberPlayerState(event)
                     playerOverlay.setVisible(true)
                     playerOverlay.renderState(event)
                     // Hide chrome unconditionally. Even when requestFullscreen
@@ -444,12 +528,42 @@ class MainActivity : AppCompatActivity() {
                 } else {
                     Toast.makeText(this, R.string.player_no_video, Toast.LENGTH_SHORT).show()
                 }
-                "state" -> playerOverlay.renderState(event)
+                "state" -> {
+                    rememberPlayerState(event)
+                    playerOverlay.renderState(event)
+                }
                 "released" -> {
+                    playerActive = false
                     playerOverlay.setVisible(false)
                     setVideoFocus(false)
                 }
             }
+        }
+    }
+
+    /**
+     * Mirror the content script's snapshot into the fields PiP needs.
+     *
+     * The snapshot arrives twice a second, but [setPictureInPictureParams] is
+     * a binder call into the system server — only refresh the window when
+     * something it renders actually changed, i.e. the play/pause icon flipped
+     * or the video's intrinsic size finally resolved.
+     */
+    private fun rememberPlayerState(event: org.json.JSONObject) {
+        val playing = !(event.optBoolean("paused", true) || event.optBoolean("ended", false))
+        val width = event.optInt("vw", 0)
+        val height = event.optInt("vh", 0)
+
+        val changed = playing != playerIsPlaying ||
+            width != playerVideoWidth ||
+            height != playerVideoHeight
+
+        playerIsPlaying = playing
+        playerVideoWidth = width
+        playerVideoHeight = height
+
+        if (changed && isInPipMode() && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            runCatching { setPictureInPictureParams(buildPipParams()) }
         }
     }
 
@@ -460,6 +574,7 @@ class MainActivity : AppCompatActivity() {
      * the event re-runs the same idempotent calls a beat later.
      */
     private fun exitPlayer() {
+        playerActive = false
         components.videoPlayerBridge.sendCommand("release")
         playerOverlay.setVisible(false)
         setVideoFocus(false)
@@ -498,14 +613,58 @@ class MainActivity : AppCompatActivity() {
                     val isHome = url.isBlank() || url == HOME_URL
                     startPage.setVisible(isHome)
 
-                    // Topbar player button: visible whenever the selected tab
-                    // has a media session (playing OR paused) — a paused video
-                    // is still a valid takeover target for the built-in player.
-                    val hasMedia = tab?.mediaSessionState != null
-                    binding.btnTopVideo.isVisible = hasMedia && !isInPipMode()
+                    // Topbar player button. This used to be gated on
+                    // tab.mediaSessionState, but that's only populated for
+                    // pages that opt into the MediaSession API — plenty of
+                    // sites with a plain <video> never set it, so the button
+                    // silently never appeared and the whole feature read as
+                    // broken. Show it on any real page instead; tapping with
+                    // nothing to grab answers with the "no video" toast, which
+                    // is far better feedback than an invisible control.
+                    binding.btnTopVideo.isVisible = !isHome && !isInPipMode()
+
+                    recordVisit(tab)
                 }
             }
         }
+    }
+
+    /**
+     * Write the selected tab's page into browsing history.
+     *
+     * Called on every store tick, so it has to be cheap and idempotent. Two
+     * things make it so:
+     *
+     *  - We skip while the tab is still loading. The URL lands long before the
+     *    <title> does, and recording early would fill history with untitled
+     *    rows that only ever show a bare host.
+     *  - Re-entering the same URL bumps the title but NOT the visit counter.
+     *    Titles routinely arrive (or change, on SPAs) after the load settles,
+     *    and counting those as fresh visits would inflate every row.
+     */
+    private fun recordVisit(tab: mozilla.components.browser.state.state.TabSessionState?) {
+        val content = tab?.content ?: return
+        if (content.loading) return
+
+        val url = content.url
+        val title = content.title
+        if (url == HOME_URL || !HistoryStore.isRecordable(url)) return
+
+        val previous = lastRecordedVisit
+        if (previous?.first == url) {
+            if (title.isBlank() || title == previous.second) return
+            lastRecordedVisit = url to title
+            lifecycleScope.launch { browsingHistory.updateTitle(url, title) }
+            return
+        }
+
+        lastRecordedVisit = url to title
+        lifecycleScope.launch { browsingHistory.record(url, title) }
+    }
+
+    /** Browsing history sheet. Opened from the app menu. */
+    fun showHistory() {
+        HistoryFragment().show(supportFragmentManager, HistoryFragment.TAG)
     }
 
     // --- Speed-dial --------------------------------------------------------
@@ -523,34 +682,150 @@ class MainActivity : AppCompatActivity() {
 
     // --- Picture-in-Picture ------------------------------------------------
 
+    /**
+     * Move the running player into a floating system window.
+     *
+     * The order here is load-bearing. Android PiP and DOM fullscreen cannot
+     * coexist: the system resizes the activity, Gecko drops fullscreen, and
+     * the content script's `fullscreenchange` watcher reads that as "the user
+     * left" and hands the video back to the page mid-transition — which is
+     * what made the old PiP button produce a shrunken window showing the bare
+     * page. So we tell the content script we're heading into PiP *first*; it
+     * then leaves fullscreen on its own terms while keeping the takeover, and
+     * the video keeps filling the viewport, which in PiP is the whole window.
+     */
     private fun enterPipMode() {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
-        if (!packageManager.hasSystemFeature(PackageManager.FEATURE_PICTURE_IN_PICTURE)) return
-        val params = PictureInPictureParams.Builder()
-            .setAspectRatio(Rational(16, 9))
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
+            Toast.makeText(this, R.string.pip_unsupported, Toast.LENGTH_SHORT).show()
+            return
+        }
+        if (!packageManager.hasSystemFeature(PackageManager.FEATURE_PICTURE_IN_PICTURE)) {
+            Toast.makeText(this, R.string.pip_unsupported, Toast.LENGTH_SHORT).show()
+            return
+        }
+        if (!playerActive) {
+            Toast.makeText(this, R.string.pip_needs_player, Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        components.videoPlayerBridge.sendCommand("pip") { put("on", true) }
+        val entered = runCatching { enterPictureInPictureMode(buildPipParams()) }
+            .getOrDefault(false)
+        if (!entered) {
+            // Denied (per-app PiP permission off, or the system refused) —
+            // undo the content-script side so we stay in normal fullscreen
+            // instead of a fullscreen with no DOM fullscreen behind it.
+            components.videoPlayerBridge.sendCommand("pip") { put("on", false) }
+            Toast.makeText(this, R.string.pip_failed, Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    @RequiresApi(Build.VERSION_CODES.O)
+    private fun buildPipParams(): PictureInPictureParams =
+        PictureInPictureParams.Builder()
+            .setAspectRatio(pipAspectRatio())
+            .setActions(pipActions())
             .build()
-        runCatching { enterPictureInPictureMode(params) }
+
+    /**
+     * Shape the PiP window to the video rather than assuming 16:9 — portrait
+     * clips (Shorts, TikTok mirrors, VK clips) otherwise get letterboxed into
+     * a landscape window with black bars down both sides.
+     *
+     * The system rejects anything outside roughly 1:2.39…2.39:1 with an
+     * IllegalArgumentException, so out-of-range videos are clamped to the
+     * nearest legal ratio instead of crashing the transition.
+     */
+    private fun pipAspectRatio(): Rational {
+        val w = playerVideoWidth
+        val h = playerVideoHeight
+        if (w <= 0 || h <= 0) return Rational(16, 9)
+        return when {
+            w.toFloat() / h > MAX_PIP_ASPECT -> Rational(239, 100)
+            h.toFloat() / w > MAX_PIP_ASPECT -> Rational(100, 239)
+            else -> Rational(w, h)
+        }
+    }
+
+    /**
+     * Rewind / play-pause / forward buttons inside the PiP window. Without
+     * these the floating window is a picture you can't control without
+     * restoring the app first, which defeats the point.
+     */
+    @RequiresApi(Build.VERSION_CODES.O)
+    private fun pipActions(): List<RemoteAction> {
+        val step = preferences.playerSeekSeconds
+        return listOf(
+            remoteAction(
+                R.drawable.ic_seek_back,
+                getString(R.string.player_seek_back, step),
+                CONTROL_REWIND,
+            ),
+            if (playerIsPlaying) {
+                remoteAction(R.drawable.ic_pause, getString(R.string.player_pause), CONTROL_TOGGLE)
+            } else {
+                remoteAction(
+                    R.drawable.ic_play_filled,
+                    getString(R.string.player_play),
+                    CONTROL_TOGGLE,
+                )
+            },
+            remoteAction(
+                R.drawable.ic_seek_forward,
+                getString(R.string.player_seek_forward, step),
+                CONTROL_FORWARD,
+            ),
+        )
+    }
+
+    @RequiresApi(Build.VERSION_CODES.O)
+    private fun remoteAction(iconRes: Int, title: String, control: String): RemoteAction {
+        val intent = Intent(ACTION_PLAYER_CONTROL)
+            .setPackage(packageName)
+            .putExtra(EXTRA_CONTROL, control)
+        val pending = PendingIntent.getBroadcast(
+            this,
+            control.hashCode(),
+            intent,
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+        )
+        return RemoteAction(Icon.createWithResource(this, iconRes), title, title, pending)
     }
 
     private fun isInPipMode(): Boolean =
         Build.VERSION.SDK_INT >= Build.VERSION_CODES.N && isInPictureInPictureMode
 
     /**
-     * In PiP we only want the engine to be visible — the system shrinks the
-     * activity to a small floating window and any chrome (toolbar, bottom bar)
-     * just steals pixels from the actual video. Toggle visibility on transition
-     * and let the standard observer decide on PiP-FAB visibility.
+     * In PiP only the engine should be visible: the system shrinks us to a
+     * thumbnail, where the chrome and the player overlay's 44dp buttons would
+     * cover the video outright. The overlay in particular also swallows every
+     * touch, so leaving it up made the floating window unresponsive.
      */
     override fun onPictureInPictureModeChanged(isInPip: Boolean, newConfig: Configuration) {
         super.onPictureInPictureModeChanged(isInPip, newConfig)
-        val v = if (isInPip) View.GONE else View.VISIBLE
-        binding.toolbarWrapper.visibility = v
-        binding.toolbarDivider.visibility = v
-        binding.bottomDivider.visibility = v
-        binding.bottomBar.visibility = v
-        // The topbar video button hides with the rest of the topbar via the
-        // wrapper visibility above; observer re-resolves the button visibility
-        // on exit based on current media state.
+
+        if (isInPip) {
+            applyVideoFocus(true)
+            playerOverlay.setVisible(false)
+            return
+        }
+
+        // Two ways out. Dismissing the window with its X stops the activity —
+        // CREATED here means we're on our way to STOPPED, so there's no UI
+        // worth restoring, and the video has to be handed back or it keeps
+        // playing under a page nobody can see.
+        if (lifecycle.currentState == Lifecycle.State.CREATED) {
+            exitPlayer()
+            return
+        }
+
+        // Restored to full screen. DOM fullscreen is gone for good (PiP
+        // dropped it, and re-requesting needs a user gesture we don't have),
+        // but the content script still has the video filling the viewport —
+        // so chrome-off plus the overlay is the same picture as before.
+        components.videoPlayerBridge.sendCommand("pip") { put("on", false) }
+        playerOverlay.setVisible(playerActive)
+        applyVideoFocus(inVideoFocus)
     }
 
     // Auto-PiP-on-leave intentionally removed — the user prefers video to
@@ -597,5 +872,18 @@ class MainActivity : AppCompatActivity() {
          */
         const val HOME_URL = "about:blank"
 
+        /**
+         * Broadcast plumbing for the PiP window's action buttons. The intent
+         * is package-scoped and the receiver is registered NOT_EXPORTED — only
+         * our own PendingIntents ever reach it.
+         */
+        private const val ACTION_PLAYER_CONTROL = "com.upgrid.browser.PLAYER_CONTROL"
+        private const val EXTRA_CONTROL = "control"
+        private const val CONTROL_TOGGLE = "toggle"
+        private const val CONTROL_REWIND = "rewind"
+        private const val CONTROL_FORWARD = "forward"
+
+        /** Widest window the system will hand out for PiP, either orientation. */
+        private const val MAX_PIP_ASPECT = 2.39f
     }
 }
