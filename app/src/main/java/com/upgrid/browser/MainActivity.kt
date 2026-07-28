@@ -64,18 +64,21 @@ import com.upgrid.browser.sync.GoogleAccounts
 import com.upgrid.browser.sync.SignInDiagnostics
 import com.upgrid.browser.sync.SyncEngine
 import com.upgrid.browser.tabs.TabsActivity
+import com.upgrid.browser.tabs.TabStripAdapter
 import com.upgrid.browser.tabs.WindowRequests
 import com.upgrid.browser.find.FindInPageController
 import com.upgrid.browser.translate.TranslateController
 import com.upgrid.browser.history.HistoryStore
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.recyclerview.widget.LinearLayoutManager
+import com.google.android.material.appbar.AppBarLayout
 import com.google.android.material.color.MaterialColors
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.distinctUntilChangedBy
 import kotlinx.coroutines.flow.map
 import mozilla.components.concept.toolbar.Toolbar
 import androidx.lifecycle.Lifecycle
@@ -84,8 +87,8 @@ import androidx.lifecycle.repeatOnLifecycle
 import kotlinx.coroutines.launch
 import mozilla.components.browser.state.action.CrashAction
 import mozilla.components.browser.state.selector.selectedTab
+import mozilla.components.browser.state.state.TabSessionState
 import mozilla.components.browser.toolbar.display.DisplayToolbar
-import mozilla.components.concept.engine.EngineSession
 import mozilla.components.feature.session.FullScreenFeature
 import mozilla.components.feature.session.SessionFeature
 import mozilla.components.feature.session.SwipeRefreshFeature
@@ -322,31 +325,33 @@ class MainActivity : AppCompatActivity() {
     /** Credentials the user said no to. Session-scoped: a new launch re-asks. */
     private val declinedLogins = mutableSetOf<String>()
 
-    /** True while the top bar is scrolled away. See [onPageScrolled]. */
-    private var toolbarHidden = false
+    /**
+     * True on a screen wide enough for the desktop-style tab strip. A `bool`
+     * resource rather than a width check in code, so the threshold lives next
+     * to the layouts it changes (res/values-sw600dp).
+     */
+    private val tabletUi by lazy { resources.getBoolean(R.bool.tablet_ui) }
 
-    /** True between onStartEditing and onStopEditing on the address bar. */
-    private var editingUrl = false
+    /** The desktop-style tab strip. Only ever built on a tablet. */
+    private var tabStrip: TabStripAdapter? = null
+
+    /** Last value handed to the engine, so an unchanged one isn't re-sent. */
+    private var dynamicToolbarHeight = -1
 
     /**
-     * How far the page has moved in one direction since it last changed
-     * direction. Reset on every reversal, so a scroll that wanders up and down
-     * by a few pixels never reaches either threshold.
+     * What the browser rotates to when nothing else is asking.
+     *
+     * A phone stays upright: every screen in this app is a portrait layout and
+     * turning one sideways stretches it. A tablet is a different device with a
+     * different natural posture, and locking one to portrait is absurd. The
+     * player overrides this from either — see [toggleFsOrientation].
      */
-    private var scrollRun = 0
-
-    /** Last scroll position reported by the page, to turn positions into deltas. */
-    private var lastScrollY = 0
-
-    /**
-     * The engine session the scroll observer is attached to. Held so it can be
-     * detached: a session outlives this activity and would keep it alive.
-     */
-    private var scrolledSession: EngineSession? = null
-
-    private val scrollObserver = object : EngineSession.Observer {
-        override fun onScrollChange(scrollX: Int, scrollY: Int) = onPageScrolled(scrollY)
-    }
+    private val defaultOrientation
+        get() = if (tabletUi) {
+            ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+        } else {
+            ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+        }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -364,7 +369,8 @@ class MainActivity : AppCompatActivity() {
             onAddClick = { promptAddQuickLink() },
         )
         wireToolbar()
-        wireChromeOffset()
+        wireTabStrip()
+        wireChromeBehaviour()
         wireSuggestions()
         wireDownloads()
         wirePageFeatures()
@@ -763,18 +769,15 @@ class MainActivity : AppCompatActivity() {
                 // The engine badge is re-read here rather than remembered: the
                 // Settings sheet can change it without this activity ever
                 // pausing, so onResume is not a moment that happens.
-                editingUrl = true
-                showToolbar()
+                // The drop-down hangs off a fully open bar, and a half-
+                // retracted address bar is not one you can type into.
+                expandChrome()
                 renderSearchEngine()
             }
 
-            override fun onStopEditing() {
-                editingUrl = false
-                hideSuggestions()
-            }
+            override fun onStopEditing() = hideSuggestions()
 
             override fun onCancelEditing(): Boolean {
-                editingUrl = false
                 hideSuggestions()
                 return true
             }
@@ -1251,126 +1254,120 @@ class MainActivity : AppCompatActivity() {
     // --- The top bar, and where the page starts ----------------------------
 
     /**
-     * Keep the page's top edge exactly under the chrome.
+     * Wire the bar to the page's scrolling, and tell Gecko about the geometry.
      *
-     * The page is laid out as the full height of the window and slid down by
-     * however tall the chrome currently is. That is the whole trick behind
-     * hiding the bar on scroll: nothing is ever re-measured, so GeckoView is
-     * never resized, so the page never reflows and never jumps. What moves is a
-     * `translationY`.
+     * The retracting itself is AppBarLayout's: NestedGeckoView is a
+     * nested-scroll child, PullToRefreshLayout passes the scroll up, and the
+     * app bar's behaviour consumes it before the page does. Dragging up by
+     * 20dp therefore moves the bar 20dp and scrolls the page by nothing, so
+     * the content sits still under the finger. See the note on `browserFrame`
+     * in activity_main.xml for why the hand-rolled version could not do that.
      *
-     * The cost is that the bottom of the page hangs off the bottom of the
-     * screen by the same amount — which is what [EngineView.setVerticalClipping]
-     * is for. Gecko puts a site's own bottom-fixed bar above that line instead
-     * of below the edge of the phone. [EngineView.setDynamicToolbarMaxHeight] is
-     * the other half: it tells Gecko the visible height can grow by the bar's
-     * height, so `100vh` is computed once and stays put when the bar goes.
+     * Two numbers go to the engine:
+     *
+     *  - **the maximum the visible height can grow by** — the app bar's scroll
+     *    range. Gecko computes `100vh` for the fully-retracted case once and
+     *    keeps it there, so a page laid out in viewport units does not resize
+     *    itself every time the bar moves.
+     *  - **how much of the page currently hangs off the bottom.** The scrolling
+     *    view is measured a scroll-range taller than the frame, so at rest that
+     *    much of it is below the screen. Without telling Gecko, a site's own
+     *    bottom bar would sit under the edge of the phone.
      */
-    private fun wireChromeOffset() {
-        binding.chrome.addOnLayoutChangeListener { _, _, top, _, bottom, _, oldTop, _, oldBottom ->
-            if (bottom - top != oldBottom - oldTop) applyChromeOffset()
-        }
-        // After the first layout, when the bar has a height to report.
-        binding.chrome.post {
-            runCatching {
-                binding.engineView.setDynamicToolbarMaxHeight(binding.toolbarWrapper.height)
-            }
-            applyChromeOffset()
-        }
-    }
+    private fun wireChromeBehaviour() {
+        binding.chrome.addOnOffsetChangedListener(
+            AppBarLayout.OnOffsetChangedListener { bar, verticalOffset ->
+                if (bar.totalScrollRange != dynamicToolbarHeight) {
+                    dynamicToolbarHeight = bar.totalScrollRange
+                    runCatching {
+                        binding.engineView.setDynamicToolbarMaxHeight(dynamicToolbarHeight)
+                    }
+                }
+                runCatching {
+                    binding.engineView.setVerticalClipping(bar.totalScrollRange + verticalOffset)
+                }
+            },
+        )
 
-    private fun applyChromeOffset() {
-        val offset = if (binding.chrome.isVisible) binding.chrome.height.toFloat() else 0f
-        binding.swipeRefresh.translationY = offset
-        binding.pageCover.translationY = offset
-        runCatching { binding.engineView.setVerticalClipping(offset.toInt()) }
-    }
-
-    /**
-     * Give the screen back to the page while it is being read.
-     *
-     * Scrolling down hides the bar, scrolling up brings it back — the behaviour
-     * every mobile browser has, and the reason is the same everywhere: on a
-     * 6-inch screen a fixed 56dp row is a tenth of the page, permanently, in
-     * exchange for a control you touch once a visit.
-     *
-     * Two details make it feel deliberate rather than twitchy:
-     *
-     *  - **Direction runs, not deltas.** A single scroll event is a few pixels
-     *    and would never reach a sensible threshold, while summing everything
-     *    would make the bar respond to the sum of a scroll down and back up.
-     *    [scrollRun] accumulates in one direction and resets the moment the
-     *    finger reverses, so the thresholds measure intent.
-     *  - **The top always shows it.** Within the chrome's own height of the top
-     *    of the document there is nothing gained by hiding, and it is where a
-     *    user who wants the address bar goes.
-     */
-    private fun onPageScrolled(scrollY: Int) {
-        val delta = scrollY - lastScrollY
-        lastScrollY = scrollY
-        if (delta == 0) return
-
-        if (scrollY <= binding.chrome.height) {
-            scrollRun = 0
-            showToolbar()
-            return
-        }
-
-        if ((delta > 0) != (scrollRun > 0)) scrollRun = 0
-        scrollRun += delta
-
-        val density = resources.displayMetrics.density
-        when {
-            scrollRun > TOOLBAR_HIDE_DP * density -> setToolbarHidden(true)
-            scrollRun < -TOOLBAR_SHOW_DP * density -> setToolbarHidden(false)
-        }
+        // A speed dial is not something you should be able to hide the address
+        // bar with: there is nothing to read, and the bar would then be missing
+        // on the one screen whose entire purpose is going somewhere.
+        binding.startPage.startPageScroll.isNestedScrollingEnabled = false
     }
 
     /**
-     * No animation, and that is a decision.
+     * The tablet's strip of tabs, above the address bar.
      *
-     * Sliding the bar means moving the engine view every frame, and a
-     * SurfaceView's surface follows its view by a frame — the page would tear
-     * away from the bar for the length of the animation. One frame of that is
-     * invisible; twelve are not. Every browser that animates this owns the
-     * compositor; this one borrows it.
+     * Nothing at all on a phone: the row stays `gone`, the adapter is never
+     * built, and the store collector that feeds it is never started.
      */
-    private fun setToolbarHidden(hidden: Boolean) {
-        if (hidden && !canHideToolbar()) return
-        if (hidden == toolbarHidden) return
-        toolbarHidden = hidden
-        binding.toolbarWrapper.isVisible = !hidden
+    private fun wireTabStrip() {
+        if (!tabletUi) return
+        binding.tabStripRow.isVisible = true
+
+        val adapter = TabStripAdapter(
+            onClick = { tab -> components.tabsUseCases.selectTab(tab.id) },
+            onClose = { tab ->
+                components.tabThumbnails.remove(tab.id)
+                // Closing the last one would leave MainActivity rendering an
+                // engine view with no session behind it. A browser always has
+                // a tab; this one is blank.
+                if (components.store.state.tabs.size <= 1) {
+                    components.tabsUseCases.addTab(url = HOME_URL, selectTab = true)
+                }
+                components.tabsUseCases.removeTab(tab.id, selectParentIfExists = true)
+            },
+        )
+        tabStrip = adapter
+        binding.tabStrip.adapter = adapter
+        binding.tabStrip.layoutManager =
+            LinearLayoutManager(this, LinearLayoutManager.HORIZONTAL, false)
+        binding.tabStrip.setHasFixedSize(true)
+
+        binding.btnStripNewTab.setOnClickListener {
+            leaveEditMode()
+            components.tabsUseCases.addTab(url = HOME_URL, selectTab = true)
+        }
     }
 
-    private fun showToolbar() = setToolbarHidden(false)
+    private fun renderTabStrip(tabs: List<TabSessionState>, selectedId: String?) {
+        val adapter = tabStrip ?: return
+        adapter.submit(tabs, selectedId)
+        // Switching to a tab that is off the end of the strip should not mean
+        // hunting for it.
+        adapter.selectedPosition.takeIf { it >= 0 }?.let(binding.tabStrip::scrollToPosition)
+    }
+
+    /** Put the bar back, now, without waiting for anyone to scroll up. */
+    private fun expandChrome(animate: Boolean = true) {
+        binding.chrome.setExpanded(true, animate)
+    }
 
     /**
-     * The bar stays while anything in it is being used. Typing an address with
-     * the field halfway off the screen, or losing the find bar's next/previous
-     * mid-search, is worse than the tenth of a screen it costs.
-     */
-    private fun canHideToolbar(): Boolean = !editingUrl &&
-        !inVideoFocus &&
-        !startPage.isVisible &&
-        !binding.findBar.root.isVisible &&
-        !binding.translateBar.root.isVisible
-
-    /**
-     * Follow the selected tab's engine session with [scrollObserver].
+     * Show or hide everything in the app bar.
      *
-     * The session is replaced on every tab switch, and again whenever one is
-     * suspended and rebuilt, so this cannot be done once at startup. Registered
-     * against this activity's lifecycle so a session that outlives the screen —
-     * all of them do — cannot hold it through the observer.
+     * Its *children* rather than the bar itself, because a GONE dependency
+     * keeps the bounds it had when it was last laid out, and the behaviour that
+     * positions the page reads exactly those — the page would stay pushed down
+     * by a bar that isn't there. With every child gone the bar measures to zero
+     * on its own, which is the same picture and a true one.
      */
-    private fun bindScrollObserver(session: EngineSession?) {
-        if (session === scrolledSession) return
-        scrolledSession?.unregister(scrollObserver)
-        scrolledSession = session
-        lastScrollY = 0
-        scrollRun = 0
-        showToolbar()
-        session?.register(scrollObserver, owner = this)
+    private fun setChromeVisible(visible: Boolean) {
+        if (!visible) {
+            // Any collapse in progress has to be undone first: the offset
+            // survives the children going away and would push the page up by
+            // a bar's height that no longer exists.
+            expandChrome(animate = false)
+        }
+        binding.tabStripRow.isVisible = visible && tabletUi
+        binding.toolbarWrapper.isVisible = visible
+        binding.toolbarDivider.isVisible = visible
+        if (!visible) {
+            binding.pageProgress.isVisible = false
+            binding.findBar.root.visibility = View.GONE
+            binding.translateBar.root.visibility = View.GONE
+            binding.staleBar.root.visibility = View.GONE
+        }
     }
 
     // --- Video focus (replaces PiP for the topbar play button) -------------
@@ -1397,21 +1394,14 @@ class MainActivity : AppCompatActivity() {
      * [setVideoFocus] would make the idempotence guard swallow the re-apply.
      */
     private fun applyVideoFocus(focused: Boolean) {
-        // One container now, so "all the chrome" is one line — and the page,
-        // which is slid down by the chrome's height, goes to the top of the
-        // window by itself when there is no chrome to sit under.
-        binding.chrome.isVisible = !focused
-        // The page bars are chrome too: a find bar sitting over a fullscreen
-        // video is exactly the kind of leftover that makes the mode look broken.
-        if (focused) {
-            binding.findBar.root.visibility = View.GONE
-            binding.translateBar.root.visibility = View.GONE
-        } else {
-            // A bar scrolled away before the video started should not still be
-            // away after it ends: there is nothing to scroll back up with.
-            showToolbar()
-        }
-        applyChromeOffset()
+        // One call for all of it, including the page bars — a find bar sitting
+        // over a fullscreen video is exactly the kind of leftover that makes
+        // the mode look broken. The page fills the frame by itself once the
+        // app bar measures to nothing.
+        setChromeVisible(!focused)
+        // A bar retracted before the video started should not still be
+        // retracted after it ends: there is nothing left to scroll up with.
+        if (!focused) expandChrome(animate = false)
         // Black behind the video, surface colour behind a page.
         //
         // A video almost never matches the shape of a phone, so there is always
@@ -1430,11 +1420,11 @@ class MainActivity : AppCompatActivity() {
             },
         )
         if (!focused) {
-            // Landscape belongs to the video, not to the browser. The player's
-            // rotate button asks for it; leaving the player gives it back, so a
-            // video watched sideways doesn't leave the address bar sideways
-            // too. See the manifest note on screenOrientation.
-            requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+            // Landscape is the video's, not the browser's — on a phone. The
+            // player's rotate button asks for it; leaving the player hands it
+            // back, so a video watched sideways doesn't leave the address bar
+            // sideways too. On a tablet "back" means back to free rotation.
+            requestedOrientation = defaultOrientation
         }
         // The stale bar is chrome as well, and it is the one piece that can
         // come back by itself — so it is re-derived rather than just hidden.
@@ -1696,15 +1686,26 @@ class MainActivity : AppCompatActivity() {
                         .collect(::restoreCrashedTabs)
                 }
 
-                // Fourth: follow the rendered tab's scrolling, which is what
-                // hides and shows the top bar. The engine session behind the
-                // selected tab is replaced on every switch and every restore,
-                // so the observer has to move with it.
-                launch {
-                    components.store.flow()
-                        .map { it.selectedTab?.engineState?.engineSession }
-                        .distinctUntilChanged()
-                        .collect(::bindScrollObserver)
+                // The tablet's tab strip. Distinct on the fields it actually
+                // draws rather than on the tab list: content.progress changes
+                // on every tick of every load, and rebinding the whole strip
+                // for a number nobody is showing is work for nothing.
+                if (tabletUi) {
+                    launch {
+                        components.store.flow()
+                            .map { it.tabs to it.selectedTabId }
+                            .distinctUntilChangedBy { (tabs, selected) ->
+                                selected to tabs.map { tab ->
+                                    listOf(
+                                        tab.id,
+                                        tab.content.title,
+                                        tab.content.url,
+                                        tab.content.icon?.hashCode(),
+                                    )
+                                }
+                            }
+                            .collect { (tabs, selected) -> renderTabStrip(tabs, selected) }
+                    }
                 }
 
                 // A page going stale is the one change on this screen that no
@@ -1803,14 +1804,17 @@ class MainActivity : AppCompatActivity() {
         // these bytes fetched", not "when did I last go somewhere".
         state.selectedTabId?.let { tabId ->
             if (state.loading) {
-                loadingTabs += tabId
                 staleDismissed -= tabId
                 // A new page starts at the top of itself, and with the address
                 // bar in place: you have just arrived somewhere, which is when
                 // you are most likely to want to see where.
-                lastScrollY = 0
-                scrollRun = 0
-                showToolbar()
+                //
+                // `add` answers "was this new?", so the bar opens once when the
+                // load starts. Written as `loadingTabs += tabId` this ran on
+                // every progress tick of the load — i.e. it would have shoved
+                // the bar back open under a finger scrolling a page that was
+                // still arriving.
+                if (loadingTabs.add(tabId)) expandChrome()
             } else if (loadingTabs.remove(tabId)) {
                 pageLoadedAt[tabId] = System.currentTimeMillis()
             }
@@ -1949,7 +1953,9 @@ class MainActivity : AppCompatActivity() {
      * for the rest of the page's life.
      */
     private fun renderProgress(loading: Boolean, progress: Int) {
-        binding.pageProgress.isVisible = loading
+        // A 3dp bar across the top of a video is still chrome, and the app bar
+        // is supposed to measure to nothing while the player has the screen.
+        binding.pageProgress.isVisible = loading && !inVideoFocus
         if (loading) binding.pageProgress.progress = progress
     }
 
@@ -2571,17 +2577,5 @@ class MainActivity : AppCompatActivity() {
          * quickly instead of spinning.
          */
         private const val MAX_CRASH_RESTORES = 3
-
-        /**
-         * How far the page has to travel in one direction before the top bar
-         * moves, in dp.
-         *
-         * Asymmetric on purpose. Hiding is the destructive direction — it takes
-         * away a control the user can only get back by scrolling — so it asks
-         * for a deliberate swipe. Bringing it back is what someone does when
-         * they want it *now*, so it answers on the first real upward movement.
-         */
-        private const val TOOLBAR_HIDE_DP = 24f
-        private const val TOOLBAR_SHOW_DP = 8f
     }
 }

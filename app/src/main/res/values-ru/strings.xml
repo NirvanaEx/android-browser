@@ -353,6 +353,49 @@
     <string name="clear_type_passwords">Сохранённые пароли</string>
 
     <!-- ============== Настройки: новые разделы ============== -->
+    <!-- ============== Страница, которая не открылась ============== -->
+    <string name="error_retry">Повторить</string>
+    <string name="error_back">Назад</string>
+
+    <string name="error_offline_title">Нет интернета</string>
+    <string name="error_offline_body">Телефон ни к чему не подключён. Проверьте Wi\u2011Fi или мобильные данные и попробуйте снова.</string>
+
+    <string name="error_timeout_title">Сайт не отвечает</string>
+    <string name="error_timeout_body">Соединение установилось и замолчало. Обычно это перегруженный или лежащий сайт, иногда — оборвавшаяся сеть.</string>
+
+    <string name="error_refused_title">Сайт отклонил соединение</string>
+    <string name="error_refused_body">Что-то ответило и отказало. Возможно, сервер выключен или его закрывает прокси либо файрвол по дороге.</string>
+
+    <string name="error_host_title">Такого сайта нет</string>
+    <string name="error_host_body">Адрес никуда не разрешается. Проверьте написание — его также могли заблокировать на уровне DNS, и тогда поможет VPN.</string>
+
+    <string name="error_ssl_title">Соединение не защищено</string>
+    <string name="error_ssl_body">Сертификат сайта не проходит проверку, то есть непонятно, с кем вы на самом деле разговариваете. Браузер остановился, а не стал гадать.</string>
+
+    <string name="error_blocked_title">Опасный сайт</string>
+    <string name="error_blocked_body">Адрес есть в списке страниц, которые воруют пароли или ставят вредоносные программы. Он не был открыт.</string>
+
+    <string name="error_address_title">Такой адрес не открыть</string>
+    <string name="error_address_body">Это не тот адрес, по которому браузер умеет ходить: опечатка, незнакомый протокол или запрещённый порт.</string>
+
+    <string name="error_redirect_title">Слишком много перенаправлений</string>
+    <string name="error_redirect_body">Сайт по кругу отправляет браузер сам к себе. Чаще всего помогает удалить куки этого сайта.</string>
+
+    <string name="error_corrupt_title">Страница пришла повреждённой</string>
+    <string name="error_corrupt_body">То, что вернулось, не читается. Обычно это сбой по дороге — стоит загрузить ещё раз.</string>
+
+    <string name="error_crashed_title">Вкладка не выдержала</string>
+    <string name="error_crashed_body">Странице не хватило памяти или она наткнулась на ошибку, и её пришлось остановить. Повторная загрузка обычно помогает.</string>
+
+    <string name="error_file_title">Файл недоступен</string>
+    <string name="error_file_body">По этому пути ничего нет, либо браузеру не разрешено его читать.</string>
+
+    <string name="error_https_title">Работает только по незащищённому HTTP</string>
+    <string name="error_https_body">У сайта нет защищённой версии, и всё отправленное на него шло бы открытым текстом.</string>
+
+    <string name="error_unknown_title">Не удалось открыть страницу</string>
+    <string name="error_unknown_body">Загрузка не удалась, а движок не сказал почему. Попробуйте ещё раз; если повторяется — скорее всего, дело в адресе.</string>
+
     <string name="settings_section_background">Работа в фоне</string>
     <string name="settings_keep_alive">Не выгружать браузер из памяти</string>
     <string name="settings_keep_alive_on">Разрешено. Открытые страницы переживают уход в другое приложение.</string>

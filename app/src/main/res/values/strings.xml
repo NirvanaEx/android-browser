@@ -370,6 +370,49 @@
     <string name="clear_type_cache">Cache</string>
     <string name="clear_type_passwords">Saved passwords</string>
 
+    <!-- ============== The page that isn't a page ============== -->
+    <string name="error_retry">Try again</string>
+    <string name="error_back">Go back</string>
+
+    <string name="error_offline_title">No internet</string>
+    <string name="error_offline_body">The phone isn\'t connected to anything. Check Wi\u2011Fi or mobile data and try again.</string>
+
+    <string name="error_timeout_title">The site isn\'t answering</string>
+    <string name="error_timeout_body">The connection was made and then went quiet. Usually the site is overloaded or down; sometimes the network dropped mid-request.</string>
+
+    <string name="error_refused_title">The site refused the connection</string>
+    <string name="error_refused_body">Something answered and said no. The server may be off, or a proxy or firewall in the way may be blocking it.</string>
+
+    <string name="error_host_title">No such site</string>
+    <string name="error_host_body">This address doesn\'t resolve to anything. Check the spelling — it may also be blocked at the DNS level, in which case a VPN would reach it.</string>
+
+    <string name="error_ssl_title">The connection isn\'t secure</string>
+    <string name="error_ssl_body">The site\'s certificate doesn\'t check out, so there is no way to know who you are actually talking to. The browser stopped rather than guess.</string>
+
+    <string name="error_blocked_title">Dangerous site</string>
+    <string name="error_blocked_body">This address is on a list of pages that steal passwords or install malware. It was not opened.</string>
+
+    <string name="error_address_title">That address can\'t be opened</string>
+    <string name="error_address_body">It isn\'t a web address the browser knows how to follow — a typo, an unknown protocol, or a port that isn\'t allowed.</string>
+
+    <string name="error_redirect_title">Too many redirects</string>
+    <string name="error_redirect_body">The site keeps sending the browser to itself in a loop. Clearing this site\'s cookies often ends it.</string>
+
+    <string name="error_corrupt_title">The page arrived damaged</string>
+    <string name="error_corrupt_body">What came back could not be read. Usually a glitch on the way; loading it again is worth a try.</string>
+
+    <string name="error_crashed_title">This tab gave out</string>
+    <string name="error_crashed_body">The page ran out of memory or hit a bug and had to be stopped. Loading it again usually works.</string>
+
+    <string name="error_file_title">File not available</string>
+    <string name="error_file_body">There is no file at that path, or the browser isn\'t allowed to read it.</string>
+
+    <string name="error_https_title">Only available over plain HTTP</string>
+    <string name="error_https_body">The site has no secure version, and everything sent to it would travel in the open.</string>
+
+    <string name="error_unknown_title">Couldn\'t open the page</string>
+    <string name="error_unknown_body">The load failed and the engine didn\'t say why. Try again, and if it repeats, the address is probably the problem.</string>
+
     <!-- ============== Staying open in the background ============== -->
     <string name="settings_section_background">Staying open</string>
     <string name="settings_keep_alive">Keep the browser in memory</string>

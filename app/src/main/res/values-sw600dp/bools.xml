@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  sw600dp — the smallest screen dimension, so it is true for a 7" tablet in
+  either orientation and false for every phone in both. Deliberately not
+  w600dp: that one turns on when a phone is turned sideways, and a phone on its
+  side is still a phone.
+-->
+<resources>
+    <bool name="tablet_ui">true</bool>
+</resources>

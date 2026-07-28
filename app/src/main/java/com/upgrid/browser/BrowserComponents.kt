@@ -6,6 +6,7 @@ import com.upgrid.browser.bookmarks.BookmarkStore
 import com.upgrid.browser.download.DownloadManager
 import com.upgrid.browser.download.DownloadRecords
 import com.upgrid.browser.download.FileNames
+import com.upgrid.browser.errors.ErrorPageInterceptor
 import com.upgrid.browser.fullscreen.VideoPlayerBridge
 import com.upgrid.browser.history.HistoryStore
 import com.upgrid.browser.logins.LoginStore
@@ -70,6 +71,11 @@ class BrowserComponents(val context: Context) {
                 // Without a delegate the engine hands us a null filename and
                 // every file would be saved as its URL's last path segment.
                 downloadDelegate = FileNames,
+                // What the user sees when a page doesn't arrive. Without it
+                // the engine falls back to Firefox's own about:neterror, in
+                // Gecko's build language, naming PR_CONNECT_RESET_ERROR at
+                // somebody who typed an address and got nothing.
+                requestInterceptor = ErrorPageInterceptor(context),
             )
         )
     }

@@ -65,26 +65,21 @@
           (SessionStorage) that this flag stops the system second-guessing.
         -->
         <!--
-          screenOrientation="portrait": rotating the phone is a thing you do to
-          a video, not to a browser.
+          Orientation is NOT declared here. It used to be `portrait` on every
+          activity, which was right for a phone and absurd on a tablet — a
+          device whose natural posture is landscape, locked upright by a
+          hard-coded attribute that no resource qualifier can reach.
+          BrowserApplication.lockOrientationOnPhones does it instead, once, for
+          every screen, off the same sw600dp bool that turns on the tab strip.
 
-          Turning the phone sideways while reading rotated the whole browser —
-          the address bar, the tab grid, the settings sheet — and every one of
-          those is a portrait layout stretched across a wide screen. The one
-          place landscape is worth having is the player, which has its own
-          rotate button; it asks for landscape while it is up (see
-          MainActivity.toggleFsOrientation) and gives it back on the way out, so
-          leaving a video no longer strands the browser sideways.
-
-          configChanges already lists orientation, so the player's request is a
-          resize, not a rebuild.
+          configChanges already lists orientation, so the player's landscape
+          request (MainActivity.toggleFsOrientation) is a resize, not a rebuild.
         -->
         <activity
             android:name=".MainActivity"
             android:exported="true"
             android:launchMode="singleTask"
             android:alwaysRetainTaskState="true"
-            android:screenOrientation="portrait"
             android:windowSoftInputMode="stateAlwaysHidden|adjustNothing"
             android:supportsPictureInPicture="true"
             android:configChanges="screenSize|smallestScreenSize|screenLayout|orientation|keyboard|keyboardHidden|navigation"
@@ -117,7 +112,6 @@
         <activity
             android:name=".history.HistoryActivity"
             android:exported="false"
-            android:screenOrientation="portrait"
             android:parentActivityName=".MainActivity"
             android:windowSoftInputMode="stateAlwaysHidden"
             android:configChanges="screenSize|smallestScreenSize|screenLayout|orientation|keyboard|keyboardHidden|navigation" />
@@ -125,7 +119,6 @@
         <activity
             android:name=".bookmarks.BookmarksActivity"
             android:exported="false"
-            android:screenOrientation="portrait"
             android:parentActivityName=".MainActivity"
             android:windowSoftInputMode="stateAlwaysHidden"
             android:configChanges="screenSize|smallestScreenSize|screenLayout|orientation|keyboard|keyboardHidden|navigation" />
@@ -133,7 +126,6 @@
         <activity
             android:name=".tabs.TabsActivity"
             android:exported="false"
-            android:screenOrientation="portrait"
             android:parentActivityName=".MainActivity"
             android:windowSoftInputMode="stateAlwaysHidden"
             android:configChanges="screenSize|smallestScreenSize|screenLayout|orientation|keyboard|keyboardHidden|navigation" />
@@ -144,7 +136,6 @@
         <activity
             android:name=".account.LoginActivity"
             android:exported="false"
-            android:screenOrientation="portrait"
             android:excludeFromRecents="true"
             android:parentActivityName=".MainActivity"
             android:windowSoftInputMode="adjustResize"
@@ -153,7 +144,6 @@
         <activity
             android:name=".download.DownloadsActivity"
             android:exported="false"
-            android:screenOrientation="portrait"
             android:parentActivityName=".MainActivity"
             android:windowSoftInputMode="stateAlwaysHidden"
             android:configChanges="screenSize|smallestScreenSize|screenLayout|orientation|keyboard|keyboardHidden|navigation" />
@@ -164,7 +154,6 @@
         <activity
             android:name=".logins.LoginsActivity"
             android:exported="false"
-            android:screenOrientation="portrait"
             android:excludeFromRecents="true"
             android:parentActivityName=".MainActivity"
             android:windowSoftInputMode="stateAlwaysHidden"
@@ -173,7 +162,6 @@
         <activity
             android:name=".privacy.SiteDataActivity"
             android:exported="false"
-            android:screenOrientation="portrait"
             android:parentActivityName=".MainActivity"
             android:windowSoftInputMode="stateAlwaysHidden"
             android:configChanges="screenSize|smallestScreenSize|screenLayout|orientation|keyboard|keyboardHidden|navigation" />
@@ -187,7 +175,6 @@
         <activity
             android:name=".vpn.VpnActivity"
             android:exported="false"
-            android:screenOrientation="portrait"
             android:parentActivityName=".MainActivity"
             android:windowSoftInputMode="stateAlwaysHidden|adjustResize"
             android:configChanges="screenSize|smallestScreenSize|screenLayout|orientation|keyboard|keyboardHidden|navigation" />

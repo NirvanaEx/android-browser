@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html>
+<!--
+  The page the browser shows when a page didn't arrive.
+
+  Loaded as resource://android/assets/error.html?… — GeckoView maps that scheme
+  onto the APK's assets, which is the only way to put a real page in front of a
+  failed load: a top-level data: URI is blocked by Gecko, and an about: page
+  would need a whole registered protocol handler.
+
+  Everything on it comes in through the query string, already localised by
+  ErrorPageInterceptor, because strings belong in strings.xml and not in a file
+  the translator will never open. This file holds no text at all.
+
+    t  title        m  message        u  the address that failed
+    r  retry label  b  back label
+
+  Retry is a fresh navigation to `u`, not location.reload() — reloading would
+  reload *this* page, which is the one thing that is certain to work.
+-->
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title></title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      --bg: #fbf8ff;
+      --fg: #1b1b1f;
+      --muted: #46464f;
+      --accent: #3d5bb0;
+      --chip: #e3e1ec;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #131318;
+        --fg: #e5e1e9;
+        --muted: #c6c5d0;
+        --accent: #b6c4ff;
+        --chip: #2a2a31;
+      }
+    }
+    html, body { margin: 0; height: 100%; }
+    body {
+      background: var(--bg);
+      color: var(--fg);
+      font: 16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      box-sizing: border-box;
+    }
+    main { width: 100%; max-width: 420px; }
+    .mark {
+      width: 56px; height: 56px;
+      border-radius: 18px;
+      background: var(--chip);
+      display: flex; align-items: center; justify-content: center;
+      margin-bottom: 20px;
+    }
+    .mark svg { width: 28px; height: 28px; fill: var(--muted); }
+    h1 { margin: 0 0 10px; font-size: 22px; line-height: 1.3; font-weight: 600; }
+    p { margin: 0; color: var(--muted); font-size: 15px; }
+    .url {
+      margin-top: 16px;
+      font-size: 13px;
+      color: var(--muted);
+      opacity: .8;
+      word-break: break-all;
+    }
+    .row { margin-top: 26px; display: flex; gap: 10px; flex-wrap: wrap; }
+    button {
+      font: inherit; font-size: 15px;
+      border: 0; border-radius: 22px;
+      padding: 11px 22px;
+      cursor: pointer;
+    }
+    #retry { background: var(--accent); color: var(--bg); }
+    #back { background: var(--chip); color: var(--fg); }
+  </style>
+</head>
+<body>
+  <main>
+    <div class="mark">
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M12 2 1 21h22L12 2zm1 14h-2v2h2v-2zm0-7h-2v5h2V9z"/>
+      </svg>
+    </div>
+    <h1 id="title"></h1>
+    <p id="body"></p>
+    <div class="url" id="url"></div>
+    <div class="row">
+      <button id="retry" type="button"></button>
+      <button id="back" type="button"></button>
+    </div>
+  </main>
+  <script>
+    (function () {
+      var q = new URLSearchParams(location.search);
+      function put(id, value) {
+        document.getElementById(id).textContent = value || "";
+      }
+
+      var title = q.get("t") || "";
+      document.title = title;
+      put("title", title);
+      put("body", q.get("m"));
+
+      var url = q.get("u") || "";
+      put("url", url);
+
+      var retry = document.getElementById("retry");
+      retry.textContent = q.get("r") || "";
+      if (url) {
+        retry.addEventListener("click", function () { location.href = url; });
+      } else {
+        retry.style.display = "none";
+      }
+
+      var back = document.getElementById("back");
+      back.textContent = q.get("b") || "";
+      if (history.length > 1) {
+        back.addEventListener("click", function () { history.back(); });
+      } else {
+        back.style.display = "none";
+      }
+    })();
+  </script>
+</body>
+</html>

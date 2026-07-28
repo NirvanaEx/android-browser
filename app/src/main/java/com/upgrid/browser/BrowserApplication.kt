@@ -1,9 +1,12 @@
 package com.upgrid.browser
 
+import android.app.Activity
 import android.app.ActivityManager
 import android.app.Application
 import android.content.ComponentCallbacks2
 import android.content.Context
+import android.content.pm.ActivityInfo
+import android.os.Bundle
 import android.util.Log
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
@@ -112,6 +115,38 @@ class BrowserApplication : Application() {
 
         attachAutosave(components.sessionStorage)
         watchAppLifecycle()
+        lockOrientationOnPhones()
+    }
+
+    /**
+     * Keep a phone upright; leave a tablet alone.
+     *
+     * Every screen in this app is a portrait layout — a list, a form, a sheet —
+     * and turning a phone sideways stretches one across a wide screen for no
+     * gain. A tablet is a different device: landscape is its natural posture,
+     * it has the width for the desktop-style tab strip, and locking it upright
+     * would be absurd.
+     *
+     * Here rather than in the manifest because `android:screenOrientation` is a
+     * literal — no resource qualifier reaches it, so "portrait on phones only"
+     * cannot be expressed there at all. One callback covers every activity,
+     * including any added later, and MainActivity still overrides it for the
+     * player's rotate button.
+     */
+    private fun lockOrientationOnPhones() {
+        if (resources.getBoolean(R.bool.tablet_ui)) return
+        registerActivityLifecycleCallbacks(object : ActivityLifecycleCallbacks {
+            override fun onActivityCreated(activity: Activity, state: Bundle?) {
+                activity.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+            }
+
+            override fun onActivityStarted(activity: Activity) = Unit
+            override fun onActivityResumed(activity: Activity) = Unit
+            override fun onActivityPaused(activity: Activity) = Unit
+            override fun onActivityStopped(activity: Activity) = Unit
+            override fun onActivitySaveInstanceState(activity: Activity, out: Bundle) = Unit
+            override fun onActivityDestroyed(activity: Activity) = Unit
+        })
     }
 
     /**
