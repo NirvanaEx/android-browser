@@ -20,6 +20,9 @@ GeckoView-based Android browser whose only "killer feature" is **uBlock Origin r
 ```
 app/src/main/
 ├── AndroidManifest.xml             ← intent-filters for VIEW http(s), default browser
+├── assets/error.{html,css,js}      ← the page shown when a page didn't arrive.
+│                                     Three files, and it has to be three — see
+│                                     "The page that isn't a page"
 ├── assets/extensions/upgrid_fullscreen/  ← the one bundled WebExtension: background.js relay +
 │                                     player.js/observer.js (video) + find.js + translate.js + logins.js
 ├── java/com/upgrid/browser/
@@ -72,6 +75,7 @@ app/src/main/
 │   │   ├── VpnSettings.kt          ← the profile as fields; wg-quick in and out
 │   │   └── VpnActivity.kt          ← the form, the switch, the key pair
 │   └── ui/
+│       ├── Motion.kt               ← durations, curves, setVisibleAnimated/bump
 │       ├── HostTile.kt             ← per-host letter + color, shared by every list
 │       ├── SiteIconView.kt         ← that letter with the real favicon over it
 │       ├── PullToRefreshLayout.kt  ← takes the pull back from GeckoView at scroll 0
@@ -815,6 +819,36 @@ the network is touched once per site). The coloured letter stays underneath
 rather than being swapped out, so a tile is never blank while a fetch is in
 flight and never blank for a site with no icon at all.
 
+## The start page
+
+Three parts, in the order the eye reads them: the brand lockup, a search field,
+the shortcuts in a card.
+
+**The field does not search.** Tapping it calls `toolbar.editMode()` — the
+address bar at the top, the one that already knows what a typed line means, has
+the suggestions and shows which engine will answer. It is on the start page
+because the address bar is at the far end of a six-inch phone from the thumb
+holding it, and because a browser whose start page has nowhere to type is the
+thing everyone notices and nobody can name. A second `EditText` here would be a
+second thing to keep in step with the first.
+
+**`about:blank` is a marker, not an address.** `renderChrome` blanks the
+toolbar's URL on the start page, which is also what makes the toolbar draw its
+hint — before that the bar read "about:blank", and tapping it dropped that
+string into the edit field, selected.
+
+The grid's column count is `R.integer.start_page_columns` (4, six on
+`sw600dp`), cells divide their row rather than being a fixed width, and a short
+last row is padded with spacers so four columns and six line up the same way.
+Content stays a column on a tablet by way of `start_page_side` rather than a
+max-width, which LinearLayout does not have.
+
+What this replaced looked cheap for reasons worth remembering: a wordmark set in
+34sp of light blue with nothing above it (which is what a page looks like before
+its stylesheet arrives), a grid of saturated letter tiles floating on the
+background with no container, and no way to start typing without reaching for
+the top of the screen.
+
 ## Omnibar suggestions
 
 Typing in the URL bar drops down a list built from what the user has already
@@ -1114,9 +1148,36 @@ height to spare for one.
 The strip is deliberately thinner than the tabs screen: no previews, no filter,
 no list/grid choice. It exists so that switching costs one tap instead of a trip
 to another screen, which is the whole reason a desktop browser has tabs across
-the top. Everything else is still behind the counter button. Tabs are a fixed
-176dp so the strip doesn't reshuffle itself as titles arrive, and it scrolls to
-the selected one so switching to a tab that is off the end isn't a hunt.
+the top. Everything else is still behind the counter button.
+
+**Tabs share the strip's width; they do not have one.** That is the single
+difference between a row of tabs and a row of chips, and the first version got
+it wrong — fixed-width tabs left half the strip empty with three open and
+started scrolling at six, which is what "ужасно" was about. The rule is
+Chrome's: `strip ÷ count`, clamped to `tab_strip_tab_min`/`_max`, and only once
+every tab is at the floor does the strip scroll. The ✕ is dropped below
+`tab_strip_close_min` from every tab except the current one — it costs a third
+of a narrow tab, and the tab you are looking at is the one you are most likely
+to close. The width is applied in `onBindViewHolder`, so opening a tab
+re-measures all of them; that is why the adapter is `notifyDataSetChanged` and
+why the RecyclerView has no item animator.
+
+**The selected tab is painted `colorSurface` — the toolbar's own colour — with
+its top corners rounded and its bottom edge square**, and the strip behind it
+gets `@color/tab_strip_bg`, one step *away* from the surface in both themes
+(darker in light, darker still in dark, since every `surfaceContainer*` in the
+dark scheme goes the wrong way). So the current tab reads as joined to the bar
+below it and the rest as sitting behind it. That, not a highlight colour, is
+what makes a strip look like tabs. A hairline separates neighbours; the adapter
+drops it next to the selected tab and after the last one.
+
+**A tablet's bar also carries back, forward and reload** (`wireTabletChrome`),
+all three `gone` on a phone, where they live in the app menu's quick strip
+because four 44dp targets plus the address chip already fill the bar. Reload
+doubles as stop while a page is arriving, and reads the loading state at the
+moment of the tap rather than swapping listeners. The strip's own ⊕ is the
+tablet's new-tab button, so `btnTopNewTab` is hidden there — two of them on one
+bar is one too many.
 
 **Orientation moved out of the manifest** for this. `android:screenOrientation`
 takes a literal — no resource qualifier reaches it — so "portrait on phones
@@ -1145,6 +1206,24 @@ arrive URL-encoded in the query, so every sentence lives in strings.xml next to
 the rest of the app's. Retry is a fresh navigation to the failed address rather
 than `location.reload()`, which would reload the error page — the one thing
 guaranteed to work.
+
+**Two rules govern that page, and breaking either one gives you a blank
+screen** — which is exactly how it shipped the first time, and what the user
+reported as "нет текстов, просто открылась страница":
+
+- **The stylesheet and the script are separate files** (`error.css`,
+  `error.js`). A document loaded from `resource://` is system-privileged, and
+  Gecko puts a strict CSP on those — `default-src resource:; object-src 'none'`,
+  with no `'unsafe-inline'`. An inline `<style>` and an inline `<script>` are
+  both dropped without a word. Mozilla's own error page links out to
+  `error_style.css` and `errorPageScripts.js` for precisely this reason; that
+  is what it is telling you.
+- **The query is read from `document.documentURI`, never from
+  `location.search`.** Gecko loads this with `LOAD_ERROR_PAGE`, which is what
+  keeps the address bar showing the address the user asked for — so `location`
+  is the *failed* page, and its query string is whatever that URL happened to
+  carry. (The same mechanism is why relative `href="error.css"` resolves against
+  the error page and not against the site that didn't answer.)
 
 `browser-errorpages` would have done all of this in one line
 (`ErrorPages.createUrlEncodedErrorPage`) and it is already on the classpath,
@@ -1175,6 +1254,50 @@ this and a phone that buzzes for the launcher's long press should buzz the same
 way here. `View.performHapticFeedback` is a no-op when the user has turned
 haptics off system-wide, so the phone's own setting is honoured without the app
 asking about it; the switch in Settings sits on top of that, not instead of it.
+
+## How things move
+
+[ui/Motion.kt](app/src/main/java/com/upgrid/browser/ui/Motion.kt) is the whole
+vocabulary: two durations (`QUICK` for something answering you, `STANDARD` for
+something arriving), Material's easing curves, and three helpers —
+`setVisibleAnimated`, `bump`, and the interpolators themselves. One file so that
+everything that appears or disappears does it at the same speed; a browser where
+each panel has its own idea of how fast a fade is looks hand-assembled.
+
+The app read as wooden for one reason: nothing moved. Every change was a cut —
+a drop-down that is there on one frame and gone the next, a counter that
+teleports from 3 to 4, a progress bar that jumps in thirds and then vanishes.
+The eye reads a cut as a glitch and movement as an object.
+
+What moves, and why each one earns it:
+
+| what | why |
+|---|---|
+| start page | it covers the page; a cut looks like a navigation that failed |
+| omnibar drop-down | it should look like it came out of the field above it |
+| tab counter (`bump`) | the number changed because of something off-screen |
+| ▶ player button | it appears mid-page under a resting thumb |
+| progress bar | runs to 100 and fades, rather than disappearing at 80% |
+| favicons on the start page | eight tiles changing face in a stutter |
+| screens (`windowAnimationStyle`) | history, bookmarks and tabs are *inside* the browser, so they come up from behind rather than sliding in from an edge |
+| app menu (`animationStyle`) | grows out of the ⋮ it belongs to |
+
+Three rules for anything added later:
+
+- **Nothing waits on anything.** Every animation is a view's own property
+  animator, so a second call cancels the first instead of queueing behind it.
+  State is set immediately; the movement catches up.
+- **Idempotent in both directions, including mid-animation.** A plain
+  `visible == isVisible` guard is wrong: a view fading out is still `VISIBLE`,
+  so asking for it back returns early and leaves it stuck at alpha 0. That is
+  what the alpha and translation tests in `setVisibleAnimated` are for.
+- **Don't animate the app bar's height.** It is an `AppBarLayout` whose offset
+  the page's position is derived from (see the toolbar section above); animating
+  its children's visibility moves the page. Fade what is *in* it, never it.
+
+The activity animations are deliberately a small scale plus a fade. MainActivity's
+window has a hole in it where GeckoView's surface shows through, and that surface
+does not scale with the window — a big transform is exactly where that shows.
 
 ## Google account & sync
 

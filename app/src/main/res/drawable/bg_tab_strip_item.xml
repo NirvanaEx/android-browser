@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The shape behind one tab in the tablet strip.
+
+  Selected: colorSurface — the toolbar's own colour — with the top corners
+  rounded and the bottom two square, so the tab and the bar below it are one
+  surface with no seam. Unselected: nothing at all. The strip's own background
+  shows through, which is what makes the front tab look like it is in front
+  rather than merely a different colour.
+
+  The touch feedback is the chip's `foreground`, not a state in here: a ripple
+  on a transparent background still needs bounds to draw in.
+-->
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:state_selected="true">
+        <shape android:shape="rectangle">
+            <solid android:color="?attr/colorSurface" />
+            <corners
+                android:topLeftRadius="10dp"
+                android:topRightRadius="10dp"
+                android:bottomLeftRadius="0dp"
+                android:bottomRightRadius="0dp" />
+        </shape>
+    </item>
+    <item>
+        <shape android:shape="rectangle">
+            <solid android:color="@android:color/transparent" />
+            <corners android:radius="10dp" />
+        </shape>
+    </item>
+</selector>

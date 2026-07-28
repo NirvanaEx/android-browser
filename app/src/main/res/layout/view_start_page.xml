@@ -1,11 +1,25 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  Speed-dial start page. Sits as an overlay on top of GeckoEngineView and is
-  toggled visible by MainActivity whenever the selected tab is at about:blank.
+  The start page. Sits as an overlay on top of GeckoEngineView and is toggled
+  visible by MainActivity whenever the selected tab is at about:blank.
 
-  Tiles are inflated programmatically into [quickLinksGrid] from
-  [QuickLink.SEED] — 4 per row, two rows. We emit horizontal LinearLayout rows
-  on the fly to avoid pulling in androidx.gridlayout for an 8-cell static grid.
+  Three parts, in the order the eye reads them:
+
+    1. the brand lockup — the launcher's own mark above the name, rather than
+       the name alone set in 34sp of light blue. A wordmark on its own is what
+       a page looks like before its stylesheet loads;
+    2. the search field. It doesn't search: it hands focus to the address bar
+       at the top, which is the same field. It is here because the address bar
+       is at the far end of a six-inch phone from the thumb holding it, and
+       because a browser's start page having nowhere to type is the thing
+       everyone notices and nobody can name;
+    3. the shortcuts, in a card. The grid used to float on the background with
+       nothing around it, which reads as leftover space rather than as a
+       section — and this app already says "a group of things" with a card
+       everywhere else (see values/styles.xml).
+
+  Tiles are inflated into [quickLinksGrid] by StartPagePresenter, in rows of
+  R.integer.start_page_columns — four on a phone, six on a tablet.
 -->
 <androidx.core.widget.NestedScrollView xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/startPageScroll"
@@ -18,36 +32,103 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="vertical"
-        android:paddingTop="56dp"
-        android:paddingBottom="32dp"
-        android:paddingHorizontal="16dp"
+        android:paddingTop="@dimen/start_page_top"
+        android:paddingBottom="28dp"
+        android:paddingStart="@dimen/start_page_side"
+        android:paddingEnd="@dimen/start_page_side"
         android:gravity="center_horizontal">
 
-        <!-- Brand wordmark / hero. Primary tint on surface — no separate logo asset. -->
+        <ImageView
+            android:layout_width="52dp"
+            android:layout_height="52dp"
+            android:contentDescription="@null"
+            android:src="@drawable/ic_brand_mark" />
+
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:textSize="34sp"
-            android:textStyle="bold"
-            android:fontFamily="sans-serif-light"
-            android:letterSpacing="0.04"
-            android:textColor="?attr/colorPrimary"
+            android:layout_marginTop="14dp"
+            android:textSize="22sp"
+            android:fontFamily="sans-serif-medium"
+            android:letterSpacing="0.01"
+            android:textColor="?attr/colorOnSurface"
             android:text="@string/app_name" />
 
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginTop="6dp"
+            android:layout_marginTop="4dp"
             android:textSize="13sp"
             android:textColor="?attr/colorOnSurfaceVariant"
             android:text="@string/start_page_tagline" />
 
+        <!--
+          Not an input. Tapping it puts the cursor in the real address bar —
+          one field, one set of suggestions, one place that knows what a typed
+          line means. A second EditText here would be a second thing to keep in
+          step with the first.
+        -->
         <LinearLayout
-            android:id="@+id/quickLinksGrid"
-            android:layout_width="wrap_content"
+            android:id="@+id/startSearch"
+            android:layout_width="match_parent"
+            android:layout_height="52dp"
+            android:layout_marginTop="26dp"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:paddingStart="18dp"
+            android:paddingEnd="18dp"
+            android:background="@drawable/bg_start_search"
+            android:clickable="true"
+            android:focusable="true"
+            android:contentDescription="@string/omnibar_hint">
+
+            <ImageView
+                android:layout_width="20dp"
+                android:layout_height="20dp"
+                android:contentDescription="@null"
+                android:src="@drawable/ic_find"
+                android:tint="?attr/colorOnSurfaceVariant" />
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:layout_marginStart="12dp"
+                android:maxLines="1"
+                android:ellipsize="end"
+                android:textSize="15sp"
+                android:textColor="?attr/colorOnSurfaceVariant"
+                android:text="@string/omnibar_hint" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="44dp"
-            android:orientation="vertical" />
+            android:layout_marginTop="24dp"
+            android:orientation="vertical"
+            android:paddingTop="12dp"
+            android:paddingBottom="8dp"
+            android:paddingStart="6dp"
+            android:paddingEnd="6dp"
+            android:background="@drawable/bg_start_card">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="12dp"
+                android:layout_marginBottom="6dp"
+                android:letterSpacing="0.06"
+                android:textAllCaps="true"
+                android:textAppearance="?attr/textAppearanceLabelMedium"
+                android:textColor="?attr/colorPrimary"
+                android:text="@string/start_page_quick_links" />
+
+            <LinearLayout
+                android:id="@+id/quickLinksGrid"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical" />
+        </LinearLayout>
 
         <View
             android:layout_width="match_parent"

@@ -94,11 +94,12 @@
         <LinearLayout
             android:id="@+id/tabStripRow"
             android:layout_width="match_parent"
-            android:layout_height="42dp"
+            android:layout_height="40dp"
             android:orientation="horizontal"
-            android:gravity="center_vertical"
-            android:paddingStart="6dp"
-            android:paddingEnd="4dp"
+            android:gravity="bottom"
+            android:paddingStart="4dp"
+            android:paddingEnd="2dp"
+            android:background="@color/tab_strip_bg"
             android:visibility="gone"
             app:layout_scrollFlags="scroll|enterAlways|snap"
             tools:visibility="visible">
@@ -112,10 +113,17 @@
                 android:overScrollMode="never"
                 android:scrollbars="none" />
 
+            <!--
+              New tab, at the end of the strip. Pinned rather than riding along
+              after the last tab, so it is still there when the tabs have
+              filled the strip and started scrolling — which is the moment you
+              are most likely to want it.
+            -->
             <ImageButton
                 android:id="@+id/btnStripNewTab"
-                android:layout_width="36dp"
-                android:layout_height="36dp"
+                android:layout_width="34dp"
+                android:layout_height="34dp"
+                android:layout_gravity="center_vertical"
                 android:padding="0dp"
                 android:scaleType="center"
                 android:background="?attr/selectableItemBackgroundBorderless"
@@ -145,6 +153,55 @@
                 android:contentDescription="@string/nav_home"
                 android:src="@drawable/ic_home"
                 android:tint="?attr/colorOnSurface" />
+
+            <!--
+              Back / forward / reload, tablets only (all three `gone` until
+              MainActivity.wireTabletChrome shows them).
+
+              On a phone these live in the app menu's quick strip, because four
+              44dp targets plus the address already fill the bar. A tablet's bar
+              is twice as wide and mostly empty, and every desktop browser puts
+              them here — including the one in the screenshots this was drawn
+              from. Reload doubles as stop while a page is arriving.
+            -->
+            <ImageButton
+                android:id="@+id/btnTopBack"
+                android:layout_width="44dp"
+                android:layout_height="44dp"
+                android:padding="0dp"
+                android:scaleType="center"
+                android:visibility="gone"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:contentDescription="@string/nav_back"
+                android:src="@drawable/ic_arrow_back"
+                android:tint="?attr/colorOnSurface"
+                tools:visibility="visible" />
+
+            <ImageButton
+                android:id="@+id/btnTopForward"
+                android:layout_width="44dp"
+                android:layout_height="44dp"
+                android:padding="0dp"
+                android:scaleType="center"
+                android:visibility="gone"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:contentDescription="@string/nav_forward"
+                android:src="@drawable/ic_arrow_forward"
+                android:tint="?attr/colorOnSurface"
+                tools:visibility="visible" />
+
+            <ImageButton
+                android:id="@+id/btnTopReload"
+                android:layout_width="44dp"
+                android:layout_height="44dp"
+                android:padding="0dp"
+                android:scaleType="center"
+                android:visibility="gone"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:contentDescription="@string/menu_refresh"
+                android:src="@drawable/ic_refresh"
+                android:tint="?attr/colorOnSurface"
+                tools:visibility="visible" />
 
             <!--
               paddingTop/paddingBottom="0dp" are load-bearing, not tidiness.

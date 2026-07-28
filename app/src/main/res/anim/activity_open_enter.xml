@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  A screen arriving on top of another one. Material's forward motion: it comes
+  up from slightly behind and settles, rather than sliding in from an edge —
+  history, bookmarks and the tabs screen are all *inside* the browser, not
+  beside it, and a sideways slide says otherwise.
+
+  The scale is deliberately small. MainActivity's window has a hole in it where
+  GeckoView's surface shows through (see CLAUDE.md), and a big scale on a window
+  whose surface layer doesn't scale with it is exactly where that shows.
+-->
+<set xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shareInterpolator="false">
+
+    <alpha
+        android:fromAlpha="0.0"
+        android:toAlpha="1.0"
+        android:duration="200"
+        android:interpolator="@android:interpolator/decelerate_quint" />
+
+    <scale
+        android:fromXScale="0.96"
+        android:fromYScale="0.96"
+        android:toXScale="1.0"
+        android:toYScale="1.0"
+        android:pivotX="50%p"
+        android:pivotY="50%p"
+        android:duration="220"
+        android:interpolator="@android:interpolator/decelerate_quint" />
+</set>

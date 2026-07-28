@@ -66,6 +66,9 @@ import com.upgrid.browser.sync.SyncEngine
 import com.upgrid.browser.tabs.TabsActivity
 import com.upgrid.browser.tabs.TabStripAdapter
 import com.upgrid.browser.tabs.WindowRequests
+import com.upgrid.browser.ui.Motion
+import com.upgrid.browser.ui.bump
+import com.upgrid.browser.ui.setVisibleAnimated
 import com.upgrid.browser.find.FindInPageController
 import com.upgrid.browser.translate.TranslateController
 import com.upgrid.browser.history.HistoryStore
@@ -335,6 +338,22 @@ class MainActivity : AppCompatActivity() {
     /** The desktop-style tab strip. Only ever built on a tablet. */
     private var tabStrip: TabStripAdapter? = null
 
+    /** Which tab the strip last scrolled to, so it only scrolls on a switch. */
+    private var lastStripSelection: String? = null
+
+    /** Whether the tablet's reload button is currently showing stop instead. */
+    private var reloadShowsStop: Boolean? = null
+
+    /**
+     * Generation counter for the progress bar's fade-out. A load that starts
+     * while the previous one is still fading has to be able to disown that
+     * fade's end action, or the bar is hidden a moment after it reappeared.
+     */
+    private var progressFade = 0
+
+    /** How far the suggestion panel travels as it drops out of the bar, in px. */
+    private val suggestionsRise by lazy { 12 * resources.displayMetrics.density }
+
     /** Last value handed to the engine, so an unchanged one isn't re-sent. */
     private var dynamicToolbarHeight = -1
 
@@ -367,9 +386,19 @@ class MainActivity : AppCompatActivity() {
             onLinkClick = { link -> components.sessionUseCases.loadUrl(link.url) },
             onLinkLongClick = { link -> confirmRemoveQuickLink(link) },
             onAddClick = { promptAddQuickLink() },
+            // The field on the start page is a button: it puts the cursor in
+            // the real address bar rather than being a second one. Everything
+            // that follows — suggestions, the engine badge, what a typed line
+            // means — then happens in the one place that already knows.
+            onSearchClick = { binding.toolbar.editMode(Toolbar.CursorPlacement.ALL) },
         )
         wireToolbar()
         wireTabStrip()
+        wireTabletChrome()
+        // Once, at startup, rather than only when the player hands them back:
+        // on a tablet the status bar has to match the tab strip from the first
+        // frame, and on a phone this sets exactly what the theme already says.
+        applySystemBarColors(focused = false)
         wireChromeBehaviour()
         wireSuggestions()
         wireDownloads()
@@ -814,7 +843,14 @@ class MainActivity : AppCompatActivity() {
 
     private fun showSuggestions(items: List<Suggestion>, typed: String) {
         suggestionAdapter.submit(items, typed)
-        binding.suggestionsList.isVisible = items.isNotEmpty()
+        // Drops out of the address bar rather than blinking into existence.
+        // Called twice per keystroke (local reads, then the engine's answer),
+        // and the second call is a no-op once the panel is already down.
+        binding.suggestionsList.setVisibleAnimated(
+            visible = items.isNotEmpty(),
+            duration = Motion.QUICK,
+            rise = -suggestionsRise,
+        )
     }
 
     /**
@@ -833,7 +869,11 @@ class MainActivity : AppCompatActivity() {
 
     private fun hideSuggestions() {
         suggestionJob?.cancel()
-        binding.suggestionsList.isVisible = false
+        binding.suggestionsList.setVisibleAnimated(
+            visible = false,
+            duration = Motion.QUICK,
+            rise = -suggestionsRise,
+        )
     }
 
     private fun onSuggestionPicked(suggestion: Suggestion) {
@@ -1323,6 +1363,25 @@ class MainActivity : AppCompatActivity() {
         binding.tabStrip.layoutManager =
             LinearLayoutManager(this, LinearLayoutManager.HORIZONTAL, false)
         binding.tabStrip.setHasFixedSize(true)
+        // No item animator. Opening a tab changes the width of every other one
+        // (see TabStripAdapter), so the whole strip is re-submitted at once —
+        // and the default animator answers a full rebind with a cross-fade of
+        // every row, which is both work and a flicker.
+        binding.tabStrip.itemAnimator = null
+
+        // Tabs are sized from the strip's width (see TabStripAdapter), and that
+        // is not known until the strip has been laid out — nor after the tablet
+        // is turned. Re-rendered on a real change of width only, and posted,
+        // because notifyDataSetChanged inside a layout pass is an exception.
+        binding.tabStrip.addOnLayoutChangeListener {
+                view, left, _, right, _, oldLeft, _, oldRight, _ ->
+            if (right - left != oldRight - oldLeft) {
+                view.post {
+                    val state = components.store.state
+                    renderTabStrip(state.tabs, state.selectedTabId)
+                }
+            }
+        }
 
         binding.btnStripNewTab.setOnClickListener {
             leaveEditMode()
@@ -1330,12 +1389,74 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    /**
+     * The rest of what a tablet's bar gets that a phone's doesn't: back,
+     * forward and reload.
+     *
+     * On a phone these are in the app menu's quick strip, because four 44dp
+     * targets plus the address chip already fill the bar and the URL would be
+     * left under half a screen. A tablet's bar is twice as wide and mostly
+     * empty, and this is where every desktop browser keeps them.
+     */
+    private fun wireTabletChrome() {
+        if (!tabletUi) return
+        binding.btnTopBack.isVisible = true
+        binding.btnTopForward.isVisible = true
+        binding.btnTopReload.isVisible = true
+        // The strip has its own +, at the end of the tabs, which is where a
+        // desktop browser puts it. Two of them on one bar is one too many.
+        binding.btnTopNewTab.isVisible = false
+
+        binding.btnTopBack.setOnClickListener { components.sessionUseCases.goBack() }
+        binding.btnTopForward.setOnClickListener { components.sessionUseCases.goForward() }
+        // One button, two jobs — the state is read at the moment of the tap
+        // rather than captured, so the listener is set once and never swapped.
+        binding.btnTopReload.setOnClickListener {
+            if (components.store.state.selectedTab?.content?.loading == true) {
+                components.sessionUseCases.stopLoading()
+            } else {
+                components.sessionUseCases.reload()
+            }
+        }
+    }
+
+    /** Enabled-ness of the tablet's nav buttons, and reload's second face. */
+    private fun renderTabletChrome(state: ChromeState) {
+        if (!tabletUi) return
+        binding.btnTopBack.setEnabledLook(state.canGoBack)
+        binding.btnTopForward.setEnabledLook(state.canGoForward)
+        // Guarded: this runs on every state the chrome renders, and
+        // setImageResource re-reads and re-tints the drawable each time.
+        if (reloadShowsStop != state.loading) {
+            reloadShowsStop = state.loading
+            binding.btnTopReload.setImageResource(
+                if (state.loading) R.drawable.ic_close else R.drawable.ic_refresh,
+            )
+            binding.btnTopReload.contentDescription =
+                getString(if (state.loading) R.string.nav_stop else R.string.menu_refresh)
+        }
+    }
+
+    /** A disabled button that is still visible has to look disabled. */
+    private fun View.setEnabledLook(enabled: Boolean) {
+        if (isEnabled == enabled) return
+        isEnabled = enabled
+        alpha = if (enabled) 1f else 0.3f
+    }
+
     private fun renderTabStrip(tabs: List<TabSessionState>, selectedId: String?) {
         val adapter = tabStrip ?: return
-        adapter.submit(tabs, selectedId)
+        adapter.submit(tabs, selectedId, binding.tabStrip.width)
         // Switching to a tab that is off the end of the strip should not mean
-        // hunting for it.
-        adapter.selectedPosition.takeIf { it >= 0 }?.let(binding.tabStrip::scrollToPosition)
+        // hunting for it — but only on an actual switch. Every title and every
+        // favicon that arrives re-submits the strip, and scrolling on those
+        // costs a layout pass and can yank the strip out from under a finger
+        // scrolling through it.
+        if (selectedId != lastStripSelection) {
+            lastStripSelection = selectedId
+            adapter.selectedPosition.takeIf { it >= 0 }
+                ?.let(binding.tabStrip::scrollToPosition)
+        }
     }
 
     /** Put the bar back, now, without waiting for anyone to scroll up. */
@@ -1456,16 +1577,28 @@ class MainActivity : AppCompatActivity() {
             binding.root,
             com.google.android.material.R.attr.colorSurface,
         )
-        val color = if (focused) Color.BLACK else surface
-        window.statusBarColor = color
-        window.navigationBarColor = color
+        // On a tablet the top of the window is the tab strip, not the toolbar,
+        // and the strip is deliberately a step away from the surface colour.
+        // Leaving the status bar on the surface put a pale band directly above
+        // a dark strip — a seam across the top of the screen that isn't there
+        // in the browser this was drawn from.
+        val top = if (tabletUi) {
+            ContextCompat.getColor(this, R.color.tab_strip_bg)
+        } else {
+            surface
+        }
+        window.statusBarColor = if (focused) Color.BLACK else top
+        window.navigationBarColor = if (focused) Color.BLACK else surface
 
         // Derived from the colour rather than read back from the theme: there
         // is one right answer (dark icons on a light bar) and reading it from
-        // luminance can't drift out of sync with the colour above it.
+        // luminance can't drift out of sync with the colour above it. The
+        // status bar gets its own answer, since on a tablet it is a different
+        // colour from the one below it.
         val lightBars = !focused && ColorUtils.calculateLuminance(surface) > 0.5
+        val lightStatus = !focused && ColorUtils.calculateLuminance(top) > 0.5
         WindowInsetsControllerCompat(window, window.decorView).apply {
-            isAppearanceLightStatusBars = lightBars
+            isAppearanceLightStatusBars = lightStatus
             isAppearanceLightNavigationBars = lightBars
         }
     }
@@ -1661,6 +1794,8 @@ class MainActivity : AppCompatActivity() {
                                 secure = tab?.content?.securityInfo?.isSecure == true,
                                 loading = tab?.content?.loading == true,
                                 progress = tab?.content?.progress ?: 0,
+                                canGoBack = tab?.content?.canGoBack == true,
+                                canGoForward = tab?.content?.canGoForward == true,
                             )
                         }
                         .distinctUntilChanged()
@@ -1762,11 +1897,15 @@ class MainActivity : AppCompatActivity() {
         val secure: Boolean,
         val loading: Boolean,
         val progress: Int,
+        /** Both only rendered on a tablet, where back/forward are on the bar. */
+        val canGoBack: Boolean,
+        val canGoForward: Boolean,
     )
 
     private fun renderChrome(state: ChromeState) {
-        binding.tabCount.text = state.tabCount.toString()
+        renderTabCount(state.tabCount)
         renderProgress(state.loading, state.progress)
+        renderTabletChrome(state)
 
         // The address and the padlock — everything ToolbarFeature's presenter
         // did for us, written here so it can't reach into the edit field. Both
@@ -1777,7 +1916,16 @@ class MainActivity : AppCompatActivity() {
         // Compared before assigning because neither setter checks: each one
         // redraws its view, and this method runs on every progress tick of
         // every load.
-        if (binding.toolbar.url != state.url) binding.toolbar.url = state.url
+        //
+        // Empty/blank URL == the start page, and three things below turn on it.
+        val isHome = state.url.isBlank() || state.url == HOME_URL
+
+        // "about:blank" is our marker for the start page, not an address, and
+        // showing it put the literal string in the bar — and then into the edit
+        // field, selected, the moment anybody tapped it. Empty is the truth
+        // here, and empty is also what makes the toolbar draw its hint.
+        val shownUrl = if (isHome) "" else state.url
+        if (binding.toolbar.url != shownUrl) binding.toolbar.url = shownUrl
         val siteInfo =
             if (state.secure) Toolbar.SiteInfo.SECURE else Toolbar.SiteInfo.INSECURE
         if (binding.toolbar.siteInfo != siteInfo) binding.toolbar.siteInfo = siteInfo
@@ -1787,8 +1935,7 @@ class MainActivity : AppCompatActivity() {
         // and ANRs the main thread. The AdBlock switch is rendered when the
         // menu or the settings sheet opens — never on a tick.
 
-        // Speed-dial overlay vs engine view. Empty/blank URL == start page.
-        val isHome = state.url.isBlank() || state.url == HOME_URL
+        // Speed-dial overlay vs engine view.
         startPage.setVisible(isHome)
         renderSecurityIndicator(isHome)
 
@@ -1911,8 +2058,13 @@ class MainActivity : AppCompatActivity() {
      * knows.
      */
     private fun renderPlayerButton(isHome: Boolean) {
-        binding.btnTopVideo.isVisible =
-            !isHome && !isInPipMode() && components.videoPlayerBridge.isMediaPlaying
+        // Faded rather than switched: it appears a second or two into a page,
+        // when a video starts playing, and a button that materialises next to
+        // your thumb without warning is a button you press by accident.
+        binding.btnTopVideo.setVisibleAnimated(
+            visible = !isHome && !isInPipMode() && components.videoPlayerBridge.isMediaPlaying,
+            duration = Motion.QUICK,
+        )
     }
 
     /**
@@ -1953,10 +2105,68 @@ class MainActivity : AppCompatActivity() {
      * for the rest of the page's life.
      */
     private fun renderProgress(loading: Boolean, progress: Int) {
+        val bar = binding.pageProgress
         // A 3dp bar across the top of a video is still chrome, and the app bar
         // is supposed to measure to nothing while the player has the screen.
-        binding.pageProgress.isVisible = loading && !inVideoFocus
-        if (loading) binding.pageProgress.progress = progress
+        val show = loading && !inVideoFocus
+
+        if (show) {
+            // Cancels any fade-out still running and disowns its end action —
+            // a load that starts while the last one is fading must not be
+            // hidden by it a moment later.
+            progressFade++
+            // Mid-fade means the last load's bar is still sitting at 100. A
+            // new one has to start from the left, not walk backwards from the
+            // right.
+            val wasFading = bar.alpha != 1f
+            bar.animate().cancel()
+            bar.alpha = 1f
+            if (!bar.isVisible || wasFading) {
+                bar.progress = 0
+                bar.isVisible = true
+            }
+            // Gecko reports progress in a handful of big jumps, so the bar used
+            // to teleport across the screen. `animate = true` makes it travel.
+            bar.setProgress(progress, true)
+        } else if (bar.isVisible && bar.alpha == 1f) {
+            // The alpha test is what makes a second "not loading" state — and
+            // there are several after every load — leave a fade already in
+            // flight alone instead of starting it over.
+            //
+            // Run it to the end first: a bar that disappears at 80% reads as a
+            // load that gave up, even when the page is right there.
+            bar.setProgress(100, true)
+            val token = ++progressFade
+            bar.animate()
+                .alpha(0f)
+                .setStartDelay(140)
+                .setDuration(Motion.QUICK)
+                .withEndAction {
+                    if (token != progressFade) return@withEndAction
+                    bar.isVisible = false
+                    bar.alpha = 1f
+                    bar.progress = 0
+                }
+                .start()
+        }
+    }
+
+    /**
+     * The tab counter, which changes because something happened elsewhere.
+     *
+     * A link opened in a background tab, a tab closed from the strip, a window
+     * request handled — none of those are where the user is looking, so the
+     * number would silently be one higher next time they glanced at it. The
+     * bump is the only thing connecting the two.
+     */
+    private fun renderTabCount(count: Int) {
+        val text = count.toString()
+        if (binding.tabCount.text?.toString() == text) return
+        // Nothing bumps on the first render: the browser opening with two tabs
+        // restored is not an event that just happened.
+        val hadValue = !binding.tabCount.text.isNullOrEmpty()
+        binding.tabCount.text = text
+        if (hadValue) binding.tabCount.bump()
     }
 
     /**

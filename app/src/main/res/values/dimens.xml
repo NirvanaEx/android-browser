@@ -16,4 +16,24 @@
       visibility, which now costs nothing.
     -->
     <dimen name="mozac_browser_toolbar_progress_bar_height">0dp</dimen>
+
+    <!--
+      The tablet tab strip. Tabs divide the strip's width between them and are
+      clamped to this pair, which is the whole of the sizing rule (see
+      TabStripAdapter): wide enough at the bottom end to still show a favicon
+      and the first word, capped at the top end because a browser with two tabs
+      open should not draw two half-screen slabs.
+
+      The ✕ needs room of its own, so below tab_strip_close_min it is dropped
+      from every tab but the current one — the same trade Chrome makes, and the
+      alternative is a close button that overlaps the title it belongs to.
+    -->
+    <dimen name="tab_strip_tab_min">92dp</dimen>
+    <dimen name="tab_strip_tab_max">220dp</dimen>
+    <dimen name="tab_strip_close_min">124dp</dimen>
+
+    <!-- The start page's margins. Overridden in values-sw600dp, where the
+         content stays a column instead of stretching to the screen's width. -->
+    <dimen name="start_page_side">20dp</dimen>
+    <dimen name="start_page_top">40dp</dimen>
 </resources>

@@ -27,6 +27,14 @@ import java.net.URLEncoder
  * The engine calls this from `NavigationDelegate.onLoadError` and loads
  * whatever URI comes back **in place of** the failed page, which is what keeps
  * the address bar showing the address you asked for rather than the error's.
+ *
+ * That last part has a consequence for the page at the other end, and it is
+ * why the first version of this shipped blank: the failed address stays in
+ * `location`, so the page cannot read these parameters off `location.search` —
+ * they are on `document.documentURI`. The other half of that bug: a document
+ * loaded from `resource://` is system-privileged, and Gecko's CSP for those
+ * has no `'unsafe-inline'`, so the stylesheet and the script have to be
+ * separate files. Both notes live in `assets/error.html` too.
  */
 class ErrorPageInterceptor(private val context: Context) : RequestInterceptor {
 

@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The screen being dismissed: back the way it came. -->
+<set xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shareInterpolator="false">
+
+    <alpha
+        android:fromAlpha="1.0"
+        android:toAlpha="0.0"
+        android:duration="160"
+        android:interpolator="@android:interpolator/accelerate_quint" />
+
+    <scale
+        android:fromXScale="1.0"
+        android:fromYScale="1.0"
+        android:toXScale="0.96"
+        android:toYScale="0.96"
+        android:pivotX="50%p"
+        android:pivotY="50%p"
+        android:duration="200"
+        android:interpolator="@android:interpolator/accelerate_quint" />
+</set>

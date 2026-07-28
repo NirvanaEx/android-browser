@@ -22,6 +22,7 @@
 
     <!-- Стартовая страница -->
     <string name="start_page_tagline">Ищите в сети. Без рекламы.</string>
+    <string name="start_page_quick_links">Быстрый доступ</string>
     <string name="start_page_add">Добавить</string>
     <string name="start_page_add_title">Новая плитка</string>
     <string name="start_page_add_hint">Адрес сайта</string>
@@ -34,6 +35,7 @@
     <!-- Верхняя панель -->
     <string name="nav_back">Назад</string>
     <string name="nav_forward">Вперёд</string>
+    <string name="nav_stop">Остановить</string>
     <string name="nav_home">Главная</string>
     <string name="nav_tabs">Вкладки</string>
     <string name="nav_menu">Меню</string>

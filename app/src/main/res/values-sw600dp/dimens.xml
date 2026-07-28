@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The start page on a tablet. The column stays a column: text set across ten
+  inches is unreadable, and a search field that wide reads as a mistake. The
+  side padding is what keeps it narrow, rather than a max-width, because
+  LinearLayout has no such thing.
+-->
+<resources>
+    <dimen name="start_page_side">96dp</dimen>
+    <dimen name="start_page_top">56dp</dimen>
+</resources>

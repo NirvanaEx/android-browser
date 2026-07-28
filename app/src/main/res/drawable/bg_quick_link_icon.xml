@@ -1,12 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  White plate behind a real favicon on a speed-dial tile. Most favicons are
-  drawn for a light background — on the tile's own brand colour, dark ones
-  disappear entirely. Same corner radius as bg_quick_link so it covers it
-  exactly.
+  Plate behind a real favicon on a speed-dial tile. Most favicons are drawn for
+  a light background — on the tile's own brand colour, dark ones disappear
+  entirely. Same corner radius as bg_quick_link so it covers it exactly.
+
+  Near-white rather than white: on the dark theme a pure #FFF square is the
+  brightest thing on the screen, and eight of them in a grid glare.
 -->
 <shape xmlns:android="http://schemas.android.com/apk/res/android"
     android:shape="rectangle">
-    <solid android:color="#FFFFFFFF" />
-    <corners android:radius="20dp" />
+    <solid android:color="@color/quick_link_plate" />
+    <corners android:radius="18dp" />
 </shape>

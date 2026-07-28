@@ -1,13 +1,17 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  One speed-dial tile: a 60dp rounded square, then the label.
+  One speed-dial tile: a rounded square, then the label.
+
+  The width is set by StartPagePresenter, not here — cells share the row
+  equally, so the grid stays aligned whether there are four columns or six and
+  whether the last row is full.
 
   The letter and the favicon are STACKED, not swapped. The coloured letter tile
   is drawn immediately from the URL's host; the real favicon arrives from the
   network a moment later and covers it. Swapping instead would leave the tile
   blank until the fetch lands, and blank on every site that has no icon.
 
-  The favicon sits on a white plate because most are designed for a light
+  The favicon sits on a light plate because most are designed for a light
   background and half of them vanish into the tile's colour otherwise.
 
   Tints and visibility are set per tile in StartPagePresenter.
@@ -18,16 +22,16 @@
     android:layout_height="wrap_content"
     android:orientation="vertical"
     android:gravity="center_horizontal"
-    android:paddingTop="8dp"
-    android:paddingBottom="8dp"
-    android:background="?attr/selectableItemBackgroundBorderless"
+    android:paddingTop="10dp"
+    android:paddingBottom="10dp"
+    android:background="@drawable/bg_quick_link_touch"
     android:clickable="true"
     android:focusable="true">
 
     <FrameLayout
         android:id="@+id/tileBg"
-        android:layout_width="60dp"
-        android:layout_height="60dp"
+        android:layout_width="54dp"
+        android:layout_height="54dp"
         android:background="@drawable/bg_quick_link">
 
         <TextView
@@ -36,8 +40,8 @@
             android:layout_height="match_parent"
             android:gravity="center"
             android:textColor="#FFFFFFFF"
-            android:textSize="26sp"
-            android:textStyle="bold"
+            android:textSize="22sp"
+            android:includeFontPadding="false"
             android:fontFamily="sans-serif-medium"
             tools:text="G" />
 
@@ -46,7 +50,7 @@
             android:layout_width="match_parent"
             android:layout_height="match_parent"
             android:layout_gravity="center"
-            android:padding="12dp"
+            android:padding="13dp"
             android:scaleType="fitCenter"
             android:background="@drawable/bg_quick_link_icon"
             android:visibility="gone"
@@ -59,11 +63,11 @@
         android:id="@+id/tileLabel"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="6dp"
+        android:layout_marginTop="8dp"
         android:gravity="center"
         android:maxLines="1"
         android:ellipsize="end"
         android:textSize="12sp"
-        android:textColor="?attr/colorOnSurface"
+        android:textColor="?attr/colorOnSurfaceVariant"
         tools:text="github.com" />
 </LinearLayout>

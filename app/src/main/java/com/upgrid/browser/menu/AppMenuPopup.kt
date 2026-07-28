@@ -72,6 +72,10 @@ class AppMenuPopup(private val activity: MainActivity) {
             )
             elevation = 12f * density
             isOutsideTouchable = true
+            // Grows out of the ⋮ it was opened from instead of appearing whole.
+            // PopupWindow's default is no animation at all, which on a panel
+            // this size reads as the screen flickering.
+            animationStyle = R.style.Animation_UpgridBrowser_Menu
         }
 
         wireQuickActions()
