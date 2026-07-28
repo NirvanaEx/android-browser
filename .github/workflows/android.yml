@@ -154,6 +154,11 @@ jobs:
       - name: Send build to Telegram
         # Secrets are absent on forks; skip rather than fail the build there.
         if: ${{ success() && env.TG_TOKEN != '' && env.TG_CHAT != '' }}
+        # Delivery is not the build. A Telegram outage — or this bot being
+        # migrated to a self-hosted Bot API server, after which the cloud API
+        # rejects its token outright — must not turn a good APK into a red run.
+        # The step still shows up as a warning when it fails.
+        continue-on-error: true
         env:
           APK: ${{ steps.ver.outputs.apk }}
           SIZE: ${{ steps.apk.outputs.size }}
