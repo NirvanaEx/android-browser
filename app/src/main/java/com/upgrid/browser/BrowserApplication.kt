@@ -5,6 +5,9 @@ import android.app.Application
 import android.content.ComponentCallbacks2
 import android.content.Context
 import android.util.Log
+import androidx.lifecycle.DefaultLifecycleObserver
+import androidx.lifecycle.LifecycleOwner
+import androidx.lifecycle.ProcessLifecycleOwner
 import com.upgrid.browser.addons.AdblockBootstrap
 import com.upgrid.browser.prefs.BrowserPreferences
 import com.upgrid.browser.ui.ThemeMode
@@ -13,8 +16,11 @@ import com.upgrid.browser.vpn.VpnNotifications
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import mozilla.components.browser.session.storage.SessionStorage
+import mozilla.components.browser.state.action.AppLifecycleAction
 import mozilla.components.browser.state.action.RestoreCompleteAction
 import mozilla.components.browser.state.action.SystemAction
 import mozilla.components.browser.state.action.TabListAction
@@ -75,10 +81,16 @@ class BrowserApplication : Application() {
             AdblockBootstrap(components, this@BrowserApplication).ensureInstalled()
         }
 
-        // Bring the tunnel up if the user asked for it. Silent on failure: the
-        // one likely cause is the system's VPN consent never having been given,
-        // and there is no Activity here to ask from — the menu row and the VPN
-        // screen both do it properly.
+        // Bring the tunnel up if the user asked for it — and only if the *user*
+        // asked, which is what forgetAutoConnectSetBySignIn() is for: an older
+        // build armed this switch by itself the moment you signed in, so on
+        // these phones "connect on start" is on without anyone having chosen
+        // it. Cleared once, then the switch means what it says.
+        //
+        // Silent on failure: the one likely cause is the system's VPN consent
+        // never having been given, and there is no Activity here to ask from —
+        // the menu row and the VPN screen both do it properly.
+        components.vpnSettings.forgetAutoConnectSetBySignIn()
         if (components.vpnSettings.autoConnect && components.vpnSettings.isConfigured) {
             appScope.launch { components.vpn.connect(components.vpnSettings) }
         }
@@ -99,6 +111,57 @@ class BrowserApplication : Application() {
         }
 
         attachAutosave(components.sessionStorage)
+        watchAppLifecycle()
+    }
+
+    /**
+     * Tell the store when the whole app comes and goes.
+     *
+     * Two different things need this, and neither has an Activity to hang off:
+     *
+     *  - [mozilla.components.browser.state.engine.middleware.SessionPrioritizationMiddleware]
+     *    asks the selected tab whether it is holding form data at the moment
+     *    the app is backgrounded, and keeps that tab at high priority for three
+     *    minutes if it is. A half-filled form is the one thing a reload
+     *    genuinely destroys.
+     *  - The snapshot on disk. android-components writes it the instant the app
+     *    stops, but the *engine* state — scroll position, back/forward history,
+     *    what was typed into the page — is asked for at that same moment and
+     *    answered a beat later, by Gecko, on its own thread. The write that
+     *    fires first therefore persists the state from before, and after a kill
+     *    the browser comes back one step older than it should be. So: write
+     *    again once the answer has had time to land.
+     *
+     * ProcessLifecycleOwner rather than an Activity callback because both of
+     * these are about the *app* going away, not a screen — rotating the phone
+     * or opening the tabs list must not count.
+     */
+    private fun watchAppLifecycle() {
+        ProcessLifecycleOwner.get().lifecycle.addObserver(
+            object : DefaultLifecycleObserver {
+                override fun onResume(owner: LifecycleOwner) {
+                    runCatching { components.store.dispatch(AppLifecycleAction.ResumeAction) }
+                }
+
+                override fun onPause(owner: LifecycleOwner) {
+                    runCatching { components.store.dispatch(AppLifecycleAction.PauseAction) }
+                }
+
+                override fun onStop(owner: LifecycleOwner) {
+                    saveSessionOnceGeckoHasAnswered()
+                }
+            },
+        )
+    }
+
+    /** See [watchAppLifecycle]: the second write, after the engine has replied. */
+    private fun saveSessionOnceGeckoHasAnswered() {
+        appScope.launch {
+            delay(SESSION_FLUSH_GRACE_MS)
+            withContext(Dispatchers.IO) {
+                runCatching { components.sessionStorage.save(components.store.state) }
+            }
+        }
     }
 
     /**
@@ -198,5 +261,16 @@ class BrowserApplication : Application() {
 
     companion object {
         private const val TAG = "BrowserApplication"
+
+        /**
+         * How long to wait after the app stops before writing the snapshot a
+         * second time.
+         *
+         * Long enough for Gecko's round trip (releasing the view asks the
+         * session to flush its state, and the answer comes back through the
+         * store), short enough that a process being killed for backgrounding
+         * has not usually got there yet.
+         */
+        private const val SESSION_FLUSH_GRACE_MS = 1_500L
     }
 }

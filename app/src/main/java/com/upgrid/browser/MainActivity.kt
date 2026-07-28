@@ -33,6 +33,7 @@ import androidx.annotation.RequiresApi
 import androidx.appcompat.app.AppCompatActivity
 import androidx.constraintlayout.widget.ConstraintLayout
 import androidx.core.content.ContextCompat
+import androidx.core.graphics.ColorUtils
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.core.view.isVisible
@@ -386,6 +387,7 @@ class MainActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         if (!::binding.isInitialized) return
+        hidePageCover()
         // Bookmarks can change from anywhere (menu star, bookmarks sheet, a
         // sync that pulled in another device's), and the speed dial is drawn
         // from them.
@@ -398,7 +400,9 @@ class MainActivity : AppCompatActivity() {
         // Last unambiguous moment to photograph the current tab: it is still
         // the rendered one, and whatever comes next (another activity, the
         // launcher) will cover it.
-        if (::binding.isInitialized) captureCurrentThumbnail()
+        if (!::binding.isInitialized) return
+        captureCurrentThumbnail()
+        showPageCover()
     }
 
     override fun onStop() {
@@ -1273,10 +1277,55 @@ class MainActivity : AppCompatActivity() {
                 )
             },
         )
+        if (!focused) {
+            // Landscape belongs to the video, not to the browser. The player's
+            // rotate button asks for it; leaving the player gives it back, so a
+            // video watched sideways doesn't leave the address bar sideways
+            // too. See the manifest note on screenOrientation.
+            requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+        }
         // The stale bar is chrome as well, and it is the one piece that can
         // come back by itself — so it is re-derived rather than just hidden.
         renderStaleBar()
+        applySystemBarColors(focused)
         refreshSystemBars()
+    }
+
+    /**
+     * Paint the system bars to match what is behind them.
+     *
+     * The navigation bar is drawn by the system, in the colour the theme names
+     * — `colorSurface`, so that the strip reads as a continuation of the page.
+     * Over a video that is exactly wrong: the player is black, and a bar one
+     * shade off black under it is the seam you can't stop looking at. Every
+     * other player on the phone is black down to the last row of pixels.
+     *
+     * The icon colour has to move with it. On the light theme the bars are told
+     * to draw dark icons, which on black is dark on dark — the back and home
+     * buttons would simply vanish.
+     *
+     * Only the colour is set here; whether the bars are on screen at all is
+     * [refreshSystemBars]'s decision, and the two are deliberately separate:
+     * the bar can be hidden and still need the right colour for the moment it
+     * is swiped back.
+     */
+    private fun applySystemBarColors(focused: Boolean) {
+        val surface = MaterialColors.getColor(
+            binding.root,
+            com.google.android.material.R.attr.colorSurface,
+        )
+        val color = if (focused) Color.BLACK else surface
+        window.statusBarColor = color
+        window.navigationBarColor = color
+
+        // Derived from the colour rather than read back from the theme: there
+        // is one right answer (dark icons on a light bar) and reading it from
+        // luminance can't drift out of sync with the colour above it.
+        val lightBars = !focused && ColorUtils.calculateLuminance(surface) > 0.5
+        WindowInsetsControllerCompat(window, window.decorView).apply {
+            isAppearanceLightStatusBars = lightBars
+            isAppearanceLightNavigationBars = lightBars
+        }
     }
 
     /**
@@ -1979,22 +2028,66 @@ class MainActivity : AppCompatActivity() {
     }
 
     /**
-     * Photograph the tab on screen for the tabs grid.
+     * Photograph the rendered page.
      *
-     * Only while the grid is the chosen view: the engine hands back a
-     * full-window bitmap and paying for that on every pause is not something to
-     * do for a screen the user has switched away from. The start page isn't a
-     * page, so it keeps its letter tile.
+     * Two things live off this one capture: the preview on the tab card, and
+     * the still that stands in for the page while the browser isn't on screen
+     * ([showPageCover]). It used to be skipped entirely when the tabs tray was
+     * set to the list view — which is a preference about a screen, and has
+     * nothing to say about whether the recents card should be empty. One
+     * `capturePixels` per pause is not a cost worth reasoning about.
+     *
+     * The start page isn't a page, so it keeps its letter tile and needs no
+     * cover.
      */
     private fun captureCurrentThumbnail() {
-        if (!preferences.tabsGrid) return
         val tabId = components.store.state.selectedTabId ?: return
         if (startPage.isVisible) return
         runCatching {
             binding.engineView.captureThumbnail { bitmap ->
-                if (bitmap != null) components.tabThumbnails.put(tabId, bitmap)
+                if (bitmap == null) return@captureThumbnail
+                components.tabThumbnails.put(tabId, bitmap)
+                // The capture is a round trip through the compositor, so it
+                // lands after onPause has already put the cover up with an
+                // older frame — or, the first time a tab is ever backgrounded,
+                // found nothing to put up at all. Either way this is the frame
+                // it was waiting for. Idempotent, and re-checks the guards.
+                if (!lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) {
+                    showPageCover()
+                }
             }
         }
+    }
+
+    /**
+     * Put the last frame of the page over the hole GeckoView leaves in this
+     * window. See the note on `pageCover` in activity_main.xml for why the hole
+     * is there; this is the half that decides *when*.
+     *
+     * Not while a video has the screen. In picture-in-picture the window is the
+     * video and it is still playing, so freezing it under a still is the one
+     * case where the cover would be visible and wrong — and PiP is entered
+     * through onPause like everything else, which is why it is checked here
+     * rather than assumed.
+     */
+    private fun showPageCover() {
+        if (inVideoFocus || playerActive || isInPipMode()) return
+        // The start page is an ordinary view; the window draws it perfectly
+        // well by itself, and there is no page to stand in for.
+        if (startPage.isVisible) return
+        val tabId = components.store.state.selectedTabId ?: return
+        val frame = components.tabThumbnails[tabId] ?: return
+        binding.pageCover.setImageBitmap(frame)
+        binding.pageCover.isVisible = true
+    }
+
+    private fun hidePageCover() {
+        if (!binding.pageCover.isVisible) return
+        binding.pageCover.isVisible = false
+        // Nothing else holds this bitmap; the cache does. Dropping the
+        // reference keeps a closed tab's preview from being kept alive by a
+        // view that is no longer showing it.
+        binding.pageCover.setImageDrawable(null)
     }
 
     // --- Sync --------------------------------------------------------------

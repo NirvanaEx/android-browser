@@ -365,6 +365,12 @@
     <string name="clear_type_cache">Cache</string>
     <string name="clear_type_passwords">Saved passwords</string>
 
+    <!-- ============== Staying open in the background ============== -->
+    <string name="settings_section_background">Staying open</string>
+    <string name="settings_keep_alive">Keep the browser in memory</string>
+    <string name="settings_keep_alive_on">Allowed. Open pages survive being away.</string>
+    <string name="settings_keep_alive_off">Not allowed — the system closes the browser while you are in other apps, and the page has to load again.</string>
+
     <!-- ============== Settings: new sections ============== -->
     <string name="settings_section_privacy">Protection</string>
     <string name="settings_section_data">Data on this phone</string>

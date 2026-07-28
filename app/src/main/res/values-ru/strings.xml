@@ -348,6 +348,11 @@
     <string name="clear_type_passwords">Сохранённые пароли</string>
 
     <!-- ============== Настройки: новые разделы ============== -->
+    <string name="settings_section_background">Работа в фоне</string>
+    <string name="settings_keep_alive">Не выгружать браузер из памяти</string>
+    <string name="settings_keep_alive_on">Разрешено. Открытые страницы переживают уход в другое приложение.</string>
+    <string name="settings_keep_alive_off">Не разрешено — система закрывает браузер, пока вы в других приложениях, и страница загружается заново.</string>
+
     <string name="settings_section_privacy">Защита</string>
     <string name="settings_section_data">Данные на телефоне</string>
     <string name="settings_section_downloads">Загрузки</string>
