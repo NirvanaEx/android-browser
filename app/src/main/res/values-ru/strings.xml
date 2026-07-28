@@ -13,7 +13,9 @@
     <!-- Стартовая страница -->
     <string name="start_page_tagline">Ищите в сети. Без рекламы.</string>
     <string name="start_page_add">Добавить</string>
-    <string name="start_page_add_hint">Адрес или запрос</string>
+    <string name="start_page_add_title">Новая плитка</string>
+    <string name="start_page_add_hint">Адрес сайта</string>
+    <string name="start_page_add_helper">Ссылка или слова для поиска</string>
     <string name="start_page_add_confirm">Добавить</string>
     <string name="start_page_remove_title">Убрать плитку?</string>
     <string name="start_page_remove_message">«%1$s» исчезнет со стартовой страницы.</string>
@@ -143,6 +145,24 @@
     <string name="menu_translate">Перевести страницу</string>
     <string name="menu_translate_original">Показать оригинал</string>
     <string name="translate_unavailable">Эту страницу нельзя перевести</string>
+
+    <!-- Поиск по странице -->
+    <string name="find_hint">Найти на странице</string>
+    <string name="find_next">Следующее</string>
+    <string name="find_previous">Предыдущее</string>
+    <string name="find_close">Закрыть</string>
+    <string name="find_no_results">Нет</string>
+    <string name="find_unavailable">Здесь нечего искать</string>
+
+    <!-- Панель перевода -->
+    <string name="translate_title">Перевод</string>
+    <string name="translate_working">Перевожу…</string>
+    <string name="translate_from">С языка: %1$s</string>
+    <string name="translate_failed">Не удалось перевести</string>
+    <string name="translate_chip_original">Оригинал</string>
+
+    <!-- Подсказки в адресной строке -->
+    <string name="suggestion_fill">Подставить в строку</string>
     <string name="menu_desktop_site">Версия для ПК</string>
     <string name="menu_bookmarks">Закладки</string>
     <string name="menu_bookmark_add">В закладки</string>

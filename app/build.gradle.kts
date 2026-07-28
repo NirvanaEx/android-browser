@@ -202,10 +202,11 @@ dependencies {
     implementation("org.mozilla.components:browser-tabstray:$androidComponentsVersion")
     implementation("org.mozilla.components:browser-icons:$androidComponentsVersion")
     implementation("org.mozilla.components:feature-toolbar:$androidComponentsVersion")
-    // FindInPageBar + feature wiring for the menu's "Find in page" action.
-    implementation("org.mozilla.components:feature-findinpage:$androidComponentsVersion")
     implementation("androidx.recyclerview:recyclerview:1.3.2")
     implementation("androidx.fragment:fragment-ktx:1.8.5")
+    // Pull-to-refresh. SwipeRefreshFeature (feature-session) drives it, but the
+    // layout widget itself is AndroidX and isn't pulled in transitively.
+    implementation("androidx.swiperefreshlayout:swiperefreshlayout:1.1.0")
 
     // --- Web extensions (this is what gives us uBlock Origin) ---
     // The actual install/enable APIs live on `concept-engine.Engine` (already pulled);

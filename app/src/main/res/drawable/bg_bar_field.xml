@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Filled field inside a page bar (find in page). The bar itself already sits on
+  colorSurfaceContainer, so the field steps up once more — without it the text
+  and the buttons beside it read as one undifferentiated row, which is exactly
+  how the old find bar looked.
+-->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <solid android:color="?attr/colorSurfaceContainerHighest" />
+    <corners android:radius="20dp" />
+</shape>

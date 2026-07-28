@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Label colour for bg_chip_toggle: readable on the fill, muted off it. -->
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:state_selected="true" android:color="?attr/colorOnPrimary" />
+    <item android:color="?attr/colorOnSurfaceVariant" />
+</selector>

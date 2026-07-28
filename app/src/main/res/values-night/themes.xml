@@ -41,5 +41,10 @@
         <item name="android:windowLightNavigationBar">false</item>
 
         <item name="bottomSheetDialogTheme">@style/Theme.UpgridBrowser.BottomSheet</item>
+
+        <!-- Defined once in values/themes.xml; the overlay resolves its colours
+             against whichever theme is active, so there's nothing to duplicate
+             here beyond the binding itself. -->
+        <item name="materialAlertDialogTheme">@style/ThemeOverlay.UpgridBrowser.Dialog</item>
     </style>
 </resources>

@@ -6,17 +6,33 @@
   no dialog margins, so its underline ran the full width of the card and cut
   straight through the hint text. TextInputLayout also puts the hint where it
   belongs once there's content, instead of losing it.
+
+  The helper line carries what the hint used to try to say ("address or search
+  term"). Splitting them is what removes the duplication the dialog was
+  criticised for: the title names the thing being made, the hint names the one
+  field, and the helper explains what may go in it — previously all three said
+  some version of "add" or "address or query".
 -->
 <com.google.android.material.textfield.TextInputLayout
     xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:id="@+id/inputLayout"
     style="@style/Widget.Material3.TextInputLayout.OutlinedBox"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:layout_marginStart="24dp"
     android:layout_marginEnd="24dp"
-    android:layout_marginTop="8dp"
-    android:layout_marginBottom="4dp">
+    android:layout_marginTop="10dp"
+    android:layout_marginBottom="4dp"
+    android:hint="@string/start_page_add_hint"
+    app:helperText="@string/start_page_add_helper"
+    app:helperTextEnabled="true"
+    app:startIconDrawable="@drawable/ic_globe"
+    app:endIconMode="clear_text"
+    app:boxCornerRadiusTopStart="14dp"
+    app:boxCornerRadiusTopEnd="14dp"
+    app:boxCornerRadiusBottomStart="14dp"
+    app:boxCornerRadiusBottomEnd="14dp">
 
     <com.google.android.material.textfield.TextInputEditText
         android:id="@+id/inputField"

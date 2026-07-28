@@ -1,0 +1,27 @@
+/*
+ * Highlight colours for find.js. Chrome's, deliberately: a soft yellow for
+ * every match and orange for the one you're on, black text on both so the
+ * result is readable no matter what the page had set.
+ *
+ * Declared in the manifest rather than injected as a <style> element: a
+ * stylesheet that comes with the content script is applied by the extension
+ * machinery and is not subject to the page's Content-Security-Policy, while a
+ * <style> tag we append is — and the sites strict enough to block it (GitHub,
+ * Reddit) are exactly the ones people search in.
+ *
+ * !important throughout because these spans sit inside the page's own text and
+ * inherit whatever it says about colour.
+ */
+
+.upgrid-find {
+    background-color: #FFF06B !important;
+    color: #000000 !important;
+    border-radius: 2px;
+    text-shadow: none !important;
+}
+
+.upgrid-find-current {
+    background-color: #FF9632 !important;
+    color: #000000 !important;
+    box-shadow: 0 0 0 2px rgba(255, 150, 50, 0.55);
+}

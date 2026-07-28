@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  "Put this into the field instead of loading it" — the arrow every browser
+  shows at the end of a suggestion row. Points up and to the left, i.e. back
+  towards the address bar.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M7,7v6h2V10.41l7.29,7.3 1.42,-1.42 -7.3,-7.29H13V7z" />
+</vector>

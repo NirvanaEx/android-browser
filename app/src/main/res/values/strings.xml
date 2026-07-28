@@ -13,7 +13,11 @@
     <!-- Start page -->
     <string name="start_page_tagline">Search the web. Quietly ad-free.</string>
     <string name="start_page_add">Add</string>
-    <string name="start_page_add_hint">Address or search term</string>
+    <!-- Dialog title, hint and helper say three different things on purpose;
+         all three used to say some version of "add an address". -->
+    <string name="start_page_add_title">New shortcut</string>
+    <string name="start_page_add_hint">Website address</string>
+    <string name="start_page_add_helper">A link, or words to search for</string>
     <string name="start_page_add_confirm">Add</string>
     <string name="start_page_remove_title">Remove shortcut?</string>
     <string name="start_page_remove_message">“%1$s” will disappear from the start page.</string>
@@ -153,6 +157,26 @@
     <string name="menu_translate">Translate page</string>
     <string name="menu_translate_original">Show original</string>
     <string name="translate_unavailable">This page can\'t be translated</string>
+
+    <!-- Find in page -->
+    <string name="find_hint">Find in page</string>
+    <string name="find_next">Next match</string>
+    <string name="find_previous">Previous match</string>
+    <string name="find_close">Close</string>
+    <!-- "3/12": the match you're on, out of how many. -->
+    <string name="find_counter" translatable="false">%1$d/%2$d</string>
+    <string name="find_no_results">Nothing</string>
+    <string name="find_unavailable">Nothing to search here</string>
+
+    <!-- Translation bar -->
+    <string name="translate_title">Translation</string>
+    <string name="translate_working">Translating…</string>
+    <string name="translate_from">From %1$s</string>
+    <string name="translate_failed">Couldn\'t translate</string>
+    <string name="translate_chip_original">Original</string>
+
+    <!-- Omnibar drop-down -->
+    <string name="suggestion_fill">Put into the address bar</string>
     <string name="menu_desktop_site">Desktop site</string>
     <string name="menu_bookmarks">Bookmarks</string>
     <string name="menu_bookmark_add">Add bookmark</string>
