@@ -278,6 +278,20 @@ deletions deliberately don't propagate. `visits` takes MAX of the two counts,
 not the sum — summing re-adds the remote number every sync and a page visited
 twice climbs into the hundreds inside a week.
 
+### `GoogleSignIn` is deprecated, and that's deliberate
+
+The build prints a wall of "GoogleSignIn is deprecated" warnings. Google's
+replacement is Credential Manager, which handles *identity* — it hands back an
+ID token and nothing else. Drive needs *authorization*: an OAuth scope and an
+access token, which on that path means `AuthorizationClient` from the same
+play-services-auth artifact, i.e. a second API on top rather than instead.
+
+For one scope requested at one place in the app, `GoogleSignIn` +
+`GoogleAuthUtil.getToken` is fewer moving parts and is not going anywhere soon
+(it still ships in play-services-auth 21.x). Don't "modernise" this without also
+wiring `AuthorizationClient` — swapping in Credential Manager alone gets you a
+signed-in user and no way to reach Drive.
+
 ### Setting up the OAuth client (required, one-time)
 
 Sign-in fails with `DEVELOPER_ERROR` (code 10) until an OAuth client in Google
