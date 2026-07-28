@@ -168,6 +168,22 @@
 
         <View style="@style/Widget.UpgridBrowser.SheetDivider" />
 
+        <!-- ============== Section: Appearance ============== -->
+
+        <TextView
+            style="@style/Widget.UpgridBrowser.SectionLabel"
+            android:text="@string/settings_section_appearance" />
+
+        <RadioGroup
+            android:id="@+id/themeGroup"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:paddingStart="12dp"
+            android:paddingEnd="12dp" />
+
+        <View style="@style/Widget.UpgridBrowser.SheetDivider" />
+
         <!-- ============== Section: Search engine ============== -->
 
         <TextView

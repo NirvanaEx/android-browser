@@ -4,6 +4,8 @@ import android.app.PendingIntent
 import android.app.PictureInPictureParams
 import android.app.RemoteAction
 import android.content.BroadcastReceiver
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
@@ -40,6 +42,7 @@ import com.upgrid.browser.search.Suggestion
 import com.upgrid.browser.search.SuggestionAdapter
 import com.upgrid.browser.search.SuggestionSource
 import com.upgrid.browser.sync.GoogleAccounts
+import com.upgrid.browser.sync.SignInDiagnostics
 import com.upgrid.browser.sync.SyncEngine
 import com.upgrid.browser.tabs.TabsActivity
 import com.upgrid.browser.history.HistoryStore
@@ -57,6 +60,7 @@ import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import kotlinx.coroutines.launch
 import mozilla.components.browser.state.selector.selectedTab
+import mozilla.components.browser.toolbar.display.DisplayToolbar
 import mozilla.components.feature.findinpage.FindInPageFeature
 import mozilla.components.feature.session.FullScreenFeature
 import mozilla.components.feature.session.SessionFeature
@@ -134,9 +138,7 @@ class MainActivity : AppCompatActivity() {
                         refreshStartPage()
                     }
                 }
-                .onFailure {
-                    Toast.makeText(this, R.string.settings_account_failed, Toast.LENGTH_LONG).show()
-                }
+                .onFailure(::showSignInFailure)
         }
 
     /**
@@ -479,12 +481,24 @@ class MainActivity : AppCompatActivity() {
                     // Same 250 ms as the history filter: one query per word
                     // typed rather than one per letter, still reads as live.
                     delay(SUGGESTION_DEBOUNCE_MS)
-                    val results = suggestionSource.forQuery(text)
-                    suggestionAdapter.submit(results)
-                    binding.suggestionsList.isVisible = results.isNotEmpty()
+
+                    // Two passes on purpose. What we already know — bookmarks,
+                    // history, past searches — is three local reads and can be
+                    // on screen straight away; the engine's completions take a
+                    // network round-trip and land a moment later. Rendering
+                    // both at once would mean the whole drop-down waits on the
+                    // slowest half, which on a bad connection is "never".
+                    val local = suggestionSource.local(text)
+                    showSuggestions(local)
+                    showSuggestions(suggestionSource.withRemote(text, local))
                 }
             }
         })
+    }
+
+    private fun showSuggestions(items: List<Suggestion>) {
+        suggestionAdapter.submit(items)
+        binding.suggestionsList.isVisible = items.isNotEmpty()
     }
 
     private fun hideSuggestions() {
@@ -497,10 +511,14 @@ class MainActivity : AppCompatActivity() {
         binding.toolbar.displayMode()
         hideKeyboard()
         when (suggestion.kind) {
-            // A past query is text, not a destination: run it through the
-            // user's engine rather than trying to load it as a URL.
-            Suggestion.Kind.SEARCH ->
+            // A query is text, not a destination: run it through the user's
+            // engine rather than trying to load it as a URL. Recorded too —
+            // picking a completion is as much a search as typing one, and
+            // otherwise the past-searches half of this list never fills up.
+            Suggestion.Kind.SEARCH -> {
+                searchHistory.record(suggestion.target)
                 components.sessionUseCases.loadUrl(normalizeToUrl(suggestion.target))
+            }
             else -> components.sessionUseCases.loadUrl(suggestion.target)
         }
     }
@@ -830,6 +848,7 @@ class MainActivity : AppCompatActivity() {
         // Speed-dial overlay vs engine view. Empty/blank URL == start page.
         val isHome = state.url.isBlank() || state.url == HOME_URL
         startPage.setVisible(isHome)
+        renderSecurityIndicator(isHome)
 
         // Topbar player button. This used to be gated on tab.mediaSessionState,
         // but that's only populated for pages that opt into the MediaSession
@@ -849,6 +868,28 @@ class MainActivity : AppCompatActivity() {
         // filed under the new tab's id. Previews are taken at the two moments
         // where what's on screen is unambiguous — onPause, and the tap that
         // opens the grid.
+    }
+
+    /**
+     * Hide the padlock/shield badge on the start page.
+     *
+     * DisplayToolbar drops it by itself when the URL is empty, but our URL
+     * isn't empty — it's `about:blank`, which the toolbar has no reason to know
+     * is "home". The result was a "not secure" warning sitting next to an empty
+     * search field on a page that isn't a page. The indicator list is the
+     * public lever for that.
+     */
+    private fun renderSecurityIndicator(isHome: Boolean) {
+        val wanted = if (isHome) {
+            emptyList()
+        } else {
+            listOf(DisplayToolbar.Indicators.SECURITY)
+        }
+        // Assigning re-runs the toolbar's visibility pass, and this is called on
+        // every store tick.
+        if (binding.toolbar.display.indicators != wanted) {
+            binding.toolbar.display.indicators = wanted
+        }
     }
 
     /**
@@ -892,6 +933,34 @@ class MainActivity : AppCompatActivity() {
 
     /** Google sign-in, callable from the app menu (which can't own a launcher). */
     fun connectGoogleAccount() = signInLauncher.launch(GoogleAccounts.signInIntent(this))
+
+    /**
+     * Say what actually went wrong.
+     *
+     * The one failure worth a whole dialog is the missing OAuth client: nothing
+     * the user can do in the app fixes it, and the fix elsewhere needs two
+     * values only the installed APK knows. Everything else is a toast — with
+     * the numeric code in it, because "error 7" can be looked up and "couldn't
+     * connect" cannot.
+     */
+    private fun showSignInFailure(error: Throwable) {
+        if (!SignInDiagnostics.isNotConfigured(error)) {
+            Toast.makeText(this, SignInDiagnostics.describe(this, error), Toast.LENGTH_LONG).show()
+            return
+        }
+
+        val details = SignInDiagnostics.oauthClientDetails(this)
+        MaterialAlertDialogBuilder(this)
+            .setTitle(R.string.account_setup_title)
+            .setMessage("${getString(R.string.account_setup_message)}\n\n$details")
+            .setPositiveButton(R.string.account_setup_copy) { _, _ ->
+                getSystemService(ClipboardManager::class.java)
+                    ?.setPrimaryClip(ClipData.newPlainText(getString(R.string.app_name), details))
+                Toast.makeText(this, R.string.account_setup_copied, Toast.LENGTH_SHORT).show()
+            }
+            .setNegativeButton(android.R.string.cancel, null)
+            .show()
+    }
 
     // --- Speed-dial --------------------------------------------------------
 

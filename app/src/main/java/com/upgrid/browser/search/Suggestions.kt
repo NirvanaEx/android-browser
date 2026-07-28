@@ -7,6 +7,7 @@ import androidx.recyclerview.widget.RecyclerView
 import com.upgrid.browser.BrowserComponents
 import com.upgrid.browser.R
 import com.upgrid.browser.databinding.ItemSuggestionBinding
+import com.upgrid.browser.prefs.BrowserPreferences
 import com.upgrid.browser.ui.HostTile
 
 /**
@@ -25,20 +26,35 @@ data class Suggestion(
 }
 
 /**
- * Builds omnibar suggestions from what the user has already done.
+ * Builds the omnibar drop-down.
  *
- * Order is fixed and deliberate: **bookmarks first**, then visited pages, then
- * past search queries. A bookmark is a page the user chose to keep, so it is
- * always the better guess than a page they merely passed through — ranking the
- * three sources by relevance score would let a heavily-refreshed page outrank
- * something deliberately saved.
+ * Two halves, and the split matters. [local] answers from the device — three
+ * SQLite reads, back in a millisecond — and [withRemote] then goes and asks the
+ * search engine what the user is probably typing. The caller renders the first
+ * immediately and the second when it lands, so the list never waits on the
+ * network to appear.
  *
- * Duplicates are dropped by URL as the list is built, so a bookmarked page that
- * is also in history appears once, as a bookmark.
+ * Order within the local half is fixed and deliberate: **bookmarks first**,
+ * then visited pages, then past search queries. A bookmark is a page the user
+ * chose to keep, so it is always the better guess than one they merely passed
+ * through — ranking the three sources by a relevance score would let a
+ * heavily-refreshed page outrank something deliberately saved. Engine
+ * completions go last: they're guesses about the world, the rest are facts
+ * about this user.
+ *
+ * Duplicates are dropped as the list is built, so a bookmarked page that is
+ * also in history appears once, as a bookmark.
  */
 class SuggestionSource(private val components: BrowserComponents) {
 
-    suspend fun forQuery(query: String): List<Suggestion> {
+    private val preferences by lazy { BrowserPreferences(components.context) }
+
+    private val remote by lazy {
+        SearchSuggestionClient(components.httpClient) { preferences.searchEngine }
+    }
+
+    /** Bookmarks, history and past searches. No I/O beyond the local database. */
+    suspend fun local(query: String): List<Suggestion> {
         val trimmed = query.trim()
         if (trimmed.length < MIN_QUERY) return emptyList()
 
@@ -86,17 +102,69 @@ class SuggestionSource(private val components: BrowserComponents) {
         return out
     }
 
+    /**
+     * [local] plus the engine's completions, plus a row that just runs the
+     * query as typed.
+     *
+     * That last row is why the drop-down can never come back empty: on a fresh
+     * install with no history and no network there is still one obviously
+     * correct thing to offer, which beats a panel that silently doesn't appear.
+     * It goes last so it doesn't push the user's own bookmarks down.
+     */
+    suspend fun withRemote(query: String, local: List<Suggestion>): List<Suggestion> {
+        val trimmed = query.trim()
+        if (trimmed.length < MIN_QUERY) return local
+
+        // Comparing on the *text* rather than the URL: a past search and a
+        // remote completion for the same words are the same row to the user,
+        // even though one is a query and the other is a query too.
+        val seen = local.mapTo(HashSet()) { it.title.lowercase() }
+        val out = ArrayList(local)
+
+        val engine = preferences.searchEngine
+        remote.suggestionsFor(trimmed).asSequence()
+            .filter { seen.add(it.lowercase()) }
+            // A full local half leaves no room, and Sequence.take throws on a
+            // negative count rather than treating it as zero.
+            .take((MAX_TOTAL - out.size - 1).coerceAtLeast(0))
+            .forEach { completion ->
+                out += Suggestion(
+                    title = completion,
+                    subtitle = "",
+                    target = completion,
+                    kind = Suggestion.Kind.SEARCH,
+                )
+            }
+
+        if (seen.add(trimmed.lowercase())) {
+            out += Suggestion(
+                title = trimmed,
+                subtitle = engine.displayName,
+                target = trimmed,
+                kind = Suggestion.Kind.SEARCH,
+            )
+        }
+
+        return out
+    }
+
     /** The scheme is identical on every row and only steals width from the path. */
     private fun strip(url: String) =
         url.removePrefix("https://").removePrefix("http://").removeSuffix("/")
 
     private companion object {
-        /** One character matches most of the table and reads as noise. */
-        const val MIN_QUERY = 2
-        const val MAX_BOOKMARKS = 4
-        const val MAX_HISTORY = 6
-        const val MAX_SEARCHES = 3
-        const val MAX_TOTAL = MAX_BOOKMARKS + MAX_HISTORY + MAX_SEARCHES
+        /**
+         * One letter is enough now that the engine answers too — the local
+         * half over-matches at that length, but it's capped and the remote
+         * half is the useful part of a one-letter drop-down anyway.
+         */
+        const val MIN_QUERY = 1
+        const val MAX_BOOKMARKS = 3
+        const val MAX_HISTORY = 4
+        const val MAX_SEARCHES = 2
+
+        /** About as many rows as fit above the keyboard on a phone. */
+        const val MAX_TOTAL = 9
 
         /** Over-fetch so that dropping bookmark duplicates can't starve the list. */
         const val HISTORY_SCAN = 30

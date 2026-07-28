@@ -5,6 +5,9 @@ import android.app.Application
 import android.content.Context
 import android.util.Log
 import com.upgrid.browser.addons.AdblockBootstrap
+import com.upgrid.browser.prefs.BrowserPreferences
+import com.upgrid.browser.ui.ThemeMode
+import com.upgrid.browser.ui.applyColorScheme
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -26,6 +29,8 @@ class BrowserApplication : Application() {
 
     val components: BrowserComponents by lazy { BrowserComponents(this) }
 
+    private val preferences by lazy { BrowserPreferences(this) }
+
     /**
      * Main-thread scope. android-components engine APIs (esp. GeckoView's
      * `WebExtensionController.list`/`install`) require a Looper-attached thread,
@@ -39,9 +44,15 @@ class BrowserApplication : Application() {
         // GeckoView's child processes call Application.onCreate too — skip there.
         if (!isMainProcess()) return
 
+        // Before any Activity exists: setDefaultNightMode after one is on screen
+        // recreates it, and a browser that visibly relaunches itself on every
+        // cold start looks broken.
+        ThemeMode.apply(preferences.themeMode)
+
         // Touching `components` here forces GeckoRuntime creation now rather than
         // on first Activity#onCreate — keeps the first navigation snappy.
         components.runtime
+        components.engine.applyColorScheme(preferences.themeMode)
         restorePreviousSession()
 
         // Install the bundled player-helper WebExtension. Touching the

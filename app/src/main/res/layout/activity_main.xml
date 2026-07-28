@@ -15,12 +15,13 @@
   Alignment is load-bearing here and was previously off. Three things fix it:
     - the row is a fixed 56dp with gravity=center_vertical, so nothing depends
       on the tallest child to define the centre line;
-    - every touch target is the same 44dp square, so the icons share one
-      baseline instead of each centring inside a different box;
-    - the pill background moved OFF the BrowserToolbar onto a wrapper with its
-      own horizontal padding. Painted on the toolbar itself, the URL text
-      started hard against the rounded edge and the bookmark page-action had
-      nowhere to sit.
+    - every icon target is the same 44dp square, so they share one baseline
+      instead of each centring inside a different box;
+    - the URL chip is the full 56dp, and its pill is drawn by an inset
+      drawable rather than by shrinking the view. android-components lays the
+      toolbar out for exactly 56dp and top-anchors its children with fixed
+      margins, so a shorter container drags the URL text below centre — see
+      the comment in res/drawable/bg_toolbar.xml.
 -->
 <androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
@@ -54,15 +55,22 @@
             android:src="@drawable/ic_home"
             android:tint="?attr/colorOnSurface" />
 
+        <!--
+          Full row height on purpose: the toolbar inside needs its 56dp, and
+          the visible pill comes from the drawable's 8dp top/bottom inset.
+          Only the trailing padding is ours — it keeps the bookmark star off
+          the pill's rounded end. The leading edge needs none: the library's
+          own layouts already inset the URL by 8dp (edit mode) or by the 40dp
+          security indicator (display mode).
+        -->
         <FrameLayout
             android:id="@+id/toolbarPill"
             android:layout_width="0dp"
             android:layout_weight="1"
-            android:layout_height="44dp"
+            android:layout_height="match_parent"
             android:layout_marginStart="2dp"
             android:layout_marginEnd="2dp"
-            android:paddingStart="6dp"
-            android:paddingEnd="6dp"
+            android:paddingEnd="4dp"
             android:background="@drawable/bg_toolbar">
 
             <mozilla.components.browser.toolbar.BrowserToolbar
@@ -161,10 +169,17 @@
         app:layout_constraintEnd_toEndOf="parent" />
 
     <!--
-      Omnibar suggestions: bookmarks, then visited pages, then past searches.
-      Sits over the page while the URL bar is being edited and collapses to
-      nothing otherwise. Opaque on purpose — it is read against whatever the
-      page happens to be showing underneath.
+      Omnibar suggestions: bookmarks, then visited pages, then past searches,
+      then what the search engine thinks you're typing. Sits over the page
+      while the URL bar is being edited and collapses to nothing otherwise.
+      Opaque on purpose — it is read against whatever the page happens to be
+      showing underneath.
+
+      The max height is because the window is adjustNothing (GeckoView does its
+      own keyboard handling and reflowing the page under it is worse). Nothing
+      shrinks the layout when the IME comes up, so without a cap the list would
+      happily draw rows behind the keyboard where they can't be tapped. ~5 rows
+      fit above a phone keyboard; the rest scroll.
     -->
     <androidx.recyclerview.widget.RecyclerView
         android:id="@+id/suggestionsList"
@@ -183,6 +198,7 @@
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintHeight_default="wrap"
         app:layout_constrainedHeight="true"
+        app:layout_constraintHeight_max="288dp"
         tools:visibility="visible" />
 
     <!--

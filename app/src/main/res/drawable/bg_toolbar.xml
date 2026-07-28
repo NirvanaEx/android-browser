@@ -3,9 +3,30 @@
   Pill-shaped surfaceContainer fill behind the BrowserToolbar's URL field.
   Mozilla's toolbar paints its own URL/hint text on top, so we just give it a
   soft chip background to feel like a search bar.
+
+  The inset is load-bearing — it is the fix for the URL text sitting below the
+  middle of the chip. Mozilla's toolbar layouts are built for a 56dp bar and
+  never re-centre in anything shorter:
+
+    - mozac_browser_toolbar_displaytoolbar.xml anchors every child to the TOP
+      of the parent with a hard-coded margin: 8dp for the 40dp indicators, 4dp
+      for the 48dp action containers. Both land on the 28dp centre line of a
+      56dp bar and nowhere else.
+    - mozac_browser_toolbar_edittoolbar.xml is blunter still: its root is a
+      flat android:layout_height="56dp" with the EditText at marginTop 8dp.
+
+  In the 44dp container we used to have, that put the text 6dp low. So the
+  toolbar keeps its 56dp and the *background* shrinks instead: 8dp in from the
+  top and bottom leaves a 40dp pill — the same slot the library reserves for it
+  (mozac_browser_toolbar_background is 40dp tall at marginTop 8dp).
 -->
-<shape xmlns:android="http://schemas.android.com/apk/res/android"
-    android:shape="rectangle">
-    <solid android:color="?attr/colorSurfaceContainer" />
-    <corners android:radius="22dp" />
-</shape>
+<inset xmlns:android="http://schemas.android.com/apk/res/android"
+    android:insetTop="8dp"
+    android:insetBottom="8dp">
+
+    <shape android:shape="rectangle">
+        <solid android:color="?attr/colorSurfaceContainer" />
+        <!-- Half the 40dp visible height: a true pill, not a rounded box. -->
+        <corners android:radius="20dp" />
+    </shape>
+</inset>
