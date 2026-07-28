@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  One switch, read in one place (MainActivity.tabletUi), so "is this a tablet?"
+  is answered by the resource system rather than by arithmetic on
+  DisplayMetrics scattered through the code.
+-->
+<resources>
+    <bool name="tablet_ui">false</bool>
+</resources>

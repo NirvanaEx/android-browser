@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  One tab in the tablet's top strip. A fixed width rather than wrap_content:
+  tabs that resize themselves as their titles arrive would make the strip
+  reshuffle while you look at it, and a row of same-sized things is what makes
+  it read as "tabs" at a glance rather than as a list of chips.
+
+  The ✕ is inside the tab, not revealed on hover, because there is no hover on
+  a touchscreen.
+-->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="176dp"
+    android:layout_height="34dp"
+    android:layout_marginEnd="4dp"
+    android:orientation="horizontal"
+    android:gravity="center_vertical"
+    android:paddingStart="9dp"
+    android:paddingEnd="4dp"
+    android:background="@drawable/bg_tab_chip"
+    android:foreground="?attr/selectableItemBackground"
+    android:clickable="true"
+    android:focusable="true">
+
+    <ImageView
+        android:id="@+id/stripFavicon"
+        android:layout_width="15dp"
+        android:layout_height="15dp"
+        android:contentDescription="@null"
+        android:src="@drawable/ic_globe"
+        app:tint="?attr/colorOnSurfaceVariant" />
+
+    <TextView
+        android:id="@+id/stripTitle"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:layout_marginStart="7dp"
+        android:maxLines="1"
+        android:ellipsize="end"
+        android:includeFontPadding="false"
+        android:textSize="12sp"
+        android:textColor="?attr/colorOnSurface"
+        tools:text="NirvanaEx/android-browser" />
+
+    <ImageButton
+        android:id="@+id/btnStripClose"
+        android:layout_width="22dp"
+        android:layout_height="22dp"
+        android:layout_marginStart="4dp"
+        android:padding="3dp"
+        android:scaleType="fitCenter"
+        android:background="?attr/selectableItemBackgroundBorderless"
+        android:contentDescription="@string/tabs_tray_close"
+        android:src="@drawable/ic_close"
+        app:tint="?attr/colorOnSurfaceVariant" />
+</LinearLayout>

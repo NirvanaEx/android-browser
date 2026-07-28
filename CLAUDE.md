@@ -13,7 +13,7 @@ GeckoView-based Android browser whose only "killer feature" is **uBlock Origin r
 - **AdBlock**: uBlock Origin (Mozilla-signed XPI from AMO, fetched at first launch)
 - **Language**: Kotlin 2.0, Java 17 toolchain, AGP 8.7
 - **min/target SDK**: 26 / 36
-- **UI**: View system + ViewBinding (Compose later)
+- **UI**: View system + ViewBinding (Compose later). One layout, two sizes: `values-sw600dp` turns on the tablet tab strip and unlocks rotation.
 
 ## Repo map
 
@@ -49,6 +49,7 @@ app/src/main/
 │   ├── logins/
 │   │   ├── LoginStore.kt           ← AES-GCM under an Android-keystore key
 │   │   └── LoginsActivity.kt       ← the list; passwords only behind a tap
+│   ├── errors/ErrorPageInterceptor.kt ← what the browser shows when a page didn't arrive
 │   ├── menu/AppMenuPopup.kt        ← 236dp drop-down menu (PopupWindow, not BottomSheet)
 │   ├── prefs/BrowserPreferences.kt ← typed SharedPreferences façade (all settings)
 │   ├── privacy/
@@ -330,35 +331,61 @@ toolbar, not above the nav bar.
 the page down when visible. Opening either closes the other — stacking them
 would take 100dp off the page and neither is a mode you're in twice.
 
-**All of it lives in one `chrome` container, and the page is not under it.**
-The bar, the progress line, the hairline and the three page bars are children of
-a single vertical LinearLayout; `swipeRefresh` (and `pageCover`) are constrained
-to the *whole* window and slid down by `chrome.height` — see
-`MainActivity.applyChromeOffset`. That inversion is what makes hiding the bar on
-scroll cheap: the engine view is never re-measured, so GeckoView is never
-resized, so the page never reflows and never jumps. Anything added to the chrome
-goes inside that container, and its height is accounted for automatically by the
-layout listener.
+**The bar retracts under the finger, and this is the third attempt.** Worth
+knowing why, because the first two are the obvious ones and both are wrong.
 
-Two calls make Gecko agree with the geometry:
-`setDynamicToolbarMaxHeight(toolbarHeight)`, so `100vh` is computed for the
-bar-hidden case once and stays put, and `setVerticalClipping(offset)`, so a
-site's own bottom-fixed bar sits above the screen edge rather than below it —
-the page is `chrome.height` taller than the window and hangs off the bottom.
+The chrome is an `AppBarLayout` inside a `CoordinatorLayout` (`browserFrame`),
+and the page is a scrolling view with `appbar_scrolling_view_behavior`.
+`NestedGeckoView` is a nested-scroll child, `PullToRefreshLayout` forwards the
+scroll, and the app bar's behaviour **consumes it before the page sees it**.
+Drag up 20dp and the bar moves 20dp while the page scrolls by nothing: the
+content sits still under the finger, which is why there is no jump. Chrome and
+Firefox both do exactly this.
 
-**The bar hides on the way down and comes back on the way up.** Driven by
-`EngineSession.Observer.onScrollChange` (the only reliable source: a touch on
-the engine view tells us nothing about whether the page moved), through
-`onPageScrolled`, which accumulates a *directional run* rather than summing
-deltas — a single scroll event is a few pixels and the sum of a scroll down and
-back up is zero. Thresholds are asymmetric (24dp to hide, 8dp to show) and the
-top of the document always shows it. It never hides while the address bar is
-being typed into or while find/translate is open; see `canHideToolbar`.
+What was tried first:
 
-There is **no slide animation**, deliberately. Moving the engine view every
-frame means moving a SurfaceView every frame, and its surface follows the view
-by about a frame — the page would tear away from the bar for the length of the
-animation. One frame of that is invisible, twelve are not.
+- **Toggling the bar's visibility** and letting the page grow into the space.
+  One `View.GONE` resizes GeckoView, which is a viewport change: the page
+  reflows and everything on it moves. Visible as a shudder on every toggle.
+- **Sliding the page up by the bar's height** with the engine view laid out at
+  full window height. No reflow, but the content still jumps by 56dp at the
+  moment of the switch, because the movement is a step rather than a
+  continuation of the drag. That is what the user reported as the screen
+  shaking, and it is unfixable by tuning thresholds — the problem is that the
+  bar was hiding *after* a gesture instead of *during* one.
+
+The geometry: `HeaderScrollingViewBehavior` measures the scrolling view at
+`parentHeight - headerHeight + totalScrollRange` and offsets it down by however
+much of the bar is showing. So it is measured **once** — never while the bar
+moves — and at rest there is exactly one bar's worth of space above the page.
+That is the "invisible inset": it is the layout, not a margin drawn into the
+page.
+
+Two numbers go to the engine, from the offset listener in
+`wireChromeBehaviour`: `setDynamicToolbarMaxHeight(totalScrollRange)` so `100vh`
+is computed for the retracted case once and stays put, and
+`setVerticalClipping(totalScrollRange + verticalOffset)` — the page is measured
+a scroll-range taller than the frame, so that much of it hangs off the bottom,
+and without telling Gecko a site's own bottom bar would sit under the edge of
+the phone.
+
+`scroll|enterAlways|snap` on the two rows that retract: it goes on the way down,
+returns on the first movement up, and snaps to open-or-closed on release, which
+is the light animation. Everything below them — progress, hairline, find,
+translate, stale — has no flags, so it pins to the top once the bar is gone.
+**Order in the AppBarLayout is load-bearing**: it collapses by sliding itself up
+by the summed height of the flagged children, so those must come first.
+
+Three things reopen it by hand: starting to type an address (the drop-down hangs
+off a fully open bar), a page starting to load — once, on the transition into
+loading, not on every progress tick — and leaving the player.
+
+`setChromeVisible` hides the bar's **children** rather than the bar, and that is
+not fussiness: a `GONE` dependency keeps the bounds it last had, and the
+behaviour that positions the page reads exactly those, so the page would stay
+pushed down by a bar that is no longer there. With every child gone the bar
+measures to zero, which is the same picture and a true one. Any collapse in
+progress is undone first, because the offset survives the children going away.
 
 **A `wrap_content` view constrained top *and* bottom is centred.** That's
 ConstraintLayout doing what it's told, and it parked the whole suggestion list
@@ -994,7 +1021,8 @@ in the background".
 
 The fix is a plain `ImageView` (`pageCover` in `activity_main.xml`) laid over
 that hole while the activity is not resumed, holding the last capture from
-`TabThumbnails`. The window draws ordinary views into its own surface, so
+`TabThumbnails`. It carries the same `appbar_scrolling_view_behavior` as the
+page it stands in for, so it sits exactly where the page sits. The window draws ordinary views into its own surface, so
 whatever the system photographs now has a page in it. Shown in `onPause`, hidden
 in `onResume`; the pixels are the ones already on screen, so the swap is never
 visible as a change. Two things it must not do:
@@ -1071,6 +1099,63 @@ same element changes nothing in the store and is silently ignored.
 Saving goes through `ContentAction.UpdateDownloadAction`, which is what
 `DownloadManager` already watches for; it re-fetches with the page as referrer,
 which is what makes an image behind a hotlink check actually arrive.
+
+## Tablets: tabs across the top
+
+`res/values-sw600dp/bools.xml` turns on `tablet_ui`, and that one bool decides
+two things: the tab strip above the address bar (`tabStripRow` +
+`TabStripAdapter`), and whether the app is allowed to rotate.
+
+**sw600dp, not w600dp.** The smallest screen *dimension*, so it is true for a 7"
+tablet held either way and false for a phone held either way. A phone on its
+side is still a phone, and it has neither the width for a strip of tabs nor the
+height to spare for one.
+
+The strip is deliberately thinner than the tabs screen: no previews, no filter,
+no list/grid choice. It exists so that switching costs one tap instead of a trip
+to another screen, which is the whole reason a desktop browser has tabs across
+the top. Everything else is still behind the counter button. Tabs are a fixed
+176dp so the strip doesn't reshuffle itself as titles arrive, and it scrolls to
+the selected one so switching to a tab that is off the end isn't a hunt.
+
+**Orientation moved out of the manifest** for this. `android:screenOrientation`
+takes a literal — no resource qualifier reaches it — so "portrait on phones
+only" cannot be written there at all. `BrowserApplication.lockOrientationOnPhones`
+registers one `ActivityLifecycleCallbacks` that pins every activity to portrait
+unless `tablet_ui` is set; MainActivity still overrides it for the player's
+rotate button, and hands it back to `defaultOrientation` on the way out.
+
+## The page that isn't a page
+
+`ErrorPageInterceptor` answers `RequestInterceptor.onErrorRequest`, which the
+engine calls from `NavigationDelegate.onLoadError` and whose result it loads
+**in place of** the failed page — so the address bar keeps showing the address
+you asked for rather than the error's.
+
+Without it the user gets Gecko's own `about:neterror`: unstyled, in whatever
+language Gecko was built with, naming things like `PR_CONNECT_RESET_ERROR` at
+somebody who typed an address and got nothing.
+
+The page itself is `assets/error.html`, loaded as
+`resource://android/assets/error.html?…`. That scheme is not a curiosity — it is
+the only way to put a real page there: a top-level `data:` URI is blocked by
+Gecko outright, and an `about:` page would need a registered protocol handler.
+The file contains **no text**; title, message, address and both button labels
+arrive URL-encoded in the query, so every sentence lives in strings.xml next to
+the rest of the app's. Retry is a fresh navigation to the failed address rather
+than `location.reload()`, which would reload the error page — the one thing
+guaranteed to work.
+
+`browser-errorpages` would have done all of this in one line
+(`ErrorPages.createUrlEncodedErrorPage`) and it is already on the classpath,
+since `concept-engine` depends on it for the `ErrorType` enum. It is not used
+because that page is Firefox's: Firefox's wording, Firefox's layout, Firefox's
+product name in the middle of it. What is ours is the mapping — thirty engine
+error codes onto twelve things worth telling somebody, grouped by *what to do
+about it* rather than by what broke in the network stack. "Connection reset" and
+"connection timed out" are one sentence to everyone who isn't debugging one; no
+internet, this site being down, and the address not existing are three, because
+they lead to three different next moves.
 
 ## The one buzz, and where it belongs
 

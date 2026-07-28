@@ -13,10 +13,12 @@
     5. btnTopTabs    — tab counter badge, opens the tabs screen
     6. btnTopMenu    — opens AppMenuPopup
 
-  That row and everything under it live in `chrome` — see the note on it below.
-  The page is NOT under the chrome in the constraint graph: it is the full
-  height of the window and slid down by the chrome's height, so that hiding the
-  bar on scroll costs a translation rather than a resize.
+  On a tablet a strip of tabs sits above that row, desktop-style — see
+  `tabStripRow`, which is `gone` on a phone.
+
+  All of it is an AppBarLayout inside a CoordinatorLayout, which is what makes
+  the bar retract under the finger instead of blinking out of existence. See
+  the note on `browserFrame` below.
 -->
 <androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
@@ -29,30 +31,98 @@
     android:fitsSystemWindows="true">
 
     <!--
-      All the chrome, in one column, so the page can be told where it starts
-      with a single number.
+      The chrome and the page, coordinated.
 
-      This used to be six views constrained to each other inside the root, and
-      the page began below the last of them. That made the top bar's height part
-      of the page's height, so hiding the bar on scroll would have resized
-      GeckoView on every toggle — a viewport change, a reflow, and a page that
-      jumps. Now the page is always the full height of the window and simply
-      sits `chrome.height` lower; hiding the bar shortens this column and the
-      page slides up over what it uncovers. Nothing is measured twice.
+      This is a CoordinatorLayout for exactly one reason: it is the only way to
+      make the top bar retract *with the finger*. GeckoView (NestedGeckoView)
+      is a nested-scroll child, PullToRefreshLayout passes the scroll through,
+      and AppBarLayout's behaviour eats it — so dragging up by 20dp slides the
+      bar 20dp out of the way and does not scroll the page at all. The content
+      stays exactly where the finger left it.
 
-      Order matters: the bar, its progress line, the hairline, then the three
-      page bars. Find and translate are part of *typing*, so they have to be
-      above the keyboard rather than under it — the window is adjustNothing.
+      Everything else that was tried moves the page: shortening a column and
+      sliding the page up over it jumps by the height of the bar, and resizing
+      the engine view makes Gecko reflow. Neither is what the eye expects, and
+      both read as the screen shaking.
+
+      appbar_scrolling_view_behavior is what positions the page under the bar.
+      The scrolling view is measured at the FULL height of the frame and then
+      offset down by however much of the bar is showing — so it is never
+      re-measured while the bar moves, and at rest there is exactly one bar's
+      worth of space above the page. That is the "invisible inset": it is the
+      layout, not a margin drawn into the page.
     -->
-    <LinearLayout
-        android:id="@+id/chrome"
+    <androidx.coordinatorlayout.widget.CoordinatorLayout
+        android:id="@+id/browserFrame"
         android:layout_width="0dp"
-        android:layout_height="wrap_content"
-        android:orientation="vertical"
-        android:background="?attr/colorSurface"
+        android:layout_height="0dp"
         app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent">
+
+    <!--
+      All the chrome, in one column.
+
+      Order is load-bearing here, not tidiness: AppBarLayout collapses by
+      sliding *itself* up by the summed height of the children that carry the
+      `scroll` flag, so those have to come first. The tab strip and the toolbar
+      row scroll away; the progress line, the hairline and the three page bars
+      have no flags and end up pinned at the top of the screen once the bar is
+      gone — which is right for all three. Find and translate are part of
+      *typing*, so they have to stay above the keyboard — the window is
+      adjustNothing.
+    -->
+    <com.google.android.material.appbar.AppBarLayout
+        android:id="@+id/chrome"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:background="?attr/colorSurface"
+        android:stateListAnimator="@null"
+        app:elevation="0dp"
+        app:liftOnScroll="false">
+
+        <!--
+          Tablets only (see bools.xml): the open tabs across the top, the way a
+          desktop browser has them, so switching is one tap instead of a trip
+          to another screen. A phone has neither the width for it nor the
+          screen to spare, and keeps the counter button.
+
+          Carries the same scroll flags as the toolbar row: on a tablet the
+          whole header goes away while you read and comes back on the way up.
+        -->
+        <LinearLayout
+            android:id="@+id/tabStripRow"
+            android:layout_width="match_parent"
+            android:layout_height="42dp"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:paddingStart="6dp"
+            android:paddingEnd="4dp"
+            android:visibility="gone"
+            app:layout_scrollFlags="scroll|enterAlways|snap"
+            tools:visibility="visible">
+
+            <androidx.recyclerview.widget.RecyclerView
+                android:id="@+id/tabStrip"
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="1"
+                android:clipToPadding="false"
+                android:overScrollMode="never"
+                android:scrollbars="none" />
+
+            <ImageButton
+                android:id="@+id/btnStripNewTab"
+                android:layout_width="36dp"
+                android:layout_height="36dp"
+                android:padding="0dp"
+                android:scaleType="center"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:contentDescription="@string/tabs_tray_new"
+                android:src="@drawable/ic_add"
+                android:tint="?attr/colorOnSurfaceVariant" />
+        </LinearLayout>
 
         <LinearLayout
             android:id="@+id/toolbarWrapper"
@@ -60,6 +130,7 @@
             android:layout_height="56dp"
             android:orientation="horizontal"
             android:gravity="center_vertical"
+            app:layout_scrollFlags="scroll|enterAlways|snap"
             android:paddingStart="2dp"
             android:paddingEnd="2dp"
             android:background="?attr/colorSurface">
@@ -244,13 +315,12 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:visibility="gone" />
-    </LinearLayout>
-
+    </com.google.android.material.appbar.AppBarLayout>
 
     <!--
-      Engine view + overlays share the same constraint slot. Z-order (later
-      sibling on top) puts the start page above the engine, the suggestions
-      above that, and the player overlay above everything.
+      Engine view + overlays share one slot under the bar. Z-order (later
+      sibling on top) puts the start page above the engine and the player
+      overlay above everything.
 
       The engine view is the refresh layout's only child on purpose: both
       SwipeRefreshFeature and PullToRefreshLayout identify the page by asking
@@ -259,12 +329,9 @@
     -->
     <com.upgrid.browser.ui.PullToRefreshLayout
         android:id="@+id/swipeRefresh"
-        android:layout_width="0dp"
-        android:layout_height="0dp"
-        app:layout_constraintTop_toTopOf="parent"
-        app:layout_constraintBottom_toBottomOf="parent"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent">
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        app:layout_behavior="@string/appbar_scrolling_view_behavior">
 
         <mozilla.components.browser.engine.gecko.GeckoEngineView
             android:id="@+id/engineView"
@@ -289,28 +356,28 @@
     -->
     <ImageView
         android:id="@+id/pageCover"
-        android:layout_width="0dp"
-        android:layout_height="0dp"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
         android:visibility="gone"
         android:scaleType="fitXY"
         android:background="?attr/colorSurface"
         android:importantForAccessibility="no"
-        app:layout_constraintTop_toTopOf="parent"
-        app:layout_constraintBottom_toBottomOf="parent"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent" />
+        app:layout_behavior="@string/appbar_scrolling_view_behavior" />
 
-    <!-- Start page (speed dial). Inflated as <include> so view binding picks up the inner ids. -->
+    <!-- Start page (speed dial). Inflated as <include> so view binding picks up
+         the inner ids. Same behaviour as the page it stands in for, so it sits
+         under the bar; its own nested scrolling is switched off in code, since
+         a speed dial is not something you should be able to hide the address
+         bar with. -->
     <include
         android:id="@+id/startPage"
         layout="@layout/view_start_page"
-        android:layout_width="0dp"
-        android:layout_height="0dp"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
         android:visibility="gone"
-        app:layout_constraintTop_toBottomOf="@id/chrome"
-        app:layout_constraintBottom_toBottomOf="parent"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent" />
+        app:layout_behavior="@string/appbar_scrolling_view_behavior" />
+
+    </androidx.coordinatorlayout.widget.CoordinatorLayout>
 
     <!--
       Omnibar suggestions: bookmarks, then visited pages, then past searches,
@@ -323,6 +390,12 @@
           down the screen, floating above the keyboard instead of hanging off
           the address bar. The bottom constraint has to stay (it's what caps
           the height), so the bias is what pins it up.
+        - it hangs off the root at a fixed 62dp rather than off the bar: the
+          bar lives inside a CoordinatorLayout now and there is nothing in the
+          root to constrain to. 62 is the bar (56) plus its hairline and a
+          hair of clearance, and a constant is right here because the drop-down
+          only exists while the address bar is being typed into, and editing
+          forces the bar fully open (see MainActivity.onStartEditing).
         - its own surface colour, inset from both edges and elevated. On
           colorSurface, full width, the panel was the same shade as the page
           behind it and read as loose text scattered over the start page rather
@@ -340,7 +413,7 @@
         android:visibility="gone"
         android:layout_marginStart="8dp"
         android:layout_marginEnd="8dp"
-        android:layout_marginTop="6dp"
+        android:layout_marginTop="62dp"
         android:background="@drawable/bg_suggestions"
         android:elevation="10dp"
         android:paddingTop="6dp"
@@ -348,7 +421,7 @@
         android:clipToPadding="false"
         android:overScrollMode="never"
         android:scrollbars="none"
-        app:layout_constraintTop_toBottomOf="@id/chrome"
+        app:layout_constraintTop_toTopOf="parent"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent"

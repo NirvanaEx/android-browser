@@ -188,6 +188,10 @@ dependencies {
     // BrowserApplication uses it directly, so it is named directly.
     implementation("androidx.lifecycle:lifecycle-process:2.8.7")
     implementation("androidx.constraintlayout:constraintlayout:2.2.0")
+    // CoordinatorLayout + AppBarLayout are what make the top bar retract under
+    // the finger; material pulls this in anyway, but activity_main.xml names
+    // the class directly, so the dependency is named directly too.
+    implementation("androidx.coordinatorlayout:coordinatorlayout:1.2.0")
     implementation("com.google.android.material:material:1.12.0")
 
     // --- Mozilla browser engine (transitively pulls geckoview-stable) ---
