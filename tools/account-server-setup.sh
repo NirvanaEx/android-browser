@@ -2,12 +2,15 @@
 #
 # Publish one browser account and the VPN profile that comes with it.
 #
-#   sudo bash tools/account-server-setup.sh [login] [password] [tunnel-ip]
-#   defaults:                                superadmin  123      10.7.0.4
+#   sudo bash tools/account-server-setup.sh <login> <password> [tunnel-ip]
 #
 # Run on the machine that already runs WireGuard. Afterwards the phone signs in
-# with the login and password below and gets its profile — no key ever has to be
+# with that login and password and gets its profile — no key ever has to be
 # carried from the server to the phone by hand, which is the entire point.
+#
+# The password has no default, and no example of a real one appears anywhere in
+# this repository, because the repository is public and that password is the
+# only thing between a stranger who read it and a working peer on your server.
 #
 # Everything it does is additive and idempotent:
 #
@@ -20,8 +23,8 @@
 #      is already on the box, serving that JSON behind HTTP basic auth. Nothing
 #      else in the nginx configuration is read or changed.
 #
-# Adding a second account later is the same command with a different login and a
-# free address:  sudo bash tools/account-server-setup.sh ivan hunter2 10.7.0.5
+# Adding a second account later is the same command with a different login, its
+# own password and a free address.
 #
 # Removing one:  wg set wg0 peer <its public key> remove
 #                (and delete its [Peer] block from /etc/wireguard/wg0.conf)
@@ -29,8 +32,20 @@
 set -euo pipefail
 
 LOGIN="${1:-superadmin}"
-PASSWORD="${2:-123}"
+PASSWORD="${2:-}"
 CLIENT_IP="${3:-10.7.0.4}"
+
+if [ -z "$PASSWORD" ]; then
+    cat >&2 <<'USAGE'
+usage: sudo bash tools/account-server-setup.sh <login> <password> [tunnel-ip]
+
+The password is required and is deliberately not defaulted here. This file is in
+a public repository; a password written into it is a password anyone can read,
+and this one hands out a WireGuard profile for your server. Pick one that isn't
+worth guessing, then type it once in the browser — the phone remembers it.
+USAGE
+    exit 2
+fi
 
 # Adjust these two if the box ever changes. Everything else is derived.
 HOST="${UPGRID_HOST:-ai-game.193-160-119-15.sslip.io}"
@@ -39,14 +54,19 @@ PUBLIC_IP="${UPGRID_PUBLIC_IP:-193.160.119.15}"
 WG_IF="${UPGRID_WG_IF:-wg0}"
 KEY_DIR=/root/wg-clients
 API_DIR=/srv/upgrid-api
-HTPASSWD=/etc/nginx/upgrid.htpasswd
 CERT_DIR="/etc/letsencrypt/live/$HOST"
 
-# aaPanel keeps its vhosts here; a stock nginx uses conf.d.
+# aaPanel keeps its vhosts and its nginx tree under /www; a stock install uses
+# /etc/nginx. The password file goes next to the configuration either way —
+# /etc/nginx does not even exist on an aaPanel box, which is what a hard-coded
+# path found out the hard way, three steps into a run that had already touched
+# WireGuard.
 if [ -d /www/server/panel/vhost/nginx ]; then
     VHOST=/www/server/panel/vhost/nginx/upgrid-api.conf
+    HTPASSWD=/www/server/nginx/conf/upgrid.htpasswd
 else
     VHOST=/etc/nginx/conf.d/upgrid-api.conf
+    HTPASSWD=/etc/nginx/upgrid.htpasswd
 fi
 
 [ "$(id -u)" -eq 0 ] || { echo "run as root" >&2; exit 1; }
@@ -93,6 +113,12 @@ SERVER_PUB="$(wg show "$WG_IF" public-key)"
 LISTEN_PORT="$(wg show "$WG_IF" listen-port)"
 
 mkdir -p "$API_DIR"
+# The umask above is 077, for the private key. nginx runs as its own user and
+# cannot serve a file out of a directory it cannot even traverse — so this one
+# directory is opened to nginx's group and to nobody else. The profiles inside
+# stay 640 root:www.
+chown root:www "$API_DIR" 2>/dev/null || chown root:www-data "$API_DIR" 2>/dev/null || true
+chmod 0750 "$API_DIR"
 CLIENT_PRIV="$CLIENT_PRIV" CLIENT_IP="$CLIENT_IP" SERVER_PUB="$SERVER_PUB" \
 ENDPOINT="$PUBLIC_IP:$LISTEN_PORT" LOGIN="$LOGIN" \
 python3 - > "$API_DIR/$LOGIN.json" <<'PY'

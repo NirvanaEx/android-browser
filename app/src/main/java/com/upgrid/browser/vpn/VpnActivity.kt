@@ -53,6 +53,31 @@ class VpnActivity : AppCompatActivity() {
             }
         }
 
+    /** Only for the status notification. Whatever the answer, the tunnel works. */
+    private val notificationLauncher =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
+
+    /**
+     * Pick a `wg-quick` file and load it.
+     *
+     * The picker is opened with a wildcard filter rather than a mime type:
+     * `.conf` has no registered one, so Android reports it as
+     * `application/octet-stream` on one device and `text/plain` on the next,
+     * and filtering on either hides the very file the user came to pick.
+     */
+    private val importLauncher =
+        registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+            if (uri == null) return@registerForActivityResult
+            val text = runCatching {
+                contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() }
+            }.getOrNull()
+            if (text.isNullOrBlank()) {
+                toast(getString(R.string.vpn_import_failed))
+            } else {
+                applyConfig(text)
+            }
+        }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         binding = ActivityVpnBinding.inflate(layoutInflater)
@@ -171,6 +196,8 @@ class VpnActivity : AppCompatActivity() {
 
         btnVpnPaste.setOnClickListener { pasteConfig() }
 
+        btnVpnImport.setOnClickListener { importLauncher.launch(arrayOf("*/*")) }
+
         btnVpnGenerate.setOnClickListener {
             val pair = KeyPair()
             vpnPrivateKey.setText(pair.privateKey.toBase64())
@@ -192,13 +219,7 @@ class VpnActivity : AppCompatActivity() {
         btnVpnForget.setOnClickListener { confirmForget() }
     }
 
-    /**
-     * Paste a whole `wg-quick` config from the clipboard.
-     *
-     * Saves the form first: [VpnSettings.importFrom] writes into the same
-     * preferences the fields were loaded from, and re-reading them afterwards
-     * would otherwise throw away anything typed but not yet saved.
-     */
+    /** Paste a whole `wg-quick` config from the clipboard. */
     private fun pasteConfig() {
         val clipboard = getSystemService(ClipboardManager::class.java)
         val text = clipboard?.primaryClip?.takeIf { it.itemCount > 0 }
@@ -207,12 +228,24 @@ class VpnActivity : AppCompatActivity() {
             toast(getString(R.string.vpn_paste_empty))
             return
         }
+        applyConfig(text)
+    }
+
+    /**
+     * Load a `wg-quick` config, from wherever it came from.
+     *
+     * Saves the form first: [VpnSettings.importFrom] writes into the same
+     * preferences the fields were loaded from, and re-reading them afterwards
+     * would otherwise throw away anything typed but not yet saved.
+     */
+    private fun applyConfig(text: String) {
         save()
         if (!settings.importFrom(text)) {
             toast(getString(R.string.vpn_paste_bad))
             return
         }
         load()
+        setAdvancedOpen(false)
         renderState(controller.tunnelState.value)
         toast(getString(R.string.vpn_paste_ok))
     }
@@ -266,6 +299,11 @@ class VpnActivity : AppCompatActivity() {
     }
 
     private fun connect() {
+        // Ask now, not on first launch: this is the moment there is something
+        // to post. The tunnel comes up either way.
+        if (VpnNotifications.needsPermission(this)) {
+            notificationLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+        }
         binding.btnVpnToggle.isEnabled = false
         lifecycleScope.launch {
             val result = controller.connect(settings)

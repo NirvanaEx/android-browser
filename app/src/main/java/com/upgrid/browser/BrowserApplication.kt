@@ -8,6 +8,8 @@ import com.upgrid.browser.addons.AdblockBootstrap
 import com.upgrid.browser.prefs.BrowserPreferences
 import com.upgrid.browser.ui.ThemeMode
 import com.upgrid.browser.ui.applyColorScheme
+import com.upgrid.browser.vpn.VpnNotifications
+import com.wireguard.android.backend.Tunnel
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -78,6 +80,16 @@ class BrowserApplication : Application() {
         if (components.vpnSettings.autoConnect && components.vpnSettings.isConfigured) {
             appScope.launch { components.vpn.connect(components.vpnSettings) }
         }
+
+        // The tunnel's own notification. Here rather than in an Activity
+        // because the tunnel outlives every screen — the notification has to
+        // still be right after the browser is swiped out of the recents list,
+        // and it is the only way back to a disconnect button from there.
+        val notifications = VpnNotifications(this)
+        appScope.launch {
+            components.vpn.tunnelState.collect { notifications.render(it == Tunnel.State.UP) }
+        }
+
         attachAutosave(components.sessionStorage)
     }
 

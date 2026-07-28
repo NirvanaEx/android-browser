@@ -489,6 +489,17 @@ my profile?".
 and reach the phone through the account, never through the build; a bundle
 committed here would be a private key on GitHub whatever it was wrapped in.
 
+**The seeded password is not a secret either, and that has a consequence.**
+`AccountStore.DEFAULT_PASSWORD` ships in every APK and is readable in this repo,
+and the same credentials the user types are what fetch the VPN profile — so an
+account left on its out-of-the-box password is an account whose profile anyone
+who read the source can download, and a peer on the owner's WireGuard server is
+what they get. There is no way around it that keeps "install and sign in" with
+zero input: anything baked into a public build is public. The setup script
+therefore refuses to default the *server* password, and the owner is told in as
+many words that the pair is only as private as the weakest half. Changing it is
+one run of the script plus typing the new password once.
+
 ## VPN
 
 `com.wireguard.android:tunnel` — WireGuard's own embeddable backend (wireguard-go
@@ -504,9 +515,20 @@ duplicate fails the build.
   accept once per install, so connecting lives in `VpnActivity` and in
   `MainActivity.toggleVpn` (the app menu is a PopupWindow with no lifecycle to
   register a result contract against). `VpnController` never asks.
-- The profile is stored as fields and rendered to `wg-quick` text on connect;
-  pasting a config parses the same format back into the fields. `Config.parse`
-  validates at connect time, where a bad value can be reported as one.
+- The profile is stored as fields and rendered to `wg-quick` text on connect.
+  Three ways in, all landing in `applyConfig`: the account fills it, a config is
+  pasted, or a `.conf` file is picked. The file picker uses a wildcard filter —
+  `.conf` has no registered mime type, so Android calls it
+  `application/octet-stream` on one device and `text/plain` on the next, and
+  filtering on either hides the file the user came for. `Config.parse` validates
+  at connect time, where a bad value can be reported as one.
+- **The status notification is posted from `BrowserApplication`, not a screen.**
+  The tunnel outlives every Activity, and the notification has to still be
+  correct — and its Disconnect button still reachable — after the browser is
+  swiped out of recents. `POST_NOTIFICATIONS` is asked for at the moment the
+  user connects, never on first launch; refusing it changes nothing about the
+  tunnel, so `VpnNotifications` treats "not allowed" as a normal state and
+  posts nothing.
 
 ## Pull to refresh
 

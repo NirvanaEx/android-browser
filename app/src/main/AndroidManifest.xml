@@ -5,6 +5,11 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 
+    <!-- One notification, and only while the VPN is connected: what it is
+         connected to, and a button to disconnect. Asked for at the moment the
+         user connects, not on first launch. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
     <!-- Optional: lets the user install browser as default. -->
     <queries>
         <intent>
@@ -140,6 +145,19 @@
             android:parentActivityName=".MainActivity"
             android:windowSoftInputMode="stateAlwaysHidden|adjustResize"
             android:configChanges="screenSize|smallestScreenSize|screenLayout|orientation|keyboard|keyboardHidden|navigation" />
+
+        <!--
+          The "Disconnect" button on the VPN notification. Not exported: the
+          only thing allowed to drop the user's tunnel is the user's own tap on
+          our own notification.
+        -->
+        <receiver
+            android:name=".vpn.VpnActionReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.upgrid.browser.action.VPN_DISCONNECT" />
+            </intent-filter>
+        </receiver>
 
         <!--
           Hands a downloaded file to another app. Only needed below Android 10,

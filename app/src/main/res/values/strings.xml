@@ -265,6 +265,12 @@
     <string name="vpn_section_device">This device</string>
     <string name="vpn_section_server">Server</string>
     <string name="vpn_paste">Paste config</string>
+    <string name="vpn_import">Import a config file</string>
+    <string name="vpn_import_failed">Couldn\'t read that file.</string>
+    <string name="vpn_notification_channel">VPN status</string>
+    <string name="vpn_notification_channel_hint">Shown only while the VPN is connected.</string>
+    <string name="vpn_notification_title">VPN is on</string>
+    <string name="vpn_notification_text">Through %1$s</string>
     <string name="vpn_generate">New key</string>
     <string name="vpn_generated">Key generated. Add the public key on the server.</string>
     <string name="vpn_paste_ok">Config loaded</string>
