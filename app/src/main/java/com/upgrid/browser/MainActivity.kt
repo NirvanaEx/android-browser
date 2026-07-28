@@ -17,6 +17,7 @@ import android.media.AudioManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.Environment
 import android.util.Rational
 import android.view.Gravity
 import android.view.MotionEvent
@@ -52,6 +53,7 @@ import com.upgrid.browser.home.QuickLink
 import com.upgrid.browser.home.StartPagePresenter
 import com.upgrid.browser.menu.AppMenuPopup
 import com.upgrid.browser.prefs.BrowserPreferences
+import com.upgrid.browser.search.SearchEngine
 import com.upgrid.browser.search.Suggestion
 import com.upgrid.browser.search.SuggestionAdapter
 import com.upgrid.browser.search.SuggestionSource
@@ -59,6 +61,7 @@ import com.upgrid.browser.sync.GoogleAccounts
 import com.upgrid.browser.sync.SignInDiagnostics
 import com.upgrid.browser.sync.SyncEngine
 import com.upgrid.browser.tabs.TabsActivity
+import com.upgrid.browser.tabs.WindowRequests
 import com.upgrid.browser.find.FindInPageController
 import com.upgrid.browser.translate.TranslateController
 import com.upgrid.browser.history.HistoryStore
@@ -79,10 +82,12 @@ import kotlinx.coroutines.launch
 import mozilla.components.browser.state.action.CrashAction
 import mozilla.components.browser.state.selector.selectedTab
 import mozilla.components.browser.toolbar.display.DisplayToolbar
+import mozilla.components.feature.contextmenu.ContextMenuCandidate
+import mozilla.components.feature.contextmenu.ContextMenuFeature
+import mozilla.components.feature.contextmenu.ContextMenuUseCases
 import mozilla.components.feature.session.FullScreenFeature
 import mozilla.components.feature.session.SessionFeature
 import mozilla.components.feature.session.SwipeRefreshFeature
-import mozilla.components.feature.toolbar.ToolbarFeature
 import mozilla.components.lib.state.ext.flow
 import mozilla.components.support.base.feature.UserInteractionHandler
 import mozilla.components.support.base.feature.ViewBoundFeatureWrapper
@@ -95,8 +100,21 @@ import mozilla.components.support.base.feature.ViewBoundFeatureWrapper
  * to the visible UI:
  *
  *  - [SessionFeature]      — renders the selected tab's EngineSession into the EngineView
- *  - [ToolbarFeature]      — keeps the toolbar URL/title/progress bound to the selected tab
  *  - [SwipeRefreshFeature] — pull down on the page to reload it
+ *  - [WindowRequests]      — `target="_blank"` and `window.open` become tabs
+ *  - [ContextMenuFeature]  — the long-press menu on a link or an image
+ *
+ * Notably absent: `ToolbarFeature`. It is the obvious way to bind a
+ * BrowserToolbar to the store and we used it for six rounds, but its presenter
+ * calls `toolbar.setSearchTerms(...)` on every store tick, and BrowserToolbar
+ * answers that — while in edit mode — by writing the value straight into the
+ * field the user is typing in. Tab has no search terms, so the value is the
+ * empty string, and the tick arrives on every progress update, title change and
+ * favicon. Typing into the address bar of a page that was doing anything at all
+ * meant watching the text delete itself. The three things the presenter
+ * rendered that we actually want — the URL, the padlock, the progress — are
+ * four lines in [renderChrome], and from there the top bar owes the page
+ * nothing.
  *
  * One observer on the store flow drives the rest of the chrome: the tab
  * counter, the start-page-vs-engine swap, the player button's visibility, and
@@ -264,9 +282,10 @@ class MainActivity : AppCompatActivity() {
     }
 
     private val sessionFeature = ViewBoundFeatureWrapper<SessionFeature>()
-    private val toolbarFeature = ViewBoundFeatureWrapper<ToolbarFeature>()
     private val swipeRefreshFeature = ViewBoundFeatureWrapper<SwipeRefreshFeature>()
     private val fullScreenFeature = ViewBoundFeatureWrapper<FullScreenFeature>()
+    private val windowRequests = ViewBoundFeatureWrapper<WindowRequests>()
+    private val contextMenuFeature = ViewBoundFeatureWrapper<ContextMenuFeature>()
 
     /** Find in page — our bar, and a search that runs inside the page. */
     private lateinit var findController: FindInPageController
@@ -335,16 +354,6 @@ class MainActivity : AppCompatActivity() {
         saveLoginDialog = null
     }
 
-    override fun onStart() {
-        super.onStart()
-        // ToolbarFeature.start() runs on lifecycle ON_START via ViewBoundFeatureWrapper
-        // and registers its own onUrlCommitListener — which would override ours
-        // if we set it in onCreate. Re-set after super.onStart() so we win the
-        // single-listener slot.
-        wireUrlCommit()
-        wireEditListener()
-    }
-
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         intent.dataStringIfView()?.let {
@@ -379,8 +388,10 @@ class MainActivity : AppCompatActivity() {
     // --- View wiring -------------------------------------------------------
 
     private fun wireToolbar() {
+        // Display half only. The edit half's hint names the search engine and
+        // is written by renderSearchEngine, which re-runs whenever editing
+        // starts because the engine can change while this activity is up.
         binding.toolbar.display.hint = getString(R.string.omnibar_hint)
-        binding.toolbar.edit.hint = getString(R.string.omnibar_hint)
         // Hide the synthetic about:blank URL so the start page reads as a clean
         // search entry instead of "your-tab-is-on-about:blank".
         binding.toolbar.display.urlFormatter = { url ->
@@ -388,23 +399,42 @@ class MainActivity : AppCompatActivity() {
         }
         // Banana-style left-of-URL home button. Goes to about:blank so the
         // speed-dial overlay shows; observeStore() handles that toggle.
-        binding.btnTopHome.setOnClickListener { components.sessionUseCases.loadUrl(HOME_URL) }
+        binding.btnTopHome.setOnClickListener {
+            leaveEditMode()
+            components.sessionUseCases.loadUrl(HOME_URL)
+        }
 
         // Topbar menu trigger — anchored AppMenuPopup that grows downward from
         // the menu icon (auto-positioned by showAsDropDown).
+        //
+        // leaveEditMode first, and not only because the keyboard would cover
+        // the menu: the popup is focusable, so opening it over a focused URL
+        // field leaves the field focused underneath with no keyboard and no
+        // cursor — a state you can only get out of by guessing.
         binding.btnTopMenu.setOnClickListener {
+            leaveEditMode()
             AppMenuPopup(this@MainActivity).showFrom(it)
         }
 
         // The tab grid needs a preview of the page we're leaving, and capture is
         // only possible while it is still the rendered one.
         binding.btnTopTabs.setOnClickListener {
+            leaveEditMode()
             captureCurrentThumbnail()
             startActivity(TabsActivity.intent(this))
         }
 
         addBookmarkAction()
         centreToolbarText()
+        renderSearchEngine()
+
+        // Both listeners are single-slot on BrowserToolbar and both used to be
+        // set from onStart, because ToolbarFeature.start() installed its own
+        // commit listener on ON_START and would have overwritten ours. With the
+        // feature gone nothing else competes for the slot, and setting them
+        // once is one fewer thing that has to happen in the right order.
+        wireUrlCommit()
+        wireEditListener()
 
         // Topbar video button → take over the page's video with the built-in
         // player. Fires the bundled extension's browser_action; Mozilla
@@ -478,11 +508,84 @@ class MainActivity : AppCompatActivity() {
     }
 
     /**
-     * Replace ToolbarFeature's URL-commit handler with our own so we can:
+     * Say which search engine is going to answer.
+     *
+     * A drop-down that offers to "search for what you typed" without saying
+     * where is asking for trust it hasn't earned — and picking the engine is
+     * three taps away in Settings, which is exactly far enough that nobody
+     * remembers what they picked. So the field itself carries it: the engine's
+     * name in the hint, and its magnifier in the engine's own colour at the
+     * left of the field, where Chrome and Firefox both put it.
+     *
+     * The icon is a button. Tapping it changes the engine for good, which is
+     * the same setting Settings writes — there is one preference, not a
+     * per-search override, because a search you have to configure twice is
+     * worse than one that goes to the wrong engine once.
+     */
+    private fun renderSearchEngine() {
+        val engine = preferences.searchEngine
+        binding.toolbar.edit.hint = getString(R.string.omnibar_hint_engine, engine.displayName)
+
+        val icon = ContextCompat.getDrawable(this, R.drawable.ic_find)
+            ?.mutate()
+            ?.apply { setTint(engine.brandColor) }
+            ?: return
+        binding.toolbar.edit.setIcon(
+            icon = icon,
+            contentDescription = getString(R.string.omnibar_engine_pick, engine.displayName),
+        )
+        binding.toolbar.edit.setIconClickListener { promptSearchEngine() }
+    }
+
+    /** The engine picker, from the badge in the address bar. */
+    private fun promptSearchEngine() {
+        val engines = SearchEngine.entries
+        val current = engines.indexOf(preferences.searchEngine)
+        MaterialAlertDialogBuilder(this)
+            .setTitle(R.string.settings_section_search)
+            .setSingleChoiceItems(
+                engines.map { it.displayName }.toTypedArray(),
+                current,
+            ) { dialog, which ->
+                preferences.searchEngine = engines[which]
+                renderSearchEngine()
+                // The drop-down is showing the old engine's guesses and its
+                // name on the first row; ask again with the new one.
+                currentEditText()?.let(::queueSuggestions)
+                dialog.dismiss()
+            }
+            .setNegativeButton(android.R.string.cancel, null)
+            .show()
+    }
+
+    /**
+     * The URL field's live text. Only meaningful while editing, which is the
+     * only state its one caller can be reached from.
+     */
+    private fun currentEditText(): String? = binding.toolbar
+        .findViewById<EditText>(
+            mozilla.components.browser.toolbar.R.id.mozac_browser_toolbar_edit_url_view,
+        )
+        ?.text?.toString()
+
+    /**
+     * Leave the address bar alone: display mode, no focus, no keyboard.
+     *
+     * One method rather than the two calls it wraps, because they have to
+     * happen together and in this order — dropping the keyboard while the field
+     * still has focus lets the IME come straight back the next time the window
+     * is touched.
+     */
+    private fun leaveEditMode() {
+        binding.toolbar.displayMode()
+        hideSuggestions()
+        hideKeyboard()
+    }
+
+    /**
+     * Turn what was typed into a load: our own handler, so we can
      *   1. Record free-text searches in history (real URLs are skipped).
      *   2. Resolve queries against the user's selected SearchEngine.
-     *
-     * Called from [onStart] — see that method for the timing rationale.
      */
     private fun wireUrlCommit() {
         binding.toolbar.setOnUrlCommitListener { input ->
@@ -497,8 +600,7 @@ class MainActivity : AppCompatActivity() {
             // user immediately sees the loading page instead of staring at
             // the IME. Without this, BrowserToolbar leaves the EditText
             // focused, the IME stays up, and the page looks "stuck".
-            binding.toolbar.displayMode()
-            hideKeyboard()
+            leaveEditMode()
             true
         }
     }
@@ -588,14 +690,21 @@ class MainActivity : AppCompatActivity() {
     /**
      * Feed the drop-down while the URL bar is being edited.
      *
-     * Set from [onStart] alongside the commit listener: `ToolbarFeature.start()`
-     * runs on ON_START and installs its own listeners, and both of these are
-     * single-slot.
+     * `onTextChanged` is the only signal there is that the field changed, and
+     * it fires for every change — including ones the app makes. That mattered
+     * while `ToolbarFeature` was installed: it wrote an empty string into the
+     * field on every store tick, and this listener dutifully asked for
+     * suggestions for "", which is what emptied the drop-down a moment after it
+     * appeared. Nothing writes to the field behind the user's back any more.
      */
     private fun wireEditListener() {
         binding.toolbar.setOnEditListener(object : Toolbar.OnEditListener {
             override fun onStartEditing() {
                 // Nothing to suggest for an empty field; wait for a keystroke.
+                // The engine badge is re-read here rather than remembered: the
+                // Settings sheet can change it without this activity ever
+                // pausing, so onResume is not a moment that happens.
+                renderSearchEngine()
             }
 
             override fun onStopEditing() = hideSuggestions()
@@ -660,9 +769,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun onSuggestionPicked(suggestion: Suggestion) {
-        hideSuggestions()
-        binding.toolbar.displayMode()
-        hideKeyboard()
+        leaveEditMode()
         when (suggestion.kind) {
             // A query is text, not a destination: run it through the user's
             // engine rather than trying to load it as a URL. Recorded too —
@@ -688,9 +795,15 @@ class MainActivity : AppCompatActivity() {
      * Done at the activity's touch entry point rather than with a listener per
      * view: the things you can tap while the URL bar has focus are the page,
      * the start page, its tiles, the home button, the tab counter, the menu —
-     * and any new one added later would have needed remembering. Only the
-     * toolbar row itself and the suggestion list are exempt, because those are
-     * the two places where a tap is part of what you're typing.
+     * and any new one added later would have needed remembering. Only the URL
+     * chip itself and the suggestion list are exempt, because those are the two
+     * places where a tap is part of what you're typing.
+     *
+     * The exemption is the chip, not the whole top row. It used to be the row,
+     * which quietly included the ⋮, the tab counter and the home button — so
+     * opening the menu with the keyboard up left the keyboard up, over the
+     * menu. Those three now leave edit mode themselves as well; this is the
+     * general rule, and they are the specific one.
      *
      * ACTION_DOWN, so the keyboard is on its way out before the tap resolves
      * into a click.
@@ -698,11 +811,10 @@ class MainActivity : AppCompatActivity() {
     override fun dispatchTouchEvent(event: MotionEvent): Boolean {
         if (event.action == MotionEvent.ACTION_DOWN && ::binding.isInitialized) {
             if (binding.toolbar.hasFocus() &&
-                !isInside(binding.toolbarWrapper, event) &&
+                !isInside(binding.toolbarPill, event) &&
                 !(binding.suggestionsList.isVisible && isInside(binding.suggestionsList, event))
             ) {
-                binding.toolbar.displayMode()
-                hideKeyboard()
+                leaveEditMode()
             }
             // Same rule for the find bar: tapping the page means you're reading
             // the result, not still typing the query. The bar stays open —
@@ -873,8 +985,7 @@ class MainActivity : AppCompatActivity() {
     private fun wireDismissKeyboardOnEngineTap() {
         binding.engineView.asView().setOnTouchListener { _, event ->
             if (event.action == MotionEvent.ACTION_DOWN && binding.toolbar.hasFocus()) {
-                binding.toolbar.displayMode()
-                hideKeyboard()
+                leaveEditMode()
             }
             false
         }
@@ -898,26 +1009,9 @@ class MainActivity : AppCompatActivity() {
             view = binding.root,
         )
 
-        toolbarFeature.set(
-            feature = ToolbarFeature(
-                toolbar = binding.toolbar,
-                store = components.store,
-                loadUrlUseCase = components.sessionUseCases.loadUrl,
-                searchUseCase = null,
-                customTabId = null,
-                urlRenderConfiguration = null,
-            ),
-            owner = this,
-            view = binding.root,
-        )
-
-        // Pull down to reload. The gesture only arms itself when the page is
-        // already scrolled to the top AND the page didn't consume the scroll
-        // itself — SwipeRefreshFeature asks the engine view, which is why the
-        // engine view has to be the refresh layout's direct child.
-        // colorPrimary comes from appcompat, not from material: with
-        // nonTransitiveRClass every attribute has to be named through the
-        // library that actually declares it.
+        // Pull down to reload. colorPrimary comes from appcompat, not from
+        // material: with nonTransitiveRClass every attribute has to be named
+        // through the library that actually declares it.
         binding.swipeRefresh.setColorSchemeColors(
             MaterialColors.getColor(binding.root, androidx.appcompat.R.attr.colorPrimary),
         )
@@ -927,11 +1021,48 @@ class MainActivity : AppCompatActivity() {
                 com.google.android.material.R.attr.colorSurfaceContainerHigh,
             ),
         )
+        binding.swipeRefresh.engineView = binding.engineView
         swipeRefreshFeature.set(
             feature = SwipeRefreshFeature(
                 store = components.store,
                 reloadUrlUseCase = components.sessionUseCases.reload,
                 swipeRefreshLayout = binding.swipeRefresh,
+            ),
+            owner = this,
+            view = binding.root,
+        )
+        // After the feature, deliberately: its constructor installs a callback
+        // of its own, and this one replaces it. The library asks the engine
+        // whether the *last touch* could have overscrolled the top, which is a
+        // question Gecko answers "no" for any page that isn't a long, plain,
+        // already-at-the-top document — see PullToRefreshLayout. The page's
+        // scroll position is the same question with an answer that is always
+        // there.
+        binding.swipeRefresh.setOnChildScrollUpCallback { _, _ ->
+            binding.engineView.canScrollVerticallyUp()
+        }
+
+        // Links that ask for a window of their own. Without this they are
+        // links that do nothing — see WindowRequests.
+        windowRequests.set(
+            feature = WindowRequests(
+                store = components.store,
+                tabsUseCases = components.tabsUseCases,
+                sessionUseCases = components.sessionUseCases,
+                openInNewTab = { preferences.openLinksInNewTab },
+            ),
+            owner = this,
+            view = binding.root,
+        )
+
+        // Long-press on a link or an image.
+        contextMenuFeature.set(
+            feature = ContextMenuFeature(
+                fragmentManager = supportFragmentManager,
+                store = components.store,
+                candidates = contextMenuCandidates(),
+                engineView = binding.engineView,
+                useCases = ContextMenuUseCases(components.store),
             ),
             owner = this,
             view = binding.root,
@@ -965,6 +1096,32 @@ class MainActivity : AppCompatActivity() {
         )
     }
 
+    /**
+     * What the long-press menu offers.
+     *
+     * Mozilla's default list, minus three rows that would be a lie here:
+     *
+     *  - **Open in private tab.** There is no private browsing in this browser.
+     *  - **Copy image** and **Share image.** Both hand the work to
+     *    `feature-downloads`, which we don't ship — the download side of this
+     *    app is [DownloadManager], forty lines that copy a stream, rather than
+     *    a foreground service and three prompt dialogs. Those two would dispatch
+     *    an action nobody listens for and appear to do nothing, which is the
+     *    exact failure this whole round is about.
+     *
+     * Saving an image, saving a video and saving a link all stay: they go
+     * through `injectDownload`, which is the store action our own downloads
+     * already watch for.
+     */
+    private fun contextMenuCandidates(): List<ContextMenuCandidate> =
+        ContextMenuCandidate.defaultCandidates(
+            context = this,
+            tabsUseCases = components.tabsUseCases,
+            contextMenuUseCases = ContextMenuUseCases(components.store),
+            snackBarParentView = binding.root,
+            downloadsLocation = { Environment.DIRECTORY_DOWNLOADS },
+        ).filterNot { it.id in UNSUPPORTED_CONTEXT_ITEMS }
+
     private fun wireBackPress() {
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
@@ -989,9 +1146,11 @@ class MainActivity : AppCompatActivity() {
 
                 // Order matters: the page bars first (they own the keyboard),
                 // then toolbar edit-mode → page goBack, finally tab close → finish().
+                // BrowserToolbar.onBackPressed() is what ToolbarFeature used to
+                // forward to; with the feature gone we ask the toolbar itself.
                 val handled = findController.onBackPressed()
                     || translateController.onBackPressed()
-                    || (toolbarFeature.get() as? UserInteractionHandler)?.onBackPressed() == true
+                    || binding.toolbar.onBackPressed()
                     || (sessionFeature.get() as? UserInteractionHandler)?.onBackPressed() == true
                 if (handled) return
 
@@ -1206,6 +1365,7 @@ class MainActivity : AppCompatActivity() {
                                 tabCount = state.tabs.size,
                                 selectedTabId = state.selectedTabId,
                                 url = tab?.content?.url.orEmpty(),
+                                secure = tab?.content?.securityInfo?.isSecure == true,
                                 loading = tab?.content?.loading == true,
                                 progress = tab?.content?.progress ?: 0,
                             )
@@ -1273,6 +1433,7 @@ class MainActivity : AppCompatActivity() {
         val tabCount: Int,
         val selectedTabId: String?,
         val url: String,
+        val secure: Boolean,
         val loading: Boolean,
         val progress: Int,
     )
@@ -1280,6 +1441,20 @@ class MainActivity : AppCompatActivity() {
     private fun renderChrome(state: ChromeState) {
         binding.tabCount.text = state.tabCount.toString()
         renderProgress(state.loading, state.progress)
+
+        // The address and the padlock — everything ToolbarFeature's presenter
+        // did for us, written here so it can't reach into the edit field. Both
+        // setters are display-half only, so this is safe to run while the user
+        // is typing: they change what is behind the keyboard, not what is in
+        // front of it.
+        //
+        // Compared before assigning because neither setter checks: each one
+        // redraws its view, and this method runs on every progress tick of
+        // every load.
+        if (binding.toolbar.url != state.url) binding.toolbar.url = state.url
+        val siteInfo =
+            if (state.secure) Toolbar.SiteInfo.SECURE else Toolbar.SiteInfo.INSECURE
+        if (binding.toolbar.siteInfo != siteInfo) binding.toolbar.siteInfo = siteInfo
 
         // NOTE: nothing here may read uBO's state. That lookup is async through
         // the engine, and firing one per store tick backs the engine queue up
@@ -1936,6 +2111,13 @@ class MainActivity : AppCompatActivity() {
 
         /** Widest window the system will hand out for PiP, either orientation. */
         private const val MAX_PIP_ASPECT = 2.39f
+
+        /** See [contextMenuCandidates] for why each of these is dropped. */
+        private val UNSUPPORTED_CONTEXT_ITEMS = setOf(
+            "mozac.feature.contextmenu.open_in_private_tab",
+            "mozac.feature.contextmenu.copy_image",
+            "mozac.feature.contextmenu.share_image",
+        )
 
         /**
          * Debounce before querying the omnibar drop-down.

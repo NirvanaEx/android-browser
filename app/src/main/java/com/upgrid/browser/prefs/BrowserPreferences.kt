@@ -127,6 +127,21 @@ class BrowserPreferences(context: Context) {
         }
 
     /**
+     * Let a page open a link in a tab of its own.
+     *
+     * `target="_blank"` and `window.open()` ask the browser for a new window;
+     * on by default because that is what the page asked for and what every
+     * other browser does. Off means the link is loaded where the user already
+     * is — for people who find a browser that grows tabs by itself worse than
+     * one that occasionally loses their place.
+     */
+    var openLinksInNewTab: Boolean
+        get() = prefs.getBoolean(KEY_LINKS_NEW_TAB, true)
+        set(value) {
+            prefs.edit().putBoolean(KEY_LINKS_NEW_TAB, value).apply()
+        }
+
+    /**
      * Default speed-dial tiles the user has removed.
      *
      * Only the built-in ones need remembering: a tile the user added is a
@@ -158,6 +173,7 @@ class BrowserPreferences(context: Context) {
         private const val KEY_SAVE_PASSWORDS = "save_passwords"
         private const val KEY_ACCOUNT_SERVER = "account_server"
         private const val KEY_TABS_GRID = "tabs_grid"
+        private const val KEY_LINKS_NEW_TAB = "links_in_new_tab"
 
         /**
          * The owner's own box. Reachable over TLS on the standard port; the

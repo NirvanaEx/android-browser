@@ -25,7 +25,7 @@ app/src/main/
 ├── java/com/upgrid/browser/
 │   ├── BrowserApplication.kt       ← components; restore session; uBO bootstrap; autosave
 │   ├── BrowserComponents.kt        ← single source of truth for runtime/engine/store/tabs
-│   ├── MainActivity.kt             ← the single top bar + GeckoEngineView + Session/Toolbar
+│   ├── MainActivity.kt             ← the single top bar + GeckoEngineView + the a-c
 │   │                                 features. No bottom bar — see below.
 │   ├── AdblockController.kt        ← thin façade for the AdBlock on/off toggle
 │   ├── addons/AdblockBootstrap.kt  ← silent uBO install + version pin
@@ -63,7 +63,8 @@ app/src/main/
 │   │   └── SyncPayload.kt          ← the versioned JSON document
 │   ├── tabs/
 │   │   ├── TabsActivity.kt         ← list of open tabs, store-driven, swipe to close
-│   │   └── TabViewHolder.kt
+│   │   ├── TabViewHolder.kt
+│   │   └── WindowRequests.kt       ← target=_blank / window.open → a tab (or not)
 │   ├── vpn/
 │   │   ├── VpnController.kt        ← com.wireguard.android:tunnel, one per process
 │   │   ├── VpnSettings.kt          ← the profile as fields; wg-quick in and out
@@ -71,6 +72,7 @@ app/src/main/
 │   └── ui/
 │       ├── HostTile.kt             ← per-host letter + color, shared by every list
 │       ├── SiteIconView.kt         ← that letter with the real favicon over it
+│       ├── PullToRefreshLayout.kt  ← takes the pull back from GeckoView at scroll 0
 │       └── ExpandedBottomSheetFragment.kt ← sheets open full height
 └── res/
     ├── layout/                     ← activity_{main,history,bookmarks,tabs} + app_menu_popup +
@@ -248,7 +250,7 @@ The AMO file id changes per release; the version in the filename is cosmetic.
 - **`BrowserStore` is the single source of truth.** Tabs, selected tab id, URL, title, progress all live there. UI observes via `store.flow()` and dispatches actions; never mutate engine sessions directly.
 - **Never render chrome straight off `store.flow()`.** The store ticks dozens of times per page load — every progress update is a new state, and almost none of them change anything visible. `MainActivity.observeStore` maps to a `ChromeState` of just the fields the bar renders and passes it through `distinctUntilChanged`, which turns a hundred redundant view writes per load into three or four. History collects separately and unfiltered, because it needs the title, which lands on a tick where nothing else moved.
 - **The data stores live in `BrowserComponents`, one per process.** `BookmarkStore`, `HistoryStore` and `SearchHistory` used to be constructed per screen, so every activity showing a list opened its own `SQLiteOpenHelper` — a second connection and a second page cache against a file the activity already had open. Go through `components`.
-- **Features are the glue.** `SessionFeature` renders the selected tab into `GeckoEngineView`; `ToolbarFeature` keeps `BrowserToolbar` synced. Both are bound through `ViewBoundFeatureWrapper` so they stop/start with the view lifecycle.
+- **Features are the glue.** `SessionFeature` renders the selected tab into `GeckoEngineView`; `SwipeRefreshFeature`, `FullScreenFeature`, `ContextMenuFeature` and our own `WindowRequests` handle the rest. All are bound through `ViewBoundFeatureWrapper` so they stop/start with the view lifecycle. **`ToolbarFeature` is deliberately not among them** — see "The top bar does not belong to the page".
 - **`BrowserApplication.restorePreviousSession`** restores tabs *before* the bootstrap installs uBO — this guarantees tabs are visible the moment the user sees the activity even if AMO is unreachable.
 - **Tab close → empty state:** `MainActivity.wireBackPress` finishes the activity when the last tab is closed via the system back button. The tabs screen does *not* close itself when `tabs.isEmpty()` — it shows an empty illustration. `TabsActivity.finish()` is overridden to open a fresh HOME tab when the list is empty, because leaving with zero tabs would drop MainActivity onto an unrendered engine view. It's on `finish()` rather than in a click handler since three paths reach it: the back arrow, the back gesture, and picking a tab.
 - **App menu is a `PopupWindow`, not a BottomSheet.** [AppMenuPopup](app/src/main/java/com/upgrid/browser/menu/AppMenuPopup.kt) is a 236dp drop-down anchored to `btnTopMenu` via `showAsDropDown(anchor, 0, 0, Gravity.END)`. Construct a new instance per tap (cheap, avoids stale toggle state) — but note `PopupWindow` keeps its content view between shows, so anything derived from browser state is re-read in `showFrom`, not at construction.
@@ -622,12 +624,42 @@ densities to keep in step and nothing older to fall back for.
 
 ## Pull to refresh
 
-`SwipeRefreshFeature` (feature-session) + `androidx.swiperefreshlayout`. The
-**`GeckoEngineView` has to be the `SwipeRefreshLayout`'s direct child**: the
-feature identifies it with `child is EngineView` to ask whether the page is
-already at the top, and answers "it can still scroll" for anything else, which
-disables the gesture outright. The start page is a sibling *over* the refresh
-layout and `swipeRefresh.isEnabled` is false while it's showing.
+`SwipeRefreshFeature` (feature-session) drives the reload and the spinner, but
+the layout is ours:
+[PullToRefreshLayout](app/src/main/java/com/upgrid/browser/ui/PullToRefreshLayout.kt).
+The **`GeckoEngineView` has to be its direct child**: both the feature and our
+layout identify the page with `child is EngineView`, and anything else answers
+"it can still scroll", which disables the gesture outright. The start page is a
+sibling *over* the refresh layout and `swipeRefresh.isEnabled` is false while
+it's showing.
+
+**Why a subclass at all.** Plain `SwipeRefreshLayout` under GeckoView only works
+on one kind of page. `NestedGeckoView` claims every gesture on ACTION_DOWN —
+`requestDisallowInterceptTouchEvent(true)` plus `startNestedScroll` — and
+releases it only once Gecko has answered, and only when the answer is
+`INPUT_HANDLED` with can-overscroll-top: a long, plain document already at its
+top. Two ordinary answers never release it:
+
+- `INPUT_UNHANDLED` — nothing on the page scrolls, i.e. any page shorter than
+  the screen;
+- `INPUT_HANDLED_CONTENT` — the site has its own touch listeners, i.e. most of
+  the modern web.
+
+With the gesture claimed, both routes into `SwipeRefreshLayout` are shut:
+`onInterceptTouchEvent` is skipped because interception was disallowed, and the
+nested-scroll path is dead because `NestedGeckoView` only forwards scrolls it is
+itself performing (`allowScroll` requires `isTouchHandledByBrowser()`). The pull
+did nothing, silently, and read as a missing feature.
+
+So: **at the top of the page the pull is ours.** `pageAtTop` is sampled once per
+gesture at ACTION_DOWN from `EngineView.canScrollVerticallyUp()` — the engine's
+own scroll position, not the async input result — and while it holds we refuse
+the nested-scroll handshake and ignore the disallow. The child-scroll-up
+callback is replaced for the same reason and **must be set after** constructing
+`SwipeRefreshFeature`, whose `init` installs its own.
+
+The trade: on a page scrolled to the top that wants to handle a downward drag
+itself (a canvas, a map), refresh wins. Same trade Chrome makes.
 
 ## Bookmarks
 
@@ -704,14 +736,91 @@ differ, two entries from one host with the same title read as one thing repeated
 (a feed and its front page are both "Хабр"), and nine slots shouldn't hold three
 of them.
 
+**The field says which engine will answer.** `EditToolbar.setIcon` puts a
+magnifier in the engine's `brandColor` at the left of the edit field, the hint
+reads "Поиск в Yandex или адрес", and tapping the icon opens the picker that
+writes the same preference Settings does. Re-rendered on `onStartEditing`, not
+on `onResume`: the Settings sheet is a `DialogFragment` and can change the
+engine without this activity ever pausing.
+
 Deliberately **not** `feature-awesomebar`: its suggestion providers are written
 against `concept-storage`'s `HistoryStorage`, which is the Places-backed API this
 project decided against (see below). A `RecyclerView` and two queries need no
 new dependency.
 
-Wired through `Toolbar.OnEditListener`, set in `onStart()` alongside the commit
-listener — `ToolbarFeature.start()` runs on ON_START and installs its own, and
-both are single-slot.
+Wired through `Toolbar.OnEditListener`, set once in `onCreate` — see below for
+why that used to have to be `onStart`.
+
+## The top bar does not belong to the page
+
+**There is no `ToolbarFeature`, and adding one back will break typing.**
+
+`ToolbarPresenter.render()` runs on every store tick — every progress update,
+title change, favicon, security-info arrival — and one of the things it does is
+`toolbar.setSearchTerms(tab.content.searchTerms)`. `BrowserToolbar.setSearchTerms`
+is not a display-only setter:
+
+```kotlin
+override fun setSearchTerms(searchTerms: String) {
+    this.searchTerms = searchTerms.trimmed()
+    if (state == State.EDIT) {
+        edit.editSuggestion(this.searchTerms)   // → views.url.setText(...)
+    }
+}
+```
+
+A tab that wasn't opened by a search has **no** search terms, so that is
+`setText("")` into the field the user is typing in, followed by
+`editListener.onTextChanged("")`, which empties the drop-down too. On a fresh
+`about:blank` tab the store is quiet and typing works; on any loaded page the
+text deleted itself mid-word. That is the whole of "поиск не работает на
+открытой странице" and "текст автоудаляется", and it was two separate bug
+reports before the cause was found.
+
+`BrowserToolbar` is not `open`, so it can't be subclassed to neuter that one
+method. Instead `MainActivity.renderChrome` renders the three things the
+presenter gave us — `toolbar.url`, `toolbar.siteInfo`, and our own progress bar
+— comparing before assigning, because neither setter checks and this runs on
+every tick. `ToolbarFeature.onBackPressed()` was just `toolbar.onBackPressed()`,
+and `ToolbarInteractor`'s commit listener was already being overwritten by
+`wireUrlCommit()`. Nothing else was lost: `displayProgress` feeds a progress bar
+we hide (`mozac_browser_toolbar_progress_bar_height` is 0dp), and the
+tracking-protection and permission indicators are not in `display.indicators`.
+
+The general rule this is an instance of: **anything that writes to the toolbar
+must be able to say why it can't reach `edit`.** `url`, `siteInfo` and
+`invalidateActions` are safe; `setSearchTerms` and `editMode` are not.
+
+## Links that ask for a window of their own
+
+`target="_blank"` and `window.open()` reach a-c as a `WindowRequest` parked on
+the tab, and **something has to consume it**. Gecko has already built the
+session by then (`onNewSession` returns one immediately), so with no consumer
+the page loads into a session nobody renders and the link appears to do nothing
+at all — not "opens in the wrong place", *nothing*. That is what "некоторые
+страницы не кликаются, как будто ссылки нет" was: not the adblock, not the
+engine, an unhandled store action.
+
+[WindowRequests](app/src/main/java/com/upgrid/browser/tabs/WindowRequests.kt) is
+a-c's `WindowFeature` (feature-tabs) plus the `openLinksInNewTab` preference.
+With it off the URL is loaded in the current tab and the prepared session is
+`close()`d — leaving it open costs a content process for a page nobody will see.
+A request with a blank URL always gets its own tab: the page is going to write
+into that window from script and there is nothing to load anywhere else.
+
+## The long-press menu
+
+`feature-contextmenu` + `ContextMenuCandidate.defaultCandidates`, minus three
+ids listed in `MainActivity.UNSUPPORTED_CONTEXT_ITEMS`: private-tab (no private
+browsing here) and copy-image / share-image, which dispatch
+`CopyInternetResourceAction` / `ShareResourceAction` — actions `feature-downloads`
+consumes and we don't ship. Shipping a menu row that dispatches an action nobody
+listens for is the same bug as the paragraph above.
+
+Save-image, save-video and save-link do stay: they go through
+`ContextMenuUseCases.injectDownload`, which dispatches `UpdateDownloadAction` —
+the action our own `DownloadManager` already watches for, and it re-fetches with
+the page's referrer when the engine didn't hand over a response.
 
 ## Google account & sync
 
