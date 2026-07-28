@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Night values for the handful of raw colours that can't be expressed as a
+  theme attribute. Everything else in this app goes through ?attr/colorXxx and
+  is remapped once, in values-night/themes.xml.
+-->
+<resources>
+    <!--
+      A step below the dark surface (#111318) rather than above it. See the
+      note in values/colors.xml: the selected tab is colorSurface, so the strip
+      behind it has to be darker, and every surfaceContainer* in the dark
+      scheme is lighter.
+    -->
+    <color name="tab_strip_bg">#0A0B0F</color>
+
+    <!-- Dimmed off white: still a light plate for dark favicons, without
+         eight of them glaring out of a dark start page. -->
+    <color name="quick_link_plate">#E8E9EE</color>
+</resources>

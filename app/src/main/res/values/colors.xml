@@ -56,6 +56,26 @@
     <color name="md_outline_light">#74777F</color>
     <color name="md_outline_variant_light">#C4C6CF</color>
 
+    <!--
+      Behind the tablet tab strip. A raw colour rather than a surface attribute
+      because it has to move in opposite directions in the two themes: the
+      selected tab is painted colorSurface so it joins the toolbar, and the
+      strip has to be a step *away* from that in both. Light surfaces are
+      near-white, so the strip goes darker; dark surfaces are already near
+      black, so it goes darker still — every container attribute in the dark
+      scheme is lighter than the surface, i.e. the wrong way.
+    -->
+    <color name="tab_strip_bg">#ECEDF3</color>
+
+    <!--
+      The plate a favicon sits on, on the start page. Raw for the same reason
+      as the strip: it exists to be lighter than whatever the favicon needs to
+      be read against, in both themes, and no surface attribute is that in
+      both. Near-white rather than white in the dark theme, where a grid of
+      pure #FFF squares is the brightest thing on the screen.
+    -->
+    <color name="quick_link_plate">#FFFFFF</color>
+
     <!-- Dark scheme -->
     <color name="md_primary_dark">#B0C7FF</color>
     <color name="md_on_primary_dark">#002F6E</color>

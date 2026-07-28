@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The card the shortcuts sit in. Same two-step the settings screens use —
+  colorSurface behind, colorSurfaceContainerHigh for the card — so a group of
+  things looks like a group of things everywhere in this app.
+-->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <solid android:color="?attr/colorSurfaceContainerHigh" />
+    <corners android:radius="24dp" />
+</shape>

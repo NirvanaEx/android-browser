@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Coming back to the screen underneath: the exact reverse of open_exit, so
+     back undoes what forward did. -->
+<set xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shareInterpolator="false">
+
+    <alpha
+        android:fromAlpha="0.0"
+        android:toAlpha="1.0"
+        android:duration="200"
+        android:interpolator="@android:interpolator/decelerate_quint" />
+
+    <scale
+        android:fromXScale="1.03"
+        android:fromYScale="1.03"
+        android:toXScale="1.0"
+        android:toYScale="1.0"
+        android:pivotX="50%p"
+        android:pivotY="50%p"
+        android:duration="220"
+        android:interpolator="@android:interpolator/decelerate_quint" />
+</set>

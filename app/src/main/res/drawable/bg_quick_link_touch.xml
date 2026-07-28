@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Touch feedback for one shortcut. A bounded ripple with the tile's own corner
+  radius: the borderless one used before spilled over the neighbouring tiles,
+  which on a four-wide grid looks like the wrong one was pressed.
+-->
+<ripple xmlns:android="http://schemas.android.com/apk/res/android"
+    android:color="?attr/colorControlHighlight">
+
+    <item android:id="@android:id/mask">
+        <shape android:shape="rectangle">
+            <solid android:color="#FFFFFFFF" />
+            <corners android:radius="18dp" />
+        </shape>
+    </item>
+</ripple>

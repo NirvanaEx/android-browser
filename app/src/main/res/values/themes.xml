@@ -53,6 +53,13 @@
         <item name="android:windowLightStatusBar">true</item>
         <item name="android:windowLightNavigationBar">true</item>
 
+        <!--
+          How screens replace each other. Bound on the theme rather than
+          called at each startActivity: there are nine activities and the
+          transition is a property of the app, not of any one caller.
+        -->
+        <item name="android:windowAnimationStyle">@style/Animation.UpgridBrowser.Activity</item>
+
         <!-- BottomSheet → rounded top corners + brand surface -->
         <item name="bottomSheetDialogTheme">@style/Theme.UpgridBrowser.BottomSheet</item>
 
@@ -77,6 +84,29 @@
 
     <style name="Widget.UpgridBrowser.DialogButton.Confirm" parent="Widget.Material3.Button.TonalButton">
         <item name="android:layout_marginStart">8dp</item>
+    </style>
+
+    <!--
+      Screen-to-screen motion. Material's forward/backward pair: the arriving
+      screen comes up from slightly behind and settles, the one it covers eases
+      forward and fades, and going back is the exact reverse — so "back" undoes
+      what "forward" did rather than being a second, different animation.
+
+      Not a slide. History, bookmarks, downloads and the tabs screen all live
+      *inside* the browser; sliding in from an edge is the idiom for the next
+      thing along, which none of them are.
+    -->
+    <style name="Animation.UpgridBrowser.Activity" parent="@android:style/Animation.Activity">
+        <item name="android:activityOpenEnterAnimation">@anim/activity_open_enter</item>
+        <item name="android:activityOpenExitAnimation">@anim/activity_open_exit</item>
+        <item name="android:activityCloseEnterAnimation">@anim/activity_close_enter</item>
+        <item name="android:activityCloseExitAnimation">@anim/activity_close_exit</item>
+    </style>
+
+    <!-- The app menu's PopupWindow. Pivots on the button it hangs from. -->
+    <style name="Animation.UpgridBrowser.Menu" parent="">
+        <item name="android:windowEnterAnimation">@anim/menu_enter</item>
+        <item name="android:windowExitAnimation">@anim/menu_exit</item>
     </style>
 
     <style name="Theme.UpgridBrowser.BottomSheet" parent="ThemeOverlay.Material3.BottomSheetDialog">

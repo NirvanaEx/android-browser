@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+      Shortcuts across the start page. Four is what fits a phone at a tile size
+      you can hit; the tablet's copy in values-sw600dp raises it, because six
+      80dp tiles on a 10" screen is still less than half the width.
+    -->
+    <integer name="start_page_columns">4</integer>
+</resources>

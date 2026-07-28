@@ -15,70 +15,29 @@
     t  title        m  message        u  the address that failed
     r  retry label  b  back label
 
-  Retry is a fresh navigation to `u`, not location.reload() — reloading would
-  reload *this* page, which is the one thing that is certain to work.
+  TWO RULES, both learned by shipping a blank page:
+
+  1. THE CSS AND THE SCRIPT HAVE TO BE SEPARATE FILES. A document loaded from
+     resource:// is system-privileged, and Gecko puts a strict CSP on those:
+     `default-src resource:; object-src 'none'`, with no 'unsafe-inline'. An
+     inline <style> and an inline <script> are both silently dropped — which is
+     an unstyled page with nothing written on it. Mozilla's own error page
+     (browser-errorpages) links out to error_style.css and errorPageScripts.js
+     for exactly this reason. The meta below only states what is enforced
+     anyway, so that the next person editing this file can see it.
+
+  2. THE QUERY IS ON document.documentURI, NOT ON location. Gecko loads this
+     with LOAD_ERROR_PAGE, which is what keeps the address bar showing the
+     address the user asked for — so `location.href` is the FAILED page and its
+     query string is whatever that URL had. Reading location.search gets you
+     someone else's parameters or, far more often, none at all.
 -->
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta http-equiv="Content-Security-Policy" content="default-src resource:; object-src 'none'">
   <title></title>
-  <style>
-    :root {
-      color-scheme: light dark;
-      --bg: #fbf8ff;
-      --fg: #1b1b1f;
-      --muted: #46464f;
-      --accent: #3d5bb0;
-      --chip: #e3e1ec;
-    }
-    @media (prefers-color-scheme: dark) {
-      :root {
-        --bg: #131318;
-        --fg: #e5e1e9;
-        --muted: #c6c5d0;
-        --accent: #b6c4ff;
-        --chip: #2a2a31;
-      }
-    }
-    html, body { margin: 0; height: 100%; }
-    body {
-      background: var(--bg);
-      color: var(--fg);
-      font: 16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      padding: 24px;
-      box-sizing: border-box;
-    }
-    main { width: 100%; max-width: 420px; }
-    .mark {
-      width: 56px; height: 56px;
-      border-radius: 18px;
-      background: var(--chip);
-      display: flex; align-items: center; justify-content: center;
-      margin-bottom: 20px;
-    }
-    .mark svg { width: 28px; height: 28px; fill: var(--muted); }
-    h1 { margin: 0 0 10px; font-size: 22px; line-height: 1.3; font-weight: 600; }
-    p { margin: 0; color: var(--muted); font-size: 15px; }
-    .url {
-      margin-top: 16px;
-      font-size: 13px;
-      color: var(--muted);
-      opacity: .8;
-      word-break: break-all;
-    }
-    .row { margin-top: 26px; display: flex; gap: 10px; flex-wrap: wrap; }
-    button {
-      font: inherit; font-size: 15px;
-      border: 0; border-radius: 22px;
-      padding: 11px 22px;
-      cursor: pointer;
-    }
-    #retry { background: var(--accent); color: var(--bg); }
-    #back { background: var(--chip); color: var(--fg); }
-  </style>
+  <link rel="stylesheet" href="error.css">
 </head>
 <body>
   <main>
@@ -95,37 +54,6 @@
       <button id="back" type="button"></button>
     </div>
   </main>
-  <script>
-    (function () {
-      var q = new URLSearchParams(location.search);
-      function put(id, value) {
-        document.getElementById(id).textContent = value || "";
-      }
-
-      var title = q.get("t") || "";
-      document.title = title;
-      put("title", title);
-      put("body", q.get("m"));
-
-      var url = q.get("u") || "";
-      put("url", url);
-
-      var retry = document.getElementById("retry");
-      retry.textContent = q.get("r") || "";
-      if (url) {
-        retry.addEventListener("click", function () { location.href = url; });
-      } else {
-        retry.style.display = "none";
-      }
-
-      var back = document.getElementById("back");
-      back.textContent = q.get("b") || "";
-      if (history.length > 1) {
-        back.addEventListener("click", function () { history.back(); });
-      } else {
-        back.style.display = "none";
-      }
-    })();
-  </script>
+  <script src="error.js"></script>
 </body>
 </html>
