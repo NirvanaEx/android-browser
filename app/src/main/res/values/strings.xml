@@ -84,9 +84,26 @@
     <string name="settings_theme_light">Light</string>
     <string name="settings_theme_dark">Dark</string>
 
+    <!-- Long-press menu on a link, an image or a media element. -->
+    <string name="context_open_new_tab">Open in a new tab</string>
+    <string name="context_opened_in_background">Opened in a new tab</string>
+    <string name="context_copy_link">Copy link</string>
+    <string name="context_share_link">Share link</string>
+    <string name="context_download_link">Download file</string>
+    <string name="context_open_image">Open image in a new tab</string>
+    <string name="context_save_image">Save image</string>
+    <string name="context_copy_image_link">Copy image address</string>
+    <string name="context_save_media">Save file</string>
+    <string name="context_write_email">Write an email</string>
+    <string name="context_copy_email">Copy address</string>
+    <string name="context_call">Call</string>
+    <string name="context_copy_phone">Copy number</string>
+    <string name="context_copied">Copied</string>
+    <string name="context_no_app">No app on this phone can open that</string>
+
     <string name="settings_section_search">Search engine</string>
     <string name="settings_links_new_tab">Open links in a new tab</string>
-    <string name="settings_links_new_tab_hint">When a page asks for a new window — a link marked "open in new tab" — give it one. Off, the link loads where you are.</string>
+    <string name="settings_links_new_tab_hint">When a page asks for a new window — a link marked “open in new tab” — give it one. Off, the link loads where you are.</string>
 
     <string name="settings_section_player">Video player</string>
     <string name="settings_seek_step">Double-tap seek step</string>

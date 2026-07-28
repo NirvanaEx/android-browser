@@ -201,10 +201,11 @@ dependencies {
     implementation("org.mozilla.components:browser-toolbar:$androidComponentsVersion")
     implementation("org.mozilla.components:browser-tabstray:$androidComponentsVersion")
     implementation("org.mozilla.components:browser-icons:$androidComponentsVersion")
-    // The long-press menu on a link or an image. Brings ui-widgets with it for
-    // the snackbar it answers with; the dialog itself is a plain DialogFragment,
-    // which is why fragment-ktx below is not optional.
-    implementation("org.mozilla.components:feature-contextmenu:$androidComponentsVersion")
+    // NOT feature-contextmenu. It depends on feature-search → support-remotesettings
+    // → appservices → Glean, whose native library geckoview-omni already
+    // contains, so Gradle fails the build outright on a capability conflict for
+    // org.mozilla.telemetry:glean-native. The long-press menu is
+    // menu/LinkContextMenu.kt instead — see the note at the top of that file.
     implementation("androidx.recyclerview:recyclerview:1.3.2")
     implementation("androidx.fragment:fragment-ktx:1.8.5")
     // Pull-to-refresh. SwipeRefreshFeature (feature-session) drives it, but the
