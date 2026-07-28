@@ -249,6 +249,12 @@
     <string name="vpn_section_device">Это устройство</string>
     <string name="vpn_section_server">Сервер</string>
     <string name="vpn_paste">Вставить конфиг</string>
+    <string name="vpn_import">Импортировать конфиг</string>
+    <string name="vpn_import_failed">Не удалось прочитать файл.</string>
+    <string name="vpn_notification_channel">Состояние VPN</string>
+    <string name="vpn_notification_channel_hint">Показывается, только пока VPN подключён.</string>
+    <string name="vpn_notification_title">VPN включён</string>
+    <string name="vpn_notification_text">Через %1$s</string>
     <string name="vpn_generate">Новый ключ</string>
     <string name="vpn_generated">Ключ создан. Добавьте публичный ключ на сервере.</string>
     <string name="vpn_paste_ok">Конфиг загружен</string>

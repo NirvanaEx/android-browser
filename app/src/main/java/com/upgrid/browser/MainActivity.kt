@@ -45,6 +45,7 @@ import com.upgrid.browser.fullscreen.PlayerOverlayController
 import com.upgrid.browser.logins.LoginStore
 import com.upgrid.browser.logins.LoginsActivity
 import com.upgrid.browser.vpn.VpnActivity
+import com.upgrid.browser.vpn.VpnNotifications
 import org.json.JSONObject
 import com.upgrid.browser.history.HistoryActivity
 import com.upgrid.browser.home.QuickLink
@@ -179,6 +180,10 @@ class MainActivity : AppCompatActivity() {
                 toast(getString(R.string.vpn_permission_denied))
             }
         }
+
+    /** Only for the VPN status notification. Refusing it breaks nothing. */
+    private val notificationLauncher =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
 
     /**
      * Last (url, title) written to history, per tab id. The store ticks many
@@ -1422,6 +1427,11 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun connectVpn() {
+        // The status notification is the only disconnect button reachable from
+        // outside the app; ask for it at the moment it becomes relevant.
+        if (VpnNotifications.needsPermission(this)) {
+            notificationLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+        }
         toast(getString(R.string.vpn_connecting))
         lifecycleScope.launch {
             components.vpn.connect(components.vpnSettings)

@@ -122,6 +122,22 @@
                 app:icon="@drawable/ic_key"
                 android:text="@string/account_sign_in" />
 
+            <!--
+              The other way in, for a profile that arrives as a file: pick the
+              .conf and every field below fills itself in. Top level rather than
+              behind "advanced" because for anyone handed a config by someone
+              else this IS the setup, and the fields are what they were trying
+              to avoid.
+            -->
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnVpnImport"
+                style="@style/Widget.Material3.Button.TonalButton"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                app:icon="@drawable/ic_download"
+                android:text="@string/vpn_import" />
+
             <com.google.android.material.materialswitch.MaterialSwitch
                 android:id="@+id/vpnAutoConnect"
                 android:layout_width="match_parent"
