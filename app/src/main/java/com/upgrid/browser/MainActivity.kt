@@ -12,13 +12,16 @@ import android.content.IntentFilter
 import android.content.pm.ActivityInfo
 import android.content.pm.PackageManager
 import android.content.res.Configuration
+import android.graphics.Color
 import android.graphics.drawable.Icon
 import android.media.AudioManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.text.format.DateUtils
 import android.util.Rational
 import android.view.Gravity
+import android.view.HapticFeedbackConstants
 import android.view.MotionEvent
 import android.view.View
 import android.view.inputmethod.InputMethodManager
@@ -296,6 +299,25 @@ class MainActivity : AppCompatActivity() {
     /** Open "save this password?" dialog, so a second report can't stack one. */
     private var saveLoginDialog: androidx.appcompat.app.AlertDialog? = null
 
+    /** Open "leave the browser?" dialog — see [confirmExit]. */
+    private var exitDialog: androidx.appcompat.app.AlertDialog? = null
+
+    /**
+     * When each tab's page last finished loading, by tab id.
+     *
+     * In memory on purpose. The question it answers — "how old is what I'm
+     * looking at?" — only exists while the page is still there; if the process
+     * was killed and the page had to be fetched again, it is new by definition
+     * and the missing timestamp is the right answer.
+     */
+    private val pageLoadedAt = mutableMapOf<String, Long>()
+
+    /** Tabs seen mid-load, so the moment one finishes can be timed. */
+    private val loadingTabs = mutableSetOf<String>()
+
+    /** Tabs where the "this page is old" bar was dismissed by hand. */
+    private val staleDismissed = mutableSetOf<String>()
+
     /** Credentials the user said no to. Session-scoped: a new launch re-asks. */
     private val declinedLogins = mutableSetOf<String>()
 
@@ -349,6 +371,8 @@ class MainActivity : AppCompatActivity() {
         components.downloads.onEvent = null
         saveLoginDialog?.dismiss()
         saveLoginDialog = null
+        exitDialog?.dismiss()
+        exitDialog = null
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -857,8 +881,34 @@ class MainActivity : AppCompatActivity() {
                 "find" -> findController.render(event)
                 "translate" -> translateController.render(event)
                 "login" -> onLoginEvent(event)
+                "tap" -> onLinkTapped()
             }
         }
+
+        binding.staleBar.staleReload.setOnClickListener {
+            components.sessionUseCases.reload()
+            hideStaleBar()
+        }
+        binding.staleBar.staleClose.setOnClickListener { hideStaleBar() }
+    }
+
+    /**
+     * A link was followed: buzz.
+     *
+     * The one place in a browser where you can't tell whether you hit anything
+     * until the page starts moving — on a slow site that gap is long enough to
+     * tap again, and the second tap lands somewhere else. The report comes from
+     * the page itself (taps.js), so this fires for a link and not for a tap on
+     * the background.
+     *
+     * `KEYBOARD_TAP` rather than `LONG_PRESS`: it's the shortest tick Android
+     * defines, which is what a confirmation should be. Honours the phone's own
+     * "touch feedback" setting for free — [View.performHapticFeedback] is a
+     * no-op when the user has turned haptics off system-wide.
+     */
+    private fun onLinkTapped() {
+        if (!preferences.hapticFeedback) return
+        binding.root.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
     }
 
     /**
@@ -1123,14 +1173,54 @@ class MainActivity : AppCompatActivity() {
                     || (sessionFeature.get() as? UserInteractionHandler)?.onBackPressed() == true
                 if (handled) return
 
-                val state = components.store.state
-                if (state.tabs.size > 1) {
-                    state.selectedTabId?.let { components.tabsUseCases.removeTab(it) }
-                } else {
-                    finish()
-                }
+                leaveTab()
             }
         })
+    }
+
+    /**
+     * Back, once the page has no history left to give.
+     *
+     * Three steps, and the last one is the point: **a browser must not close
+     * itself without asking.** Back is the most-pressed button on Android and
+     * it is pressed reflexively; on every other screen the worst it can do is
+     * take you one place back, and here it used to end the session, close every
+     * tab and drop you on the launcher. One press, no warning, nothing to undo.
+     *
+     * Before that, two ways back that aren't leaving:
+     *
+     *  - **A tab opened from a link goes back to the tab it came from.** That
+     *    is what the link did in the first place, so undoing it should be the
+     *    same movement in reverse — not "and now you have no idea which of your
+     *    tabs you were reading".
+     *  - Any other extra tab just closes, as before.
+     */
+    private fun leaveTab() {
+        val state = components.store.state
+        val tab = state.selectedTab
+
+        if (tab?.parentId != null) {
+            components.tabsUseCases.removeTab(tab.id, selectParentIfExists = true)
+            return
+        }
+        if (state.tabs.size > 1) {
+            tab?.id?.let { components.tabsUseCases.removeTab(it) }
+            return
+        }
+        confirmExit()
+    }
+
+    private fun confirmExit() {
+        // One dialog at a time: back is pressed in bursts, and a stack of
+        // identical questions is its own kind of trap.
+        if (exitDialog?.isShowing == true) return
+        exitDialog = MaterialAlertDialogBuilder(this)
+            .setTitle(R.string.exit_confirm_title)
+            .setMessage(R.string.exit_confirm_message)
+            .setNegativeButton(R.string.exit_confirm_stay, null)
+            .setPositiveButton(R.string.exit_confirm_leave) { _, _ -> finish() }
+            .setOnDismissListener { exitDialog = null }
+            .show()
     }
 
     // --- Video focus (replaces PiP for the topbar play button) -------------
@@ -1166,17 +1256,45 @@ class MainActivity : AppCompatActivity() {
             binding.findBar.root.visibility = View.GONE
             binding.translateBar.root.visibility = View.GONE
         }
+        // Black behind the video, surface colour behind a page.
+        //
+        // A video almost never matches the shape of a phone, so there is always
+        // a band above and below it — and on a light theme that band was the
+        // app's white surface, which is the brightest thing you can put next to
+        // moving picture. Every video player on the platform is black there,
+        // and it is black because anything else competes with the content.
+        binding.root.setBackgroundColor(
+            if (focused) {
+                Color.BLACK
+            } else {
+                MaterialColors.getColor(
+                    binding.root,
+                    com.google.android.material.R.attr.colorSurface,
+                )
+            },
+        )
+        // The stale bar is chrome as well, and it is the one piece that can
+        // come back by itself — so it is re-derived rather than just hidden.
+        renderStaleBar()
         refreshSystemBars()
     }
 
     /**
      * Show or hide the system status and navigation bars.
      *
-     * Video focus alone no longer hides them. Losing back and home the instant
-     * a video opens is disorienting — there is no visible way out and no way to
-     * ask for them back — so the bars now stay until the user locks the player,
-     * which is exactly the moment they've said they won't be touching anything.
-     * PiP is the other case: the system shrinks us to a thumbnail where a
+     * The two bars are not the same decision, which is the whole of this
+     * method:
+     *
+     *  - **The status bar goes** the moment a video takes over. The clock and
+     *    the battery over a film is the one thing that makes a player look like
+     *    a web page with the chrome hidden rather than a player, and nothing up
+     *    there is navigation — there is nothing to lose by dropping it.
+     *  - **The navigation bar stays** until the user locks the player. Losing
+     *    back and home the instant a video opens is disorienting: there is no
+     *    visible way out and no way to ask for one back. The lock is exactly
+     *    the moment the user has said they won't be touching anything.
+     *
+     * PiP overrides both: the system shrinks us to a thumbnail where a
      * navigation bar would be most of the window.
      *
      * Derived from state rather than passed in, because three independent
@@ -1185,10 +1303,25 @@ class MainActivity : AppCompatActivity() {
      */
     private fun refreshSystemBars() {
         val locked = ::playerOverlay.isInitialized && playerOverlay.isLocked
-        val hide = inVideoFocus && (locked || isInPipMode())
+        val hideAll = inVideoFocus && (locked || isInPipMode())
+        val hideStatus = inVideoFocus
 
         val controller = WindowInsetsControllerCompat(window, window.decorView)
-        if (hide) {
+        if (!hideAll && hideStatus) {
+            // Status bar only. fitsSystemWindows still applies the navigation
+            // bar's inset as padding, so the overlay's bottom controls stay
+            // above it — the top inset goes to zero on its own once the status
+            // bar is gone.
+            controller.systemBarsBehavior =
+                WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            controller.hide(WindowInsetsCompat.Type.statusBars())
+            controller.show(WindowInsetsCompat.Type.navigationBars())
+            binding.root.fitsSystemWindows = true
+            binding.root.requestApplyInsets()
+            return
+        }
+
+        if (hideAll) {
             // fitsSystemWindows on the root applies the system/IME insets as
             // padding. Hiding the bars re-dispatches zero insets — usually.
             // On MIUI the re-dispatch can lag or be skipped entirely, which
@@ -1361,6 +1494,17 @@ class MainActivity : AppCompatActivity() {
                         .distinctUntilChanged()
                         .collect(::restoreCrashedTabs)
                 }
+
+                // A page going stale is the one change on this screen that no
+                // event announces — it happens by nothing happening. A minute
+                // is far finer than the ten it's measuring against, and the
+                // loop only runs while the browser is actually on screen.
+                launch {
+                    while (true) {
+                        renderStaleBar()
+                        delay(STALE_CHECK_MS)
+                    }
+                }
             }
         }
     }
@@ -1441,6 +1585,20 @@ class MainActivity : AppCompatActivity() {
         // would spin a wheel over a speed dial and reload about:blank.
         binding.swipeRefresh.isEnabled = !isHome
 
+        // When each page actually finished arriving. Recorded from the
+        // loading→idle transition rather than from the URL changing, so a plain
+        // reload counts too: the question the stale bar answers is "when were
+        // these bytes fetched", not "when did I last go somewhere".
+        state.selectedTabId?.let { tabId ->
+            if (state.loading) {
+                loadingTabs += tabId
+                staleDismissed -= tabId
+            } else if (loadingTabs.remove(tabId)) {
+                pageLoadedAt[tabId] = System.currentTimeMillis()
+            }
+        }
+        renderStaleBar()
+
         // Leaving a tab stops its video. Detected here because the store is the
         // only thing that knows a switch happened — it can come from the tab
         // grid, from a link opening in a new tab, or from closing one.
@@ -1472,6 +1630,51 @@ class MainActivity : AppCompatActivity() {
         // filed under the new tab's id. Previews are taken at the two moments
         // where what's on screen is unambiguous — onPause, and the tap that
         // opens the grid.
+    }
+
+    /**
+     * "This page was loaded 25 minutes ago."
+     *
+     * The cost of keeping a page alive for hours — which is the whole point of
+     * everything else in this area — is that nothing on screen says whether
+     * what you're reading is from now or from breakfast. Chrome answers that by
+     * quietly reloading and losing your scroll position. This says it instead
+     * and leaves the decision alone.
+     *
+     * `DateUtils` does the phrasing, so "25 минут назад" / "an hour ago" comes
+     * out in the phone's language and its plural rules, neither of which is
+     * something to hand-roll.
+     */
+    private fun renderStaleBar() {
+        val tab = components.store.state.selectedTab
+        val loadedAt = tab?.id?.let { pageLoadedAt[it] }
+        val age = loadedAt?.let { System.currentTimeMillis() - it } ?: 0L
+
+        val show = tab != null &&
+            loadedAt != null &&
+            tab.id !in staleDismissed &&
+            !tab.content.loading &&
+            tab.content.url.isNotBlank() &&
+            tab.content.url != HOME_URL &&
+            !inVideoFocus &&
+            age >= BrowserPreferences.STALE_PAGE_AFTER_MS
+
+        binding.staleBar.root.isVisible = show
+        if (!show || loadedAt == null) return
+        binding.staleBar.staleLabel.text = getString(
+            R.string.stale_loaded,
+            DateUtils.getRelativeTimeSpanString(
+                loadedAt,
+                System.currentTimeMillis(),
+                DateUtils.MINUTE_IN_MILLIS,
+            ),
+        )
+    }
+
+    /** Dismissed for this page; it comes back after the next load. */
+    private fun hideStaleBar() {
+        components.store.state.selectedTabId?.let { staleDismissed += it }
+        binding.staleBar.root.isVisible = false
     }
 
     /**
@@ -2090,6 +2293,14 @@ class MainActivity : AppCompatActivity() {
          * spent waiting to *start* is a fifth of a second it doesn't have.
          */
         private const val SUGGESTION_DEBOUNCE_MS = 180L
+
+        /**
+         * How often to re-ask whether the page on screen has gone stale.
+         *
+         * A minute, against a threshold of ten: fine enough that the bar
+         * appears when it should and coarse enough to be free.
+         */
+        private const val STALE_CHECK_MS = 60_000L
 
         /**
          * Attempts to revive one tab after its content process died. Three is

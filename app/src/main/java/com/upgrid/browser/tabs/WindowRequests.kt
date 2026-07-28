@@ -4,6 +4,7 @@ import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.cancel
+import com.upgrid.browser.MainActivity
 import kotlinx.coroutines.flow.mapNotNull
 import mozilla.components.browser.state.action.ContentAction
 import mozilla.components.browser.state.state.SessionState
@@ -82,6 +83,14 @@ class WindowRequests(
         // always gets its own tab regardless of the preference.
         if (openInNewTab() || request.url.isBlank()) {
             tabsUseCases.addTab(
+                // The URL matters even though the engine is already loading it.
+                // Without it the tab is created on about:blank, which is this
+                // browser's "home", so selecting it flashed the speed dial for
+                // as long as the first bytes took to arrive — a link that
+                // visibly went to the start page and then somewhere else.
+                // Passing it costs nothing: addTab only issues a load of its
+                // own when there is no engine session, and here there is one.
+                url = request.url.ifBlank { MainActivity.HOME_URL },
                 selectTab = true,
                 parentId = parent.id,
                 engineSession = session,

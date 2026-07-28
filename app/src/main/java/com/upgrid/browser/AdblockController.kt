@@ -1,6 +1,7 @@
 package com.upgrid.browser
 
 import com.upgrid.browser.addons.AdblockBootstrap
+import com.upgrid.browser.prefs.BrowserPreferences
 import kotlinx.coroutines.suspendCancellableCoroutine
 import mozilla.components.concept.engine.webextension.WebExtension
 import kotlin.coroutines.resume
@@ -32,15 +33,27 @@ class AdblockController(private val components: BrowserComponents) {
     suspend fun isEnabled(): Boolean =
         runCatching { findUbo()?.isEnabled() == true }.getOrDefault(false)
 
-    /** Flip the current state. If uBO isn't installed, install + enable it. */
+    /**
+     * Flip the current state. If uBO isn't installed, install + enable it.
+     *
+     * The answer is written to preferences as well as to the engine, because
+     * the engine's copy doesn't survive a reinstall of the extension and the
+     * bootstrap needs to know, on the next launch, whether "disabled" was the
+     * user's decision or an accident. Without that it re-enabled uBO every
+     * time and the switch quietly didn't work.
+     */
     suspend fun toggle() {
+        val preferences = BrowserPreferences(components.context)
         val ubo = findUbo()
         if (ubo == null) {
             // Not installed yet — install (which also enables).
+            preferences.adblockEnabled = true
             AdblockBootstrap(components, components.context).ensureInstalled()
             return
         }
-        if (ubo.isEnabled()) disable(ubo) else enable(ubo)
+        val wanted = !ubo.isEnabled()
+        preferences.adblockEnabled = wanted
+        if (wanted) enable(ubo) else disable(ubo)
     }
 
     private suspend fun findUbo(): WebExtension? = suspendCancellableCoroutine { cont ->

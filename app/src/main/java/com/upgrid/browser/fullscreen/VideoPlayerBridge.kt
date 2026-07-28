@@ -76,7 +76,9 @@ class VideoPlayerBridge(private val components: BrowserComponents) {
 
     /**
      * Reports from the page features that share this channel — find in page
-     * (`t:"find"`) and translation (`t:"translate"`). Delivered on the main
+     * (`t:"find"`), translation (`t:"translate"`), passwords (`t:"login"`) and
+     * the one-bit "a link was followed" (`t:"tap"`, for the haptic tick).
+     * Delivered on the main
      * thread. They have nothing to do with the player; the port is simply the
      * one pipe we have into the content scripts.
      */
@@ -151,7 +153,9 @@ class VideoPlayerBridge(private val components: BrowserComponents) {
                             return
                         }
                         val type = json.optString("t")
-                        if (type == "find" || type == "translate" || type == "login") {
+                        if (type == "find" || type == "translate" ||
+                            type == "login" || type == "tap"
+                        ) {
                             mainHandler.post { runCatching { onPageEvent(json) } }
                             return
                         }

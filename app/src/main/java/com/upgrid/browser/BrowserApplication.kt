@@ -18,6 +18,7 @@ import mozilla.components.browser.session.storage.SessionStorage
 import mozilla.components.browser.state.action.RestoreCompleteAction
 import mozilla.components.browser.state.action.SystemAction
 import mozilla.components.browser.state.action.TabListAction
+import java.util.concurrent.TimeUnit
 
 /**
  * App-wide entry point. Owns [BrowserComponents], restores the previous session
@@ -157,14 +158,27 @@ class BrowserApplication : Application() {
     }
 
     /**
-     * Persist tabs whenever the session list changes (open/close/navigate).
+     * Persist tabs whenever the session list changes, on a timer, and on the
+     * way to the background.
      *
-     * `whenSessionsChange()` is the cheapest fan-out — it diffs internally before
-     * writing. For periodic saves you'd add `.periodicallyInForeground(...)` but
-     * that overload requires a scheduler/lifecycle and isn't worth it for MVP.
+     * The snapshot is what the browser wakes up with after Android kills the
+     * process, and how good it is decides whether "I switched apps for a
+     * minute" costs the page or not. Each of the three catches a different
+     * loss:
+     *
+     *  - **whenSessionsChange** — tabs opened, closed, navigated. Cheap; it
+     *    diffs internally before writing.
+     *  - **periodicallyInForeground** — a page you have been reading, and
+     *    scrolling, without navigating. Nothing above fires for that, so
+     *    without the timer the saved copy could be an hour older than the
+     *    screen. Half a minute is a serialise of a few kilobytes on a
+     *    background thread.
+     *  - **whenGoingToBackground** — the last moment before the process becomes
+     *    a candidate for being killed, which is exactly when it matters.
      */
     private fun attachAutosave(storage: SessionStorage) {
         storage.autoSave(components.store)
+            .periodicallyInForeground(interval = 30, unit = TimeUnit.SECONDS)
             .whenGoingToBackground()
             .whenSessionsChange()
     }

@@ -193,20 +193,36 @@ extractor (InnerTube + signature deciphering): large, broken by Google on a
 regular schedule, and against YouTube's ToS. The stage above is what actually
 delivers "only the video" everywhere.
 
-## The player's lock owns the system bars
+## The player's lock owns the navigation bar; video focus owns the status bar
 
-Entering the player does **not** hide the status and navigation bars any more.
-Losing back and home the instant a video opens is disorienting and there is no
-visible way to ask for them back. The 🔒 in the player's top bar is what makes
-the picture edge-to-edge — which is also the moment the user has said they won't
-be touching anything — and it is a real lock: control bars away, every gesture
-swallowed, one floating unlock button left. Back unlocks rather than exiting.
+The two system bars are **not one decision**, and `refreshSystemBars()` exists
+to keep them apart:
 
-`MainActivity.refreshSystemBars()` derives the state instead of being told it:
-`inVideoFocus && (playerOverlay.isLocked || isInPipMode())`. Three independent
-things move it — entering or leaving video focus, the lock, the PiP transition —
-and they arrive in any order. PiP is in there because the system shrinks us to a
-thumbnail where a navigation bar would be most of the window.
+- **The status bar goes as soon as a video takes over.** A clock and a battery
+  meter over a film is the single thing that makes the player read as a web page
+  with its chrome hidden rather than as a player, and there is nothing up there
+  to navigate with.
+- **The navigation bar stays until the 🔒.** Losing back and home the instant a
+  video opens is disorienting and there is no visible way to ask for them back.
+  The lock is a real lock — control bars away, every gesture swallowed, one
+  floating unlock button left, back unlocks rather than exits — and it is also
+  the moment the user has said they won't be touching anything.
+
+PiP overrides both: the system shrinks us to a thumbnail where a navigation bar
+would be most of the window.
+
+The state is derived rather than passed: `hideAll = inVideoFocus && (locked ||
+isInPipMode())`, `hideStatus = inVideoFocus`. Three independent things move it —
+entering or leaving video focus, the lock, the PiP transition — and they arrive
+in any order. Note the status-bar-only branch keeps `fitsSystemWindows` on, so
+the navigation bar's inset still pads the root and the overlay's bottom controls
+stay above it; only the full-hide branch clears the padding by hand (see the
+MIUI note in the code).
+
+`applyVideoFocus` also paints the root black. A video almost never matches the
+shape of a phone, so there is always a band above and below it, and on a light
+theme that band was the app's white surface — the brightest thing you can put
+next to moving picture.
 
 ## API gotchas (these break between a-c versions)
 
@@ -807,6 +823,55 @@ With it off the URL is loaded in the current tab and the prepared session is
 `close()`d — leaving it open costs a content process for a page nobody will see.
 A request with a blank URL always gets its own tab: the page is going to write
 into that window from script and there is nothing to load anywhere else.
+
+## Defaults, and the difference between a default and a rule
+
+Three things ship in a particular position, and each has been the wrong kind of
+"default" at least once:
+
+- **AdBlock on.** `BrowserPreferences.adblockEnabled` starts true, so a fresh
+  install blocks ads without being asked. It used to be *forced*:
+  `AdblockBootstrap` re-enabled uBO on every launch as a safety net against a
+  permission-prompt abort, which also silently undid the user turning it off.
+  The preference is what tells those two cases apart.
+- **VPN off.** Signing in fills the WireGuard profile in and stops there.
+  It used to switch `autoConnect` on as well — signing in to a browser account
+  is not asking for every byte to be routed through someone's server, and the
+  tunnel's only visible sign is a notification.
+- **Desktop mode off, per tab.** Nothing to enforce: `requestDesktopSite`
+  dispatches `EngineAction.ToggleDesktopModeAction(tabId, …)`, which is per-tab,
+  and the browser-wide `BrowserState.desktopMode` is only moved by
+  `DefaultDesktopModeAction`, which this app never dispatches. A tab put into
+  desktop mode stays there across a restart (it's serialised with the tab); a
+  new tab is never born in it.
+
+## Surviving being minimised, and the back button
+
+Two complaints that turned out to be one area.
+
+**Back must never close the browser without asking.** It is the most-pressed
+button on Android and it is pressed reflexively; ending the session, closing
+every tab and landing on the launcher is not something one reflex should be
+able to do. `MainActivity.leaveTab` is the ladder below page history: a tab
+with a `parentId` (i.e. one a link opened) goes back to the tab it came from
+via `removeTab(id, selectParentIfExists = true)`, any other extra tab just
+closes, and the last one asks.
+
+**State is saved three ways**, and each catches a different loss —
+`whenSessionsChange` (tabs opened/closed/navigated), `periodicallyInForeground`
+(a page being read and scrolled, which fires nothing else — without it the
+saved copy can be an hour older than the screen), and `whenGoingToBackground`.
+`android:alwaysRetainTaskState="true"` on MainActivity stops the system
+trimming the task after ~30 minutes away, which it otherwise does on the theory
+that after a break you want to start over.
+
+**And when the page really is old, say so.** `view_stale_bar.xml` appears under
+the toolbar past [BrowserPreferences.STALE_PAGE_AFTER_MS], phrased by
+`DateUtils.getRelativeTimeSpanString` so the wording and the plurals come from
+the phone. `pageLoadedAt` is recorded from the loading→idle transition rather
+than from the URL changing, so a plain reload counts. It is deliberately
+in-memory: the question is "how old is what I'm looking at", and if the process
+was killed and the page refetched, the missing entry is the right answer.
 
 ## The long-press menu
 

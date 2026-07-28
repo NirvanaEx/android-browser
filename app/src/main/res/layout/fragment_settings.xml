@@ -237,26 +237,51 @@
 
                 <View style="@style/Widget.UpgridBrowser.RowDivider" />
 
+                <TextView
+                    style="@style/Widget.UpgridBrowser.RowTitle"
+                    android:layout_marginTop="10dp"
+                    android:paddingStart="16dp"
+                    android:paddingEnd="16dp"
+                    android:text="@string/settings_links_new_tab" />
+
+                <TextView
+                    style="@style/Widget.UpgridBrowser.RowSubtitle"
+                    android:paddingStart="16dp"
+                    android:paddingEnd="16dp"
+                    android:text="@string/settings_links_new_tab_hint" />
+
+                <RadioGroup
+                    android:id="@+id/linkModeGroup"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:paddingTop="4dp"
+                    android:paddingBottom="4dp"
+                    android:paddingStart="12dp"
+                    android:paddingEnd="12dp" />
+
+                <View style="@style/Widget.UpgridBrowser.RowDivider" />
+
                 <LinearLayout style="@style/Widget.UpgridBrowser.Row.Static">
 
                     <ImageView
                         style="@style/Widget.UpgridBrowser.RowIcon"
                         android:contentDescription="@null"
-                        android:src="@drawable/ic_add" />
+                        android:src="@drawable/ic_speed_up" />
 
                     <LinearLayout style="@style/Widget.UpgridBrowser.RowText">
 
                         <TextView
                             style="@style/Widget.UpgridBrowser.RowTitle"
-                            android:text="@string/settings_links_new_tab" />
+                            android:text="@string/settings_haptics" />
 
                         <TextView
                             style="@style/Widget.UpgridBrowser.RowSubtitle"
-                            android:text="@string/settings_links_new_tab_hint" />
+                            android:text="@string/settings_haptics_hint" />
                     </LinearLayout>
 
                     <com.google.android.material.materialswitch.MaterialSwitch
-                        android:id="@+id/switchLinksNewTab"
+                        android:id="@+id/switchHaptics"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content" />
                 </LinearLayout>

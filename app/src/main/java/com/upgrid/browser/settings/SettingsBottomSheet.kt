@@ -409,15 +409,35 @@ class SettingsBottomSheet : ExpandedBottomSheetFragment() {
     }
 
     /**
-     * Whether a page may open a link in a tab of its own.
+     * What happens when a page asks for a window of its own, and whether a
+     * followed link is felt.
      *
-     * In the search card rather than a card of its own: it is about what
-     * happens when you follow a link, which is the other half of what this
-     * section is for.
+     * Both live in the search card rather than one of their own: this section
+     * is about what happens when you go somewhere, and that is what both of
+     * them decide.
+     *
+     * Two radio rows rather than a switch, because "off" here does not mean
+     * "nothing happens" — the link still opens, just in the tab you're already
+     * in — and a switch labelled "open links in a new tab" reads as though
+     * turning it off breaks the link. Naming both positions says what each one
+     * does.
      */
     private fun wireLinkHandling() {
-        binding.switchLinksNewTab.setCheckedSilently(prefs.openLinksInNewTab) { _, on ->
-            prefs.openLinksInNewTab = on
+        val auto = prefs.openLinksInNewTab
+        binding.linkModeGroup.removeAllViews()
+        binding.linkModeGroup.addView(
+            radio(getString(R.string.settings_links_auto), auto) {
+                prefs.openLinksInNewTab = true
+            },
+        )
+        binding.linkModeGroup.addView(
+            radio(getString(R.string.settings_links_same_tab), !auto) {
+                prefs.openLinksInNewTab = false
+            },
+        )
+
+        binding.switchHaptics.setCheckedSilently(prefs.hapticFeedback) { _, on ->
+            prefs.hapticFeedback = on
         }
     }
 
