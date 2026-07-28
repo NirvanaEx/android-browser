@@ -224,6 +224,27 @@
             android:paddingStart="12dp"
             android:paddingEnd="12dp" />
 
+        <com.google.android.material.materialswitch.MaterialSwitch
+            android:id="@+id/switchBackgroundPlayback"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="20dp"
+            android:layout_marginEnd="20dp"
+            android:layout_marginTop="10dp"
+            android:minHeight="44dp"
+            android:textSize="14sp"
+            android:textColor="?attr/colorOnSurface"
+            android:text="@string/settings_background_playback" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="20dp"
+            android:layout_marginEnd="20dp"
+            android:textSize="12sp"
+            android:textColor="?attr/colorOnSurfaceVariant"
+            android:text="@string/settings_background_playback_hint" />
+
         <View style="@style/Widget.UpgridBrowser.SheetDivider" />
 
         <!-- ============== Section: Bookmarks ============== -->

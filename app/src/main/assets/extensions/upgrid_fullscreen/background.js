@@ -23,7 +23,21 @@ function ensurePort() {
     try {
         port = browser.runtime.connectNative("upgridPlayer");
         port.onMessage.addListener(function (msg) {
-            // Command from the native overlay → controlled frame only.
+            // "pauseAll" is the one command that isn't about the takeover: it
+            // means the user left, so everything playing anywhere has to stop.
+            // Broadcast rather than route — the native side knows nothing about
+            // Gecko tab ids, and a tab that isn't on screen has no business
+            // making noise regardless of which one it is.
+            if (msg && msg.cmd === "pauseAll") {
+                browser.tabs.query({}).then(function (tabs) {
+                    tabs.forEach(function (t) {
+                        browser.tabs.sendMessage(t.id, { cmd: "pauseAll" })
+                            .catch(function () {});
+                    });
+                }).catch(function () {});
+                return;
+            }
+            // Everything else is a player command → controlled frame only.
             if (playerTabId === null || playerFrameId === null) return;
             browser.tabs.sendMessage(playerTabId, msg, { frameId: playerFrameId })
                 .catch(function () {});
@@ -41,11 +55,56 @@ function postToNative(msg) {
     if (p) { try { p.postMessage(msg); } catch (e) {} }
 }
 
-// State/takeover reports from player.js → native port.
+// Media presence, per frame, per tab. observer.js reports every frame
+// separately (videos live in iframes as often as not), so a tab has media if
+// ANY of its frames does. Only the foreground tab is reported onward: the
+// button this drives takes over the page you are looking at, and offering it
+// for a video playing three tabs away would be a lie.
+var mediaByTab = {};
+
+function publishMedia() {
+    // GeckoView only marks a tab "active" for the extension APIs if the
+    // embedder tells it to, which needs WebExtensionSupport — we don't run it.
+    // So "active" may be false everywhere, and filtering on it would report
+    // silence forever. Fall back to counting every tab: we pause playback on
+    // tab switch, so at most one tab is making noise anyway.
+    var anyActive = Object.keys(mediaByTab).some(function (id) {
+        return mediaByTab[id].active;
+    });
+    var has = false;
+    var playing = false;
+    Object.keys(mediaByTab).forEach(function (tabId) {
+        var tab = mediaByTab[tabId];
+        if (anyActive && !tab.active) return;
+        Object.keys(tab.frames).forEach(function (frameId) {
+            var f = tab.frames[frameId];
+            if (f.has) has = true;
+            if (f.playing) playing = true;
+        });
+    });
+    postToNative({ t: "media", has: has, playing: playing });
+}
+
+function forgetTab(tabId) {
+    if (mediaByTab[tabId]) {
+        delete mediaByTab[tabId];
+        publishMedia();
+    }
+}
+
+// State/takeover reports from player.js, media reports from observer.js.
 browser.runtime.onMessage.addListener(function (msg, sender) {
     if (!msg || !msg.t || !sender || !sender.tab) return;
     var tabId = sender.tab.id;
     var frameId = (sender.frameId !== undefined) ? sender.frameId : 0;
+
+    if (msg.t === "media") {
+        var entry = mediaByTab[tabId] || (mediaByTab[tabId] = { active: false, frames: {} });
+        entry.active = sender.tab.active !== false;
+        entry.frames[frameId] = { has: !!msg.has, playing: !!msg.playing };
+        publishMedia();
+        return;
+    }
 
     if (msg.t === "takeover" && msg.ok) {
         if (locked && (tabId !== playerTabId || frameId !== playerFrameId)) {
@@ -108,11 +167,22 @@ browser.tabs.onUpdated.addListener(function (tabId, changeInfo) {
     // constantly on video pages and must not kill an active takeover.
     if (changeInfo.status === "loading" && changeInfo.url) {
         dropIfControlled(tabId, "navigated");
+        forgetTab(tabId);
     }
 });
 
 browser.tabs.onRemoved.addListener(function (tabId) {
     dropIfControlled(tabId, "tab closed");
+    forgetTab(tabId);
+});
+
+// A tab we still have media state for has navigated away from the page that
+// reported it; the new document re-reports as soon as observer.js runs.
+browser.tabs.onActivated.addListener(function (info) {
+    Object.keys(mediaByTab).forEach(function (tabId) {
+        mediaByTab[tabId].active = (String(info.tabId) === String(tabId));
+    });
+    publishMedia();
 });
 
 console.log("[upgrid-player] background ready");

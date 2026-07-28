@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Overrides for android-components resources. App resources win over library
+  ones at merge time, which is the only lever available for values baked into
+  a library's own layouts.
+-->
+<resources>
+    <!--
+      Suppress BrowserToolbar's built-in progress bar.
+
+      It's a child of the toolbar, so it spans the URL chip and nothing else —
+      a load indicator that stops two thirds of the way across the screen looks
+      like a stalled page. We draw our own full-width one under the top bar
+      (pageProgress in activity_main.xml). Zero height is how you turn the
+      library's off without forking its layout; DisplayToolbar still flips its
+      visibility, which now costs nothing.
+    -->
+    <dimen name="mozac_browser_toolbar_progress_bar_height">0dp</dimen>
+</resources>

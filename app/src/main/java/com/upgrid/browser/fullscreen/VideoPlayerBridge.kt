@@ -44,6 +44,36 @@ class VideoPlayerBridge(private val components: BrowserComponents) {
     /** Captured when the extension finishes install + announces its action. */
     private var browserActionOnClick: (() -> Unit)? = null
 
+    /**
+     * A takeover asked for before the browser action was announced.
+     *
+     * The announcement is asynchronous and races app start, so a tap in the
+     * first seconds used to be dropped with an apologetic toast while a video
+     * was visibly playing. Holding the request and firing it the moment the
+     * action lands removes the failure instead of explaining it. Safe to defer:
+     * the user-gesture token Gecko needs comes from the browser-action click
+     * itself, not from the Android touch event that asked for it.
+     */
+    private var takeoverPending = false
+
+    /** The installed extension, kept so the action handler can be re-armed. */
+    private var extension: WebExtension? = null
+
+    /**
+     * Whether the foreground page has a media element, and whether one is
+     * playing. Maintained by observer.js, which runs on every page — see the
+     * comment at the top of that file for why this isn't derived from
+     * `mediaSessionState`.
+     */
+    var hasMedia: Boolean = false
+        private set
+
+    var isMediaPlaying: Boolean = false
+        private set
+
+    /** Called on the main thread whenever [hasMedia]/[isMediaPlaying] change. */
+    var onMediaStateChanged: () -> Unit = {}
+
     /** Native-messaging port; connected lazily by background.js on first tap. */
     private var port: Port? = null
 
@@ -55,6 +85,7 @@ class VideoPlayerBridge(private val components: BrowserComponents) {
             url = EXTENSION_URL,
             onSuccess = { ext ->
                 Log.i(TAG, "Extension installed: ${ext.id}")
+                extension = ext
                 ext.registerActionHandler(object : ActionHandler {
                     override fun onBrowserAction(
                         extension: WebExtension,
@@ -66,6 +97,11 @@ class VideoPlayerBridge(private val components: BrowserComponents) {
                         if (session != null) return
                         Log.i(TAG, "browser_action defined; onClick captured")
                         browserActionOnClick = action.onClick
+                        if (takeoverPending) {
+                            takeoverPending = false
+                            Log.i(TAG, "firing takeover queued before the action existed")
+                            mainHandler.post { runCatching { action.onClick.invoke() } }
+                        }
                     }
                 })
                 // Must be registered before background.js calls connectNative —
@@ -85,6 +121,14 @@ class VideoPlayerBridge(private val components: BrowserComponents) {
 
                     override fun onPortMessage(message: Any, port: Port) {
                         val json = message as? JSONObject ?: return
+                        // Media reports are chatter about the page, not about
+                        // the player, and they arrive whether or not anything
+                        // was ever taken over — so they're handled here rather
+                        // than pushed at an overlay that may not exist.
+                        if (json.optString("t") == "media") {
+                            mainHandler.post { updateMediaState(json) }
+                            return
+                        }
                         if (json.optString("t") != "state") Log.i(TAG, "event: $json")
                         mainHandler.post { runCatching { onPlayerEvent(json) } }
                     }
@@ -111,12 +155,64 @@ class VideoPlayerBridge(private val components: BrowserComponents) {
      */
     fun requestTakeover(): Boolean {
         val click = browserActionOnClick
-        if (click == null) {
-            Log.w(TAG, "requestTakeover: extension not yet ready, dropping tap")
-            return false
+        if (click != null) {
+            runCatching { click.invoke() }.onFailure { Log.w(TAG, "onClick threw", it) }
+            return true
         }
-        runCatching { click.invoke() }.onFailure { Log.w(TAG, "onClick threw", it) }
-        return true
+
+        // Not announced yet. Remember the request, and re-arm the delegate in
+        // case the announcement arrived in the window before we registered for
+        // it — the two are asynchronous and neither waits for the other.
+        Log.w(TAG, "requestTakeover: action not announced yet, queueing")
+        takeoverPending = true
+        extension?.let { ext ->
+            runCatching {
+                ext.registerActionHandler(object : ActionHandler {
+                    override fun onBrowserAction(
+                        extension: WebExtension,
+                        session: EngineSession?,
+                        action: Action,
+                    ) {
+                        if (session != null) return
+                        browserActionOnClick = action.onClick
+                        if (takeoverPending) {
+                            takeoverPending = false
+                            mainHandler.post { runCatching { action.onClick.invoke() } }
+                        }
+                    }
+                })
+            }
+        }
+        return false
+    }
+
+    /**
+     * Fold one media report from observer.js into [hasMedia]/[isMediaPlaying].
+     * Main thread; notifies only on an actual change, because the reports
+     * arrive per frame and most of them say the same thing as the last one.
+     */
+    private fun updateMediaState(json: JSONObject) {
+        val has = json.optBoolean("has", false)
+        val playing = json.optBoolean("playing", false)
+        if (has == hasMedia && playing == isMediaPlaying) return
+        hasMedia = has
+        isMediaPlaying = playing
+        runCatching { onMediaStateChanged() }
+    }
+
+    /**
+     * Pause every media element in every tab.
+     *
+     * Broadcast rather than aimed: this is called when the user leaves, and a
+     * tab that isn't on screen shouldn't be playing whichever one it is. The
+     * native side has no way to name a Gecko tab anyway.
+     */
+    fun pauseAllMedia() {
+        // Not sendCommand(): that logs a warning when the port is down, and
+        // the port being down here just means no page ever had a video.
+        val p = port ?: return
+        runCatching { p.postMessage(JSONObject().put("cmd", "pauseAll")) }
+            .onFailure { Log.w(TAG, "pauseAllMedia failed", it) }
     }
 
     /**

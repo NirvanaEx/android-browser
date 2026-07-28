@@ -4,23 +4,28 @@
   title + close underneath — the shape Chrome uses, because a screenshot is
   recognisable in a way a truncated title isn't.
 
+  The preview is a fixed 2:3 box rather than a fixed 112dp: at 112dp a phone
+  screenshot was a letterbox slice out of the middle of the page and read as
+  nothing at all. 2:3 is portrait enough to look like a phone screen inside a
+  phone screen without making the cards so tall that only two fit on screen.
+  The image inside is top-anchored (see TopCropImageView) so what you see is
+  the top of the page, not a band from its middle.
+
   The preview is a live capture of the tab when it was last on screen (see
   TabThumbnails). Tabs that haven't been rendered this session — everything
   after a session restore — have none, and fall back to the same coloured
   letter tile the site gets everywhere else in the app.
 
-  clipToOutline on the preview frame is what gives a centerCrop bitmap the
-  rounded corners; without it the screenshot has four square ones inside a
-  rounded card.
+  clipToOutline on the preview frame is what gives the bitmap rounded corners;
+  without it the screenshot has four square ones inside a rounded card.
 
   Selected state comes from bg_tab_card's selector, set by the adapter.
 -->
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:orientation="vertical"
     android:layout_margin="5dp"
     android:padding="6dp"
     android:background="@drawable/bg_tab_card"
@@ -29,10 +34,15 @@
     android:focusable="true">
 
     <FrameLayout
-        android:layout_width="match_parent"
-        android:layout_height="112dp"
+        android:id="@+id/tabPreview"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
         android:background="@drawable/bg_tab_thumb"
-        android:clipToOutline="true">
+        android:clipToOutline="true"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintDimensionRatio="H,2:3">
 
         <TextView
             android:id="@+id/tabInitial"
@@ -46,22 +56,26 @@
             android:textColor="#FFFFFFFF"
             tools:text="G" />
 
-        <ImageView
+        <com.upgrid.browser.ui.TopCropImageView
             android:id="@+id/tabThumb"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
-            android:scaleType="centerCrop"
             android:visibility="gone"
             android:contentDescription="@null"
             tools:visibility="visible" />
     </FrameLayout>
 
     <LinearLayout
-        android:layout_width="match_parent"
+        android:id="@+id/tabCaption"
+        android:layout_width="0dp"
         android:layout_height="wrap_content"
         android:layout_marginTop="8dp"
         android:orientation="horizontal"
-        android:gravity="center_vertical">
+        android:gravity="center_vertical"
+        app:layout_constraintTop_toBottomOf="@id/tabPreview"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintBottom_toBottomOf="parent">
 
         <ImageView
             android:id="@+id/tabFavicon"
@@ -95,4 +109,4 @@
             android:src="@drawable/ic_close"
             app:tint="?attr/colorOnSurfaceVariant" />
     </LinearLayout>
-</LinearLayout>
+</androidx.constraintlayout.widget.ConstraintLayout>

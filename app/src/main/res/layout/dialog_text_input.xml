@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Single-field dialog body.
+
+  A layout rather than a bare EditText handed to setView(). A raw EditText gets
+  no dialog margins, so its underline ran the full width of the card and cut
+  straight through the hint text. TextInputLayout also puts the hint where it
+  belongs once there's content, instead of losing it.
+-->
+<com.google.android.material.textfield.TextInputLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/inputLayout"
+    style="@style/Widget.Material3.TextInputLayout.OutlinedBox"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:layout_marginStart="24dp"
+    android:layout_marginEnd="24dp"
+    android:layout_marginTop="8dp"
+    android:layout_marginBottom="4dp">
+
+    <com.google.android.material.textfield.TextInputEditText
+        android:id="@+id/inputField"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:inputType="textUri"
+        android:imeOptions="actionDone"
+        android:maxLines="1" />
+</com.google.android.material.textfield.TextInputLayout>

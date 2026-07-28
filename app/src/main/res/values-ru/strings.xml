@@ -74,6 +74,8 @@
     <string name="settings_section_player">Видеоплеер</string>
     <string name="settings_seek_step">Перемотка по двойному тапу</string>
     <string name="settings_seek_option">%1$d секунд</string>
+    <string name="settings_background_playback">Продолжать воспроизведение в фоне</string>
+    <string name="settings_background_playback_hint">Выключено — видео останавливается, когда уходите с вкладки или блокируете экран. Включено — продолжает играть; удобно, чтобы слушать видео с выключенным экраном.</string>
 
     <string name="settings_section_bookmarks">Закладки</string>
     <string name="settings_open_bookmarks">Открыть закладки</string>
@@ -96,7 +98,7 @@
     <string name="player_seek_forward">+%1$d с</string>
     <string name="player_volume">Громкость %1$d%%</string>
     <string name="player_brightness">Яркость %1$d%%</string>
-    <string name="player_not_ready">Плеер ещё запускается — попробуйте ещё раз</string>
+    <string name="player_starting">Запускаю плеер…</string>
     <string name="player_play">Воспроизвести</string>
     <string name="player_pause">Пауза</string>
 
@@ -138,6 +140,9 @@
     <string name="menu_adblock_state_on">ВКЛ</string>
     <string name="menu_adblock_state_off">ВЫКЛ</string>
     <string name="menu_find_in_page">Найти на странице</string>
+    <string name="menu_translate">Перевести страницу</string>
+    <string name="menu_translate_original">Показать оригинал</string>
+    <string name="translate_unavailable">Эту страницу нельзя перевести</string>
     <string name="menu_desktop_site">Версия для ПК</string>
     <string name="menu_bookmarks">Закладки</string>
     <string name="menu_bookmark_add">В закладки</string>
