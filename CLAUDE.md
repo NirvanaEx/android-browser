@@ -439,6 +439,35 @@ The dialog says so in as many words. The site list is built from history for the
 same reason: the engine can delete a host's data but cannot enumerate hosts that
 have any.
 
+## The browser's own account
+
+Separate from the Google account, and not a replacement for it: Google syncs
+bookmarks and history, this one says who you are to *this* browser and what it
+is allowed to set up for you. Today that means the VPN profile — sign in and the
+tunnel is configured, which is the whole reason the account exists.
+
+Sign-in has two halves and either can carry it
+([AccountController](app/src/main/java/com/upgrid/browser/account/AccountController.kt)):
+
+- **The account server**, when it answers. HTTP basic auth over TLS against a
+  static JSON per account; the server is the authority when it replies, so a
+  password it rejects is not then waved through locally.
+- **The device**, when the server can't be reached. A PBKDF2-SHA256 hash stored
+  in the same keystore-backed AES-GCM box as saved website passwords, seeded on
+  first launch with the account the owner asked for. The browser is never locked
+  out by a network, and a profile fetched earlier stays in place.
+
+The server side is four things in one script
+([tools/account-server-setup.sh](tools/account-server-setup.sh)): a WireGuard key
+pair, a peer on the running interface, the profile as JSON, and an nginx server
+block serving it behind `auth_basic`. No application to deploy — the "API" is a
+file, because the only question being asked is "here are my credentials, what is
+my profile?".
+
+**Nothing secret is in this repository.** It is public. Keys live on the server
+and reach the phone through the account, never through the build; a bundle
+committed here would be a private key on GitHub whatever it was wrapped in.
+
 ## VPN
 
 `com.wireguard.android:tunnel` — WireGuard's own embeddable backend (wireguard-go

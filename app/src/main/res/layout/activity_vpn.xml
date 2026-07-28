@@ -1,12 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  VPN: the switch, and every knob behind it.
+  VPN: a switch, and every knob behind a door.
 
-  Three groups, in the order a profile is set up: what the connection is doing
-  right now, this device's half of the key pair, and the server's half. The two
-  buttons at the top of the device group are the fast path — pasting a config
-  the server generated fills every field below in one tap, which is how anybody
-  with a working profile will actually use this screen.
+  The knobs used to be the screen. They are still all here — a WireGuard profile
+  is nine values and any of them can need changing — but signing in fills them
+  in, so the ordinary case is now "open, tap Connect, leave". Everything below
+  the divider is collapsed until asked for.
 
   IDs are referenced by VpnActivity via ViewBinding.
 -->
@@ -102,216 +101,254 @@
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
 
-            <!-- ============== This device ============== -->
-
+            <!-- Where the profile came from: the account, or nowhere yet. -->
             <TextView
-                style="@style/Widget.UpgridBrowser.SectionLabel"
-                android:layout_marginTop="22dp"
-                android:layout_marginStart="4dp"
-                android:text="@string/vpn_section_device" />
-
-            <LinearLayout
+                android:id="@+id/vpnProvision"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:orientation="horizontal">
-
-                <com.google.android.material.button.MaterialButton
-                    android:id="@+id/btnVpnPaste"
-                    style="@style/Widget.Material3.Button.TonalButton"
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:layout_marginEnd="6dp"
-                    android:text="@string/vpn_paste" />
-
-                <com.google.android.material.button.MaterialButton
-                    android:id="@+id/btnVpnGenerate"
-                    style="@style/Widget.Material3.Button.TonalButton"
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:layout_marginStart="6dp"
-                    android:text="@string/vpn_generate" />
-            </LinearLayout>
-
-            <com.google.android.material.textfield.TextInputLayout
-                android:id="@+id/vpnPrivateField"
-                style="@style/Widget.UpgridBrowser.Field"
-                android:hint="@string/vpn_private_key"
-                app:endIconMode="password_toggle">
-
-                <com.google.android.material.textfield.TextInputEditText
-                    android:id="@+id/vpnPrivateKey"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:inputType="textPassword"
-                    android:maxLines="1"
-                    android:textSize="14sp" />
-            </com.google.android.material.textfield.TextInputLayout>
-
-            <com.google.android.material.textfield.TextInputLayout
-                android:id="@+id/vpnPublicField"
-                style="@style/Widget.UpgridBrowser.Field"
-                android:hint="@string/vpn_public_key"
-                app:helperText="@string/vpn_public_key_hint"
-                app:endIconMode="custom"
-                app:endIconDrawable="@drawable/ic_copy"
-                app:endIconContentDescription="@string/vpn_copy_public">
-
-                <com.google.android.material.textfield.TextInputEditText
-                    android:id="@+id/vpnPublicKey"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:focusable="false"
-                    android:cursorVisible="false"
-                    android:inputType="none"
-                    android:maxLines="1"
-                    android:textSize="14sp" />
-            </com.google.android.material.textfield.TextInputLayout>
-
-            <com.google.android.material.textfield.TextInputLayout
-                style="@style/Widget.UpgridBrowser.Field"
-                android:hint="@string/vpn_address">
-
-                <com.google.android.material.textfield.TextInputEditText
-                    android:id="@+id/vpnAddress"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:inputType="textNoSuggestions"
-                    android:maxLines="1"
-                    android:textSize="14sp"
-                    tools:text="10.8.0.2/32" />
-            </com.google.android.material.textfield.TextInputLayout>
-
-            <com.google.android.material.textfield.TextInputLayout
-                style="@style/Widget.UpgridBrowser.Field"
-                android:hint="@string/vpn_dns">
-
-                <com.google.android.material.textfield.TextInputEditText
-                    android:id="@+id/vpnDns"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:inputType="textNoSuggestions"
-                    android:maxLines="1"
-                    android:textSize="14sp" />
-            </com.google.android.material.textfield.TextInputLayout>
-
-            <com.google.android.material.textfield.TextInputLayout
-                style="@style/Widget.UpgridBrowser.Field"
-                android:hint="@string/vpn_mtu">
-
-                <com.google.android.material.textfield.TextInputEditText
-                    android:id="@+id/vpnMtu"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:inputType="number"
-                    android:maxLines="1"
-                    android:textSize="14sp" />
-            </com.google.android.material.textfield.TextInputLayout>
-
-            <!-- ============== The server ============== -->
-
-            <TextView
-                style="@style/Widget.UpgridBrowser.SectionLabel"
-                android:layout_marginTop="22dp"
+                android:layout_marginTop="14dp"
                 android:layout_marginStart="4dp"
-                android:text="@string/vpn_section_server" />
+                android:layout_marginEnd="4dp"
+                android:textSize="13sp"
+                android:textColor="?attr/colorOnSurfaceVariant"
+                tools:text="Настроено аккаунтом superadmin." />
 
-            <com.google.android.material.textfield.TextInputLayout
-                style="@style/Widget.UpgridBrowser.Field"
-                android:layout_marginTop="0dp"
-                android:hint="@string/vpn_endpoint"
-                app:helperText="@string/vpn_endpoint_hint">
-
-                <com.google.android.material.textfield.TextInputEditText
-                    android:id="@+id/vpnEndpoint"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:inputType="textNoSuggestions"
-                    android:maxLines="1"
-                    android:textSize="14sp"
-                    tools:text="vpn.example.com:51820" />
-            </com.google.android.material.textfield.TextInputLayout>
-
-            <com.google.android.material.textfield.TextInputLayout
-                style="@style/Widget.UpgridBrowser.Field"
-                android:hint="@string/vpn_peer_key">
-
-                <com.google.android.material.textfield.TextInputEditText
-                    android:id="@+id/vpnPeerKey"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:inputType="textNoSuggestions"
-                    android:maxLines="1"
-                    android:textSize="14sp" />
-            </com.google.android.material.textfield.TextInputLayout>
-
-            <com.google.android.material.textfield.TextInputLayout
-                style="@style/Widget.UpgridBrowser.Field"
-                android:hint="@string/vpn_preshared"
-                app:endIconMode="password_toggle">
-
-                <com.google.android.material.textfield.TextInputEditText
-                    android:id="@+id/vpnPreshared"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:inputType="textPassword"
-                    android:maxLines="1"
-                    android:textSize="14sp" />
-            </com.google.android.material.textfield.TextInputLayout>
-
-            <com.google.android.material.textfield.TextInputLayout
-                style="@style/Widget.UpgridBrowser.Field"
-                android:hint="@string/vpn_allowed"
-                app:helperText="@string/vpn_allowed_hint">
-
-                <com.google.android.material.textfield.TextInputEditText
-                    android:id="@+id/vpnAllowed"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:inputType="textNoSuggestions"
-                    android:maxLines="1"
-                    android:textSize="14sp" />
-            </com.google.android.material.textfield.TextInputLayout>
-
-            <com.google.android.material.textfield.TextInputLayout
-                style="@style/Widget.UpgridBrowser.Field"
-                android:hint="@string/vpn_keepalive">
-
-                <com.google.android.material.textfield.TextInputEditText
-                    android:id="@+id/vpnKeepalive"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:inputType="number"
-                    android:maxLines="1"
-                    android:textSize="14sp" />
-            </com.google.android.material.textfield.TextInputLayout>
-
-            <!-- ============== Behaviour ============== -->
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnVpnSignIn"
+                style="@style/Widget.Material3.Button.TonalButton"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="10dp"
+                app:icon="@drawable/ic_key"
+                android:text="@string/account_sign_in" />
 
             <com.google.android.material.materialswitch.MaterialSwitch
                 android:id="@+id/vpnAutoConnect"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="18dp"
+                android:layout_marginTop="8dp"
                 android:minHeight="48dp"
                 android:textSize="14sp"
                 android:text="@string/vpn_auto_connect" />
 
-            <com.google.android.material.button.MaterialButton
-                android:id="@+id/btnVpnSave"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="10dp"
-                android:text="@string/vpn_save" />
+            <!-- ============== Everything else ============== -->
 
             <com.google.android.material.button.MaterialButton
-                android:id="@+id/btnVpnForget"
-                style="@style/Widget.Material3.Button.TextButton"
+                android:id="@+id/btnVpnAdvanced"
+                style="@style/Widget.Material3.Button.TextButton.Icon"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="4dp"
-                android:text="@string/vpn_forget" />
+                android:gravity="start|center_vertical"
+                app:icon="@drawable/ic_chevron_down"
+                android:text="@string/vpn_advanced" />
+
+            <LinearLayout
+                android:id="@+id/vpnAdvanced"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:visibility="gone"
+                tools:visibility="visible">
+
+                <TextView
+                    style="@style/Widget.UpgridBrowser.SectionLabel"
+                    android:layout_marginTop="8dp"
+                    android:layout_marginStart="4dp"
+                    app:drawableStartCompat="@drawable/ic_key"
+                    android:text="@string/vpn_section_device" />
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal">
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btnVpnPaste"
+                        style="@style/Widget.Material3.Button.TonalButton"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:layout_marginEnd="6dp"
+                        android:text="@string/vpn_paste" />
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btnVpnGenerate"
+                        style="@style/Widget.Material3.Button.TonalButton"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:layout_marginStart="6dp"
+                        android:text="@string/vpn_generate" />
+                </LinearLayout>
+
+                <com.google.android.material.textfield.TextInputLayout
+                    android:id="@+id/vpnPrivateField"
+                    style="@style/Widget.UpgridBrowser.Field"
+                    android:hint="@string/vpn_private_key"
+                    app:endIconMode="password_toggle">
+
+                    <com.google.android.material.textfield.TextInputEditText
+                        android:id="@+id/vpnPrivateKey"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:inputType="textPassword"
+                        android:maxLines="1"
+                        android:textSize="14sp" />
+                </com.google.android.material.textfield.TextInputLayout>
+
+                <com.google.android.material.textfield.TextInputLayout
+                    android:id="@+id/vpnPublicField"
+                    style="@style/Widget.UpgridBrowser.Field"
+                    android:hint="@string/vpn_public_key"
+                    app:helperText="@string/vpn_public_key_hint"
+                    app:endIconMode="custom"
+                    app:endIconDrawable="@drawable/ic_copy"
+                    app:endIconContentDescription="@string/vpn_copy_public">
+
+                    <com.google.android.material.textfield.TextInputEditText
+                        android:id="@+id/vpnPublicKey"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:focusable="false"
+                        android:cursorVisible="false"
+                        android:inputType="none"
+                        android:maxLines="1"
+                        android:textSize="14sp" />
+                </com.google.android.material.textfield.TextInputLayout>
+
+                <com.google.android.material.textfield.TextInputLayout
+                    style="@style/Widget.UpgridBrowser.Field"
+                    android:hint="@string/vpn_address">
+
+                    <com.google.android.material.textfield.TextInputEditText
+                        android:id="@+id/vpnAddress"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:inputType="textNoSuggestions"
+                        android:maxLines="1"
+                        android:textSize="14sp"
+                        tools:text="10.7.0.4/32" />
+                </com.google.android.material.textfield.TextInputLayout>
+
+                <com.google.android.material.textfield.TextInputLayout
+                    style="@style/Widget.UpgridBrowser.Field"
+                    android:hint="@string/vpn_dns">
+
+                    <com.google.android.material.textfield.TextInputEditText
+                        android:id="@+id/vpnDns"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:inputType="textNoSuggestions"
+                        android:maxLines="1"
+                        android:textSize="14sp" />
+                </com.google.android.material.textfield.TextInputLayout>
+
+                <com.google.android.material.textfield.TextInputLayout
+                    style="@style/Widget.UpgridBrowser.Field"
+                    android:hint="@string/vpn_mtu">
+
+                    <com.google.android.material.textfield.TextInputEditText
+                        android:id="@+id/vpnMtu"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:inputType="number"
+                        android:maxLines="1"
+                        android:textSize="14sp" />
+                </com.google.android.material.textfield.TextInputLayout>
+
+                <TextView
+                    style="@style/Widget.UpgridBrowser.SectionLabel"
+                    android:layout_marginTop="22dp"
+                    android:layout_marginStart="4dp"
+                    app:drawableStartCompat="@drawable/ic_shield"
+                    android:text="@string/vpn_section_server" />
+
+                <com.google.android.material.textfield.TextInputLayout
+                    style="@style/Widget.UpgridBrowser.Field"
+                    android:layout_marginTop="0dp"
+                    android:hint="@string/vpn_endpoint"
+                    app:helperText="@string/vpn_endpoint_hint">
+
+                    <com.google.android.material.textfield.TextInputEditText
+                        android:id="@+id/vpnEndpoint"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:inputType="textNoSuggestions"
+                        android:maxLines="1"
+                        android:textSize="14sp"
+                        tools:text="193.160.119.15:443" />
+                </com.google.android.material.textfield.TextInputLayout>
+
+                <com.google.android.material.textfield.TextInputLayout
+                    style="@style/Widget.UpgridBrowser.Field"
+                    android:hint="@string/vpn_peer_key">
+
+                    <com.google.android.material.textfield.TextInputEditText
+                        android:id="@+id/vpnPeerKey"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:inputType="textNoSuggestions"
+                        android:maxLines="1"
+                        android:textSize="14sp" />
+                </com.google.android.material.textfield.TextInputLayout>
+
+                <com.google.android.material.textfield.TextInputLayout
+                    style="@style/Widget.UpgridBrowser.Field"
+                    android:hint="@string/vpn_preshared"
+                    app:endIconMode="password_toggle">
+
+                    <com.google.android.material.textfield.TextInputEditText
+                        android:id="@+id/vpnPreshared"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:inputType="textPassword"
+                        android:maxLines="1"
+                        android:textSize="14sp" />
+                </com.google.android.material.textfield.TextInputLayout>
+
+                <com.google.android.material.textfield.TextInputLayout
+                    style="@style/Widget.UpgridBrowser.Field"
+                    android:hint="@string/vpn_allowed"
+                    app:helperText="@string/vpn_allowed_hint">
+
+                    <com.google.android.material.textfield.TextInputEditText
+                        android:id="@+id/vpnAllowed"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:inputType="textNoSuggestions"
+                        android:maxLines="1"
+                        android:textSize="14sp" />
+                </com.google.android.material.textfield.TextInputLayout>
+
+                <com.google.android.material.textfield.TextInputLayout
+                    style="@style/Widget.UpgridBrowser.Field"
+                    android:hint="@string/vpn_keepalive">
+
+                    <com.google.android.material.textfield.TextInputEditText
+                        android:id="@+id/vpnKeepalive"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:inputType="number"
+                        android:maxLines="1"
+                        android:textSize="14sp" />
+                </com.google.android.material.textfield.TextInputLayout>
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnVpnSave"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="14dp"
+                    android:text="@string/vpn_save" />
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnVpnForget"
+                    style="@style/Widget.Material3.Button.TextButton"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:text="@string/vpn_forget" />
+            </LinearLayout>
         </LinearLayout>
     </ScrollView>
 </LinearLayout>

@@ -127,6 +127,10 @@ class AppMenuPopup(private val activity: MainActivity) {
             popup.dismiss()
             activity.showDownloads()
         }
+        rowProfile.setOnClickListener {
+            popup.dismiss()
+            activity.showAccount()
+        }
         rowVpn.setOnClickListener {
             // Connecting needs the consent dialog, which needs an Activity —
             // so the whole decision lives there. Unconfigured goes to setup.
@@ -197,6 +201,7 @@ class AppMenuPopup(private val activity: MainActivity) {
 
         renderAdblockState()
         renderDesktopSiteState()
+        renderProfileState()
         renderVpnState()
         renderDownloadsState()
         renderBookmarkStateFromDb(tab?.content?.url)
@@ -240,6 +245,21 @@ class AppMenuPopup(private val activity: MainActivity) {
             binding.adblockState.setText(
                 if (on) R.string.menu_adblock_state_on else R.string.menu_adblock_state_off
             )
+        }
+    }
+
+    /**
+     * The account row, which doubles as the readout: when somebody is signed
+     * in, the row is their name. "Am I signed in?" is then answered by opening
+     * the menu rather than by navigating to find out.
+     */
+    private fun renderProfileState() {
+        val account = components.accounts.current
+        binding.profileState.isVisible = account != null
+        if (account != null) {
+            binding.profileLabel.text = account.name
+        } else {
+            binding.profileLabel.setText(R.string.menu_account_sign_in)
         }
     }
 

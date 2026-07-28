@@ -13,6 +13,7 @@ import androidx.lifecycle.lifecycleScope
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.upgrid.browser.AdblockController
 import com.upgrid.browser.BrowserApplication
+import com.upgrid.browser.account.AccountController
 import com.upgrid.browser.BuildConfig
 import com.upgrid.browser.MainActivity
 import com.upgrid.browser.R
@@ -108,6 +109,7 @@ class SettingsBottomSheet : ExpandedBottomSheetFragment() {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
 
+        wireProfile()
         wireAccount()
         wireAdblock()
         wirePrivacy()
@@ -120,6 +122,60 @@ class SettingsBottomSheet : ExpandedBottomSheetFragment() {
 
         renderAccount()
         renderCounts()
+    }
+
+    // --- The browser's own account -----------------------------------------
+
+    /**
+     * Sign in / sign out of the browser account, and say what it did.
+     *
+     * Above the Google section on purpose: this is the one that decides what
+     * the browser is set up with, Google only syncs data into it.
+     */
+    private fun wireProfile() {
+        renderProfile()
+        binding.btnProfileAction.setOnClickListener {
+            val account = components.accounts.current
+            if (account == null) {
+                dismiss()
+                (requireActivity() as MainActivity).showAccount()
+            } else {
+                confirmSignOut(account.name)
+            }
+        }
+    }
+
+    private fun renderProfile() {
+        val account = components.accounts.current
+        binding.profileName.text =
+            account?.name ?: getString(R.string.settings_profile_none)
+        binding.profileStatus.setText(
+            when {
+                account == null -> R.string.settings_profile_hint
+                components.accounts.vpnConfig != null -> R.string.settings_profile_provisioned
+                else -> R.string.settings_profile_bare
+            },
+        )
+        binding.btnProfileAction.setText(
+            if (account == null) R.string.account_sign_in else R.string.account_sign_out,
+        )
+    }
+
+    private fun confirmSignOut(name: String) {
+        MaterialAlertDialogBuilder(requireContext())
+            .setTitle(R.string.account_sign_out_title)
+            .setMessage(getString(R.string.account_sign_out_message, name))
+            .setNegativeButton(android.R.string.cancel, null)
+            .setPositiveButton(R.string.account_sign_out) { _, _ ->
+                viewLifecycleOwner.lifecycleScope.launch {
+                    AccountController(components).signOut()
+                    if (_binding != null) {
+                        renderProfile()
+                        renderCounts()
+                    }
+                }
+            }
+            .show()
     }
 
     // --- Account & sync ----------------------------------------------------

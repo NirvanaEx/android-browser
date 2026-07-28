@@ -34,6 +34,7 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.core.view.isVisible
 import com.google.android.material.snackbar.Snackbar
+import com.upgrid.browser.account.LoginActivity
 import com.upgrid.browser.bookmarks.BookmarkStore
 import com.upgrid.browser.bookmarks.BookmarksActivity
 import com.upgrid.browser.databinding.ActivityMainBinding
@@ -1379,6 +1380,9 @@ class MainActivity : AppCompatActivity() {
 
     /** VPN setup. Opened from the app menu and from settings. */
     fun showVpnSettings() = startActivity(VpnActivity.intent(this))
+
+    /** The browser's own account. Not Google — that one is extra, and separate. */
+    fun showAccount() = startActivity(LoginActivity.intent(this))
 
     /**
      * Connect or disconnect the VPN from the app menu.
