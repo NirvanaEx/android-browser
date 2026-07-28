@@ -361,11 +361,22 @@ Three consequences to respect:
   bearing for sign-in, and swapping the key means re-registering its SHA-1.
 
 [.github/workflows/android.yml](.github/workflows/android.yml) builds on every
-branch, publishes the rolling `latest-debug` pre-release only from `main`, and
-posts the APK to Telegram (secrets `TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID`).
-The Bot API caps uploads at **50 MB** and GeckoView debug APKs sit near that
-line — over the limit the job sends a download link instead of the file, so
-don't "simplify" that branch away.
+branch and publishes the rolling `latest-debug` pre-release only from `main`.
+Its Telegram step is a fallback for forks: this project's own bot has been
+migrated to a self-hosted Bot API server, so the cloud API rejects its token and
+the step is `continue-on-error`. Real delivery is a relay on the VPS that polls
+the release and uploads the file — the public Bot API caps uploads at 50 MB and
+these APKs are ~122 MB.
+
+**[CHANGELOG.md](CHANGELOG.md)'s top `## ` section is user-facing text.** CI
+copies it into the release body between `<!-- notes:start -->` markers, and the
+relay slices it back out for the Telegram caption — so it's what the user reads
+next to the APK they're about to install. Write it in Russian, describe what
+changed *in the app*, and update it in the same commit as the change. Commit
+subjects don't serve this purpose: they're English and they describe the code.
+The section is matched by "first `## `", never by version number — the version
+is the commit count, so it changes with the very commit that would add a heading
+naming it.
 
 Builds run in GitHub Actions, not on the VPS: the repo is public (free
 unlimited minutes) and a Gecko-dependent Gradle build wants more RAM than that

@@ -92,6 +92,35 @@ jobs:
             echo "APK_EOF"
           } >> "$GITHUB_OUTPUT"
 
+          # Release notes = the top "## " section of CHANGELOG.md, in Russian.
+          # Commit subjects are English by repo convention and describe the
+          # change to the code; this describes it to the person installing the
+          # APK, which is not the same text. Keyed off "first section" rather
+          # than a version heading on purpose — the version is the commit count,
+          # so it changes with the very commit that would add the heading.
+          NOTES=$(python3 - <<'PY'
+          import pathlib
+          out, seen = [], False
+          path = pathlib.Path("CHANGELOG.md")
+          if path.exists():
+              for line in path.read_text(encoding="utf-8").splitlines():
+                  if line.startswith("## "):
+                      if seen:
+                          break
+                      seen = True
+                      continue
+                  if seen:
+                      out.append(line)
+          print("\n".join(out).strip())
+          PY
+          )
+          [ -n "$NOTES" ] || NOTES=$(git log -1 --pretty=%s)
+          {
+            echo "notes<<APK_EOF"
+            printf '%s\n' "$NOTES"
+            echo "APK_EOF"
+          } >> "$GITHUB_OUTPUT"
+
       - name: Build debug APK
         run: |
           chmod +x gradlew
@@ -123,11 +152,20 @@ jobs:
           tag_name: ${{ steps.ver.outputs.tag }}
           name: ${{ steps.ver.outputs.title }}
           prerelease: true
+          # The notes:start/notes:end markers are not decoration — apk-relay
+          # slices between them to build the Telegram caption, so the user reads
+          # this exact text next to the APK. Everything outside them is for the
+          # releases page only.
           body: |
             Автосборка из ветки `${{ github.ref_name }}`.
 
             **Версия:** ${{ steps.ver.outputs.version }} (`${{ steps.ver.outputs.sha }}`)
-            **Изменения:** ${{ steps.ver.outputs.subject }}
+
+            <!-- notes:start -->
+            ${{ steps.ver.outputs.notes }}
+            <!-- notes:end -->
+
+            Коммит: ${{ steps.ver.outputs.subject }}
 
             Скачай `.apk` и установи — нужно разрешить установку из неизвестных
             источников.
