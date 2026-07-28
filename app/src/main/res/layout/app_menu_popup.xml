@@ -1,16 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  App menu. A 236dp drop-down anchored to the ⋮ button (width is set in
+  App menu. A drop-down anchored to the ⋮ button (width is set in
   AppMenuPopup.kt; height wraps).
 
-  It used to be 300dp of 48dp rows including two that only produced a "coming
-  soon" toast. Now: a strip of four one-tap page actions on top, then three
-  short groups. Anything the user sets once and forgets — ad-blocking defaults,
-  the search engine, data management — lives in Settings, not here.
+  Top of the menu is the profile: monogram, name, and what the account is doing
+  for you. It's a header rather than the seventh row down because it is the one
+  line here that answers "who is this browser signed in as", and that question
+  was previously answered by a row that looked exactly like "Share".
 
-  The quick strip is also where the bottom bar's navigation went. Back is the
-  system gesture *and* a button here, because a page that hijacks the gesture
-  (galleries, maps) otherwise leaves no way out.
+  Then a strip of four one-tap page actions, then three short groups. Anything
+  the user sets once and forgets — ad-blocking defaults, the search engine,
+  data management — lives in Settings, not here.
 
   Row sizing comes from styles.xml; see the note there.
   IDs are bound in AppMenuPopup.kt via ViewBinding.
@@ -26,7 +26,62 @@
         android:layout_height="wrap_content"
         android:orientation="vertical"
         android:paddingTop="4dp"
-        android:paddingBottom="4dp">
+        android:paddingBottom="6dp">
+
+        <!-- ============== Who is signed in ============== -->
+
+        <LinearLayout
+            android:id="@+id/rowProfile"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:paddingStart="12dp"
+            android:paddingEnd="12dp"
+            android:paddingTop="8dp"
+            android:paddingBottom="8dp"
+            android:background="?attr/selectableItemBackground"
+            android:clickable="true"
+            android:focusable="true">
+
+            <TextView
+                android:id="@+id/profileAvatar"
+                style="@style/Widget.UpgridBrowser.Avatar"
+                android:layout_width="38dp"
+                android:layout_height="38dp"
+                android:textSize="16sp"
+                tools:text="S" />
+
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:layout_marginStart="12dp"
+                android:orientation="vertical">
+
+                <TextView
+                    android:id="@+id/profileLabel"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:maxLines="1"
+                    android:ellipsize="end"
+                    android:textSize="15sp"
+                    android:textColor="?attr/colorOnSurface"
+                    android:text="@string/menu_account_sign_in" />
+
+                <TextView
+                    android:id="@+id/profileState"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:maxLines="1"
+                    android:ellipsize="end"
+                    android:textSize="11sp"
+                    android:textColor="?attr/colorOnSurfaceVariant"
+                    tools:text="VPN настроен" />
+            </LinearLayout>
+        </LinearLayout>
+
+        <View style="@style/Widget.UpgridBrowser.MenuDivider" />
 
         <!-- ============== Quick actions ============== -->
 
@@ -34,8 +89,8 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="horizontal"
-            android:paddingStart="4dp"
-            android:paddingEnd="4dp"
+            android:paddingStart="8dp"
+            android:paddingEnd="8dp"
             android:paddingBottom="2dp">
 
             <ImageButton
@@ -213,34 +268,7 @@
 
         <View style="@style/Widget.UpgridBrowser.MenuDivider" />
 
-        <!-- ============== Group 3: account & settings ============== -->
-
-        <!--
-          The browser's own account. First in this group because it is what the
-          rest of the group depends on: signing in is what hands the VPN its
-          profile. The Google row below is a different thing entirely — it syncs
-          bookmarks, and it is optional.
-        -->
-        <LinearLayout
-            android:id="@+id/rowProfile"
-            style="@style/Widget.UpgridBrowser.MenuRow">
-            <ImageView
-                style="@style/Widget.UpgridBrowser.MenuRowIcon"
-                android:contentDescription="@null"
-                android:src="@drawable/ic_key" />
-            <TextView
-                android:id="@+id/profileLabel"
-                style="@style/Widget.UpgridBrowser.MenuRowLabel"
-                android:maxLines="1"
-                android:ellipsize="end"
-                android:text="@string/menu_account_sign_in" />
-            <TextView
-                android:id="@+id/profileState"
-                style="@style/Widget.UpgridBrowser.MenuPill"
-                android:visibility="gone"
-                tools:visibility="visible"
-                tools:text="ВХОД" />
-        </LinearLayout>
+        <!-- ============== Group 3: connections & settings ============== -->
 
         <!--
           VPN. A one-tap connect plus the status, because "am I actually
@@ -256,9 +284,34 @@
                 style="@style/Widget.UpgridBrowser.MenuRowIcon"
                 android:contentDescription="@null"
                 android:src="@drawable/ic_shield_off" />
-            <TextView
-                style="@style/Widget.UpgridBrowser.MenuRowLabel"
-                android:text="@string/menu_vpn" />
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:layout_marginStart="14dp"
+                android:orientation="vertical">
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:textSize="13sp"
+                    android:textColor="?attr/colorOnSurface"
+                    android:text="@string/menu_vpn" />
+                <!-- While the tunnel is up this is the live speed. It is the
+                     one thing a VPN row can say that a shield icon can't:
+                     connected and carrying nothing looks identical to
+                     connected and working. -->
+                <TextView
+                    android:id="@+id/vpnSpeed"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:maxLines="1"
+                    android:ellipsize="end"
+                    android:visibility="gone"
+                    android:textSize="11sp"
+                    android:textColor="?attr/colorOnSurfaceVariant"
+                    tools:visibility="visible"
+                    tools:text="↓ 1,2 МБ/с   ↑ 240 КБ/с" />
+            </LinearLayout>
             <TextView
                 android:id="@+id/vpnState"
                 style="@style/Widget.UpgridBrowser.MenuPill"

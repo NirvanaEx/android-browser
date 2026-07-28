@@ -10,6 +10,16 @@
     <color name="brand_blue_dark">#00468F</color>
     <color name="brand_blue_light">#B0C7FF</color>
 
+    <!--
+      The launcher gradient. Lighter than brand_blue at the top-left and
+      considerably darker at the bottom-right: the icon is 48dp on a home
+      screen and a flat fill at that size disappears into whatever wallpaper is
+      behind it, while a diagonal ramp gives the shield an edge to stand on.
+      Also used by ic_brand_mark on the sign-in screen, so the two can't drift.
+    -->
+    <color name="brand_gradient_start">#3B82F7</color>
+    <color name="brand_gradient_end">#0A3A9E</color>
+
     <color name="ic_launcher_background">@color/brand_blue</color>
 
     <!-- Light scheme (Material 3 baseline derived from brand_blue) -->

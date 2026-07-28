@@ -19,11 +19,14 @@ import com.upgrid.browser.bookmarks.BookmarkStore
 import com.upgrid.browser.databinding.AppMenuPopupBinding
 import com.upgrid.browser.settings.SettingsBottomSheet
 import com.upgrid.browser.sync.GoogleAccounts
+import com.upgrid.browser.vpn.VpnFormat
+import com.upgrid.browser.vpn.VpnStatus
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import mozilla.components.browser.state.selector.selectedTab
 
 /**
- * The app menu: a 236dp drop-down anchored to the ⋮ button.
+ * The app menu: a 264dp drop-down anchored to the ⋮ button.
  *
  * Lifecycle: instantiate, call [showFrom] with the anchor, done. The popup is
  * focusable so system back and outside-tap dismiss it for free. Toggle rows
@@ -32,16 +35,29 @@ import mozilla.components.browser.state.selector.selectedTab
  *
  * A fresh instance per tap. Cheap, and it means no stale toggle state to
  * invalidate: everything is read at construction and again in [showFrom].
+ *
+ * One thing here is not read once but *collected*: the VPN speed. Everything
+ * else in this menu is a fact that can't change while you're looking at it; the
+ * tunnel's throughput is the exception, and a frozen number there reads as a
+ * dead connection. The job is cancelled on dismiss.
  */
 class AppMenuPopup(private val activity: MainActivity) {
 
     private val components get() = (activity.application as BrowserApplication).components
     private val adblock by lazy { AdblockController(components) }
-    private val bookmarks by lazy { BookmarkStore(activity) }
+
+    // Through components, not a fresh BookmarkStore: constructing one opens a
+    // second SQLiteOpenHelper against a file the activity already has open, and
+    // this class is instantiated on every tap of the ⋮ button.
+    private val bookmarks get() = components.bookmarks
+
     private val binding =
         AppMenuPopupBinding.inflate(LayoutInflater.from(activity))
 
     private val popup: PopupWindow
+
+    /** Live VPN readout, collected only while the menu is on screen. */
+    private var vpnJob: Job? = null
 
     init {
         val density = activity.resources.displayMetrics.density
@@ -72,6 +88,14 @@ class AppMenuPopup(private val activity: MainActivity) {
         // from browser state has to be re-read here rather than at construction.
         renderState()
         popup.showAsDropDown(anchor, 0, 0, Gravity.END)
+
+        // The one row that changes while you look at it. Collected here rather
+        // than read once because the speed is the point — a frozen number is
+        // indistinguishable from a stalled tunnel.
+        vpnJob = activity.lifecycleScope.launch {
+            components.vpnStatus.state.collect(::renderVpnState)
+        }
+        popup.setOnDismissListener { vpnJob?.cancel() }
     }
 
     // --- Wiring ------------------------------------------------------------
@@ -202,7 +226,7 @@ class AppMenuPopup(private val activity: MainActivity) {
         renderAdblockState()
         renderDesktopSiteState()
         renderProfileState()
-        renderVpnState()
+        renderVpnState(components.vpnStatus.state.value)
         renderDownloadsState()
         renderBookmarkStateFromDb(tab?.content?.url)
 
@@ -249,27 +273,39 @@ class AppMenuPopup(private val activity: MainActivity) {
     }
 
     /**
-     * The account row, which doubles as the readout: when somebody is signed
-     * in, the row is their name. "Am I signed in?" is then answered by opening
-     * the menu rather than by navigating to find out.
+     * The menu's header: monogram, name, and what the account has done for you.
+     *
+     * It doubles as the readout — "am I signed in?" is answered by opening the
+     * menu rather than by navigating somewhere to find out — and the second
+     * line says whether the sign-in actually brought a VPN profile with it,
+     * which is the only reason the account exists.
      */
     private fun renderProfileState() {
         val account = components.accounts.current
-        binding.profileState.isVisible = account != null
-        if (account != null) {
-            binding.profileLabel.text = account.name
-        } else {
+        binding.profileAvatar.text = monogram(account?.name)
+        if (account == null) {
             binding.profileLabel.setText(R.string.menu_account_sign_in)
+            binding.profileState.setText(R.string.settings_profile_hint)
+        } else {
+            binding.profileLabel.text = account.name
+            binding.profileState.setText(
+                if (components.accounts.vpnConfig != null) {
+                    R.string.settings_profile_provisioned
+                } else {
+                    R.string.settings_profile_bare
+                },
+            )
         }
     }
 
     /**
-     * The VPN row: shield on and "ON" when the tunnel is up, and a third state
-     * for "nothing set up yet" — offering to connect a profile that doesn't
-     * exist would be a switch that can only fail.
+     * The VPN row: shield on and "ON" when the tunnel is up, a live speed under
+     * the label while it is, and a third state for "nothing set up yet" —
+     * offering to connect a profile that doesn't exist would be a switch that
+     * can only fail.
      */
-    private fun renderVpnState() {
-        val up = components.vpn.isUp
+    private fun renderVpnState(status: VpnStatus.Snapshot) {
+        val up = status.up
         val configured = components.vpnSettings.isConfigured
         binding.vpnIcon.setImageResource(
             if (up) R.drawable.ic_shield else R.drawable.ic_shield_off
@@ -288,6 +324,16 @@ class AppMenuPopup(private val activity: MainActivity) {
                 else -> R.string.menu_vpn_state_unset
             }
         )
+        binding.vpnSpeed.isVisible = up && status.sampled
+        if (up && status.sampled) {
+            binding.vpnSpeed.text = VpnFormat.rate(activity, status)
+        }
+    }
+
+    /** First letter of the account's name, or a placeholder glyph. */
+    private fun monogram(name: String?): String {
+        val letter = name?.trim()?.firstOrNull() ?: return "?"
+        return letter.uppercase()
     }
 
     /** How many files are on the downloads list, or nothing when it's empty. */
@@ -348,9 +394,11 @@ class AppMenuPopup(private val activity: MainActivity) {
 
     private companion object {
         /**
-         * Down from 300dp. The menu is a list of short labels; the extra width
-         * bought nothing but a wall of dropdown covering most of the page.
+         * Down from the original 300dp, then back up 28 when the profile
+         * header arrived: an account name and a live VPN speed both want more
+         * than a one-word label, and at 236 either would have been an ellipsis.
+         * Still well short of covering the page.
          */
-        const val MENU_WIDTH_DP = 236
+        const val MENU_WIDTH_DP = 264
     }
 }

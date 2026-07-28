@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The tinted circle behind every settings-row icon.
+
+  Tonal rather than the brand colour at full strength: forty of these down one
+  screen at full saturation is a dot-matrix, and none of them would be more
+  important than any other. The icon inside carries colorPrimary.
+-->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="oval">
+    <solid android:color="?attr/colorSecondaryContainer" />
+</shape>

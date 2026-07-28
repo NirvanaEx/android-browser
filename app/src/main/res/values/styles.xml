@@ -19,10 +19,10 @@
     <style name="Widget.UpgridBrowser.MenuRow" parent="">
         <item name="android:layout_width">match_parent</item>
         <item name="android:layout_height">wrap_content</item>
-        <item name="android:minHeight">42dp</item>
+        <item name="android:minHeight">46dp</item>
         <item name="android:orientation">horizontal</item>
         <item name="android:gravity">center_vertical</item>
-        <item name="android:paddingStart">14dp</item>
+        <item name="android:paddingStart">16dp</item>
         <item name="android:paddingEnd">14dp</item>
         <item name="android:background">?attr/selectableItemBackground</item>
         <item name="android:clickable">true</item>
@@ -30,8 +30,8 @@
     </style>
 
     <style name="Widget.UpgridBrowser.MenuRowIcon" parent="">
-        <item name="android:layout_width">19dp</item>
-        <item name="android:layout_height">19dp</item>
+        <item name="android:layout_width">20dp</item>
+        <item name="android:layout_height">20dp</item>
         <item name="android:tint">?attr/colorOnSurface</item>
     </style>
 
@@ -40,7 +40,7 @@
         <item name="android:layout_height">wrap_content</item>
         <item name="android:layout_weight">1</item>
         <item name="android:layout_marginStart">14dp</item>
-        <item name="android:textSize">13sp</item>
+        <item name="android:textSize">14sp</item>
         <item name="android:textColor">?attr/colorOnSurface</item>
     </style>
 
@@ -58,14 +58,24 @@
         <item name="android:textColor">?attr/colorOnSecondaryContainer</item>
     </style>
 
-    <!-- Icon button in the menu's top quick-action strip. -->
+    <!--
+      Icon button in the menu's top quick-action strip.
+
+      A tonal pill each, with a gap between them, rather than four borderless
+      icons sharing one strip: back / forward / reload / star are four separate
+      actions and a borderless row of them reads as one segmented control whose
+      halves do related things. The pills also give the strip a shape, which is
+      what stopped the top of the menu looking like an accident.
+    -->
     <style name="Widget.UpgridBrowser.MenuQuickAction" parent="">
         <item name="android:layout_width">0dp</item>
-        <item name="android:layout_height">42dp</item>
+        <item name="android:layout_height">40dp</item>
         <item name="android:layout_weight">1</item>
+        <item name="android:layout_marginStart">3dp</item>
+        <item name="android:layout_marginEnd">3dp</item>
         <item name="android:padding">0dp</item>
         <item name="android:scaleType">center</item>
-        <item name="android:background">?attr/selectableItemBackgroundBorderless</item>
+        <item name="android:background">@drawable/bg_quick_action</item>
         <item name="android:tint">?attr/colorOnSurface</item>
     </style>
 
@@ -79,6 +89,156 @@
         <item name="android:layout_marginEnd">12dp</item>
         <item name="android:background">?attr/colorOutlineVariant</item>
         <item name="android:alpha">0.5</item>
+    </style>
+
+    <!-- ============== Cards and rows (settings, VPN, account) ==============
+
+      One shape for every screen where the user *sets* something rather than
+      browses: a stack of cards, each card a group of rows, each row an icon in
+      a tinted circle, a title, a subtitle and one control on the right.
+
+      Before this, Settings was a single column of section captions with loose
+      text and buttons floating between them at four different indents. Nothing
+      was wrong with any one row; the screen simply had no structure, so
+      everything read as equally important and none of it looked finished.
+
+      The rules, so new rows land in the same place as the old ones:
+
+        - a card groups things you'd change in the same sitting;
+        - a row is 60dp, and its subtitle answers "what does this do / what is
+          it set to now" — never leave a row that only repeats its own title;
+        - the leading circle is the row's identity. Same icon in the menu and
+          in Settings for the same thing.
+    -->
+
+    <style name="Widget.UpgridBrowser.Card" parent="Widget.Material3.CardView.Filled">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:layout_marginStart">14dp</item>
+        <item name="android:layout_marginEnd">14dp</item>
+        <item name="android:layout_marginBottom">14dp</item>
+        <item name="cardCornerRadius">22dp</item>
+        <item name="cardElevation">0dp</item>
+        <item name="cardBackgroundColor">?attr/colorSurfaceContainerHigh</item>
+    </style>
+
+    <!-- The vertical stack inside a card. -->
+    <style name="Widget.UpgridBrowser.CardBody" parent="">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:orientation">vertical</item>
+        <item name="android:paddingTop">4dp</item>
+        <item name="android:paddingBottom">4dp</item>
+    </style>
+
+    <!-- Caption above a card. Sits on the sheet background, not on the card. -->
+    <style name="Widget.UpgridBrowser.GroupHeader" parent="">
+        <item name="android:layout_width">wrap_content</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:layout_marginStart">28dp</item>
+        <item name="android:layout_marginEnd">28dp</item>
+        <item name="android:layout_marginBottom">8dp</item>
+        <item name="android:letterSpacing">0.06</item>
+        <item name="android:textAllCaps">true</item>
+        <item name="android:textAppearance">?attr/textAppearanceLabelMedium</item>
+        <item name="android:textColor">?attr/colorPrimary</item>
+    </style>
+
+    <style name="Widget.UpgridBrowser.Row" parent="">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:minHeight">60dp</item>
+        <item name="android:orientation">horizontal</item>
+        <item name="android:gravity">center_vertical</item>
+        <item name="android:paddingStart">16dp</item>
+        <item name="android:paddingEnd">16dp</item>
+        <item name="android:background">?attr/selectableItemBackground</item>
+        <item name="android:clickable">true</item>
+        <item name="android:focusable">true</item>
+    </style>
+
+    <!-- Same row, but nothing to tap: a readout, a switch's label block. -->
+    <style name="Widget.UpgridBrowser.Row.Static" parent="Widget.UpgridBrowser.Row">
+        <item name="android:background">@null</item>
+        <item name="android:clickable">false</item>
+        <item name="android:focusable">false</item>
+    </style>
+
+    <style name="Widget.UpgridBrowser.RowIcon" parent="">
+        <item name="android:layout_width">38dp</item>
+        <item name="android:layout_height">38dp</item>
+        <item name="android:padding">9dp</item>
+        <item name="android:scaleType">fitCenter</item>
+        <item name="android:background">@drawable/bg_row_icon</item>
+        <item name="android:tint">?attr/colorPrimary</item>
+    </style>
+
+    <style name="Widget.UpgridBrowser.RowText" parent="">
+        <item name="android:layout_width">0dp</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:layout_weight">1</item>
+        <item name="android:layout_marginStart">14dp</item>
+        <item name="android:layout_marginEnd">10dp</item>
+        <item name="android:orientation">vertical</item>
+    </style>
+
+    <style name="Widget.UpgridBrowser.RowTitle" parent="">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:maxLines">1</item>
+        <item name="android:ellipsize">end</item>
+        <item name="android:textSize">15sp</item>
+        <item name="android:textColor">?attr/colorOnSurface</item>
+    </style>
+
+    <style name="Widget.UpgridBrowser.RowSubtitle" parent="">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:layout_marginTop">2dp</item>
+        <item name="android:textSize">12sp</item>
+        <item name="android:textColor">?attr/colorOnSurfaceVariant</item>
+    </style>
+
+    <!-- Trailing "go there" arrow. -->
+    <style name="Widget.UpgridBrowser.RowChevron" parent="">
+        <item name="android:layout_width">20dp</item>
+        <item name="android:layout_height">20dp</item>
+        <item name="android:tint">?attr/colorOnSurfaceVariant</item>
+        <item name="android:alpha">0.7</item>
+    </style>
+
+    <!-- Trailing state chip: ON / OFF / a count. -->
+    <style name="Widget.UpgridBrowser.RowPill" parent="">
+        <item name="android:layout_width">wrap_content</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:paddingStart">11dp</item>
+        <item name="android:paddingEnd">11dp</item>
+        <item name="android:paddingTop">4dp</item>
+        <item name="android:paddingBottom">4dp</item>
+        <item name="android:textSize">11sp</item>
+        <item name="android:textStyle">bold</item>
+        <item name="android:background">@drawable/bg_quick_action</item>
+        <item name="android:textColor">?attr/colorOnSecondaryContainer</item>
+    </style>
+
+    <!-- Hairline between two rows of one card, indented past the icon. -->
+    <style name="Widget.UpgridBrowser.RowDivider" parent="">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">1dp</item>
+        <item name="android:layout_marginStart">68dp</item>
+        <item name="android:background">?attr/colorOutlineVariant</item>
+        <item name="android:alpha">0.4</item>
+    </style>
+
+    <!-- Round monogram: the profile, in the menu and in Settings. -->
+    <style name="Widget.UpgridBrowser.Avatar" parent="">
+        <item name="android:layout_width">44dp</item>
+        <item name="android:layout_height">44dp</item>
+        <item name="android:gravity">center</item>
+        <item name="android:background">@drawable/bg_avatar</item>
+        <item name="android:textSize">18sp</item>
+        <item name="android:textStyle">bold</item>
+        <item name="android:textColor">?attr/colorOnPrimaryContainer</item>
     </style>
 
     <!-- ============== Bottom sheets (settings / tabs / history / bookmarks) ============== -->

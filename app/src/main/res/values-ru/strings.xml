@@ -315,15 +315,15 @@
     <string name="clear_type_passwords">Сохранённые пароли</string>
 
     <!-- ============== Настройки: новые разделы ============== -->
-    <string name="settings_section_privacy">VPN и пароли</string>
-    <string name="settings_section_data">Куки и кэш</string>
+    <string name="settings_section_privacy">Защита</string>
+    <string name="settings_section_data">Данные на телефоне</string>
     <string name="settings_section_downloads">Загрузки</string>
     <string name="settings_open_vpn">VPN</string>
     <string name="settings_open_passwords">Пароли</string>
     <string name="settings_save_passwords">Сохранять и подставлять пароли</string>
     <string name="settings_save_passwords_hint">Хранятся только на этом телефоне и зашифрованы ключом, который его не покидает.</string>
-    <string name="settings_vpn_on">VPN: подключён</string>
-    <string name="settings_vpn_off">VPN: отключён</string>
+    <string name="settings_vpn_on">Подключён</string>
+    <string name="settings_vpn_off">Отключён</string>
     <string name="settings_open_site_data">Данные сайтов</string>
     <string name="settings_clear_data">Очистить данные</string>
     <string name="settings_data_size">Кэш и данные сайтов: %1$s</string>
@@ -360,4 +360,16 @@
     <string name="vpn_provision_none">Аккаунт пока не прислал профиль — заполните поля ниже или вставьте конфиг.</string>
     <string name="vpn_provision_sign_in">Войдите в аккаунт — профиль подставится сам.</string>
 
+
+    <!-- ============== Строки, добавленные вместе с карточками ============== -->
+    <string name="settings_clear_short">Очистить</string>
+    <string name="settings_passwords_hint">Сохранённые входы и сайты, к которым они относятся</string>
+    <string name="settings_auto_sync_hint">После каждого изменения, когда телефон в сети</string>
+    <string name="settings_vpn_via">%1$s \u00b7 %2$s</string>
+    <string name="vpn_section_profile">Профиль</string>
+    <string name="vpn_sign_in_hint">Профиль приходит вместе с аккаунтом</string>
+    <string name="vpn_import_hint">Выбрать файл .conf</string>
+    <string name="vpn_paste_hint">Из буфера обмена</string>
+    <string name="vpn_notification_rate">\u2193 %1$s \u00b7 \u2191 %2$s</string>
+    <string name="vpn_speed_per_second">%1$s/с</string>
 </resources>

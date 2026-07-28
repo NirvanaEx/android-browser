@@ -67,6 +67,7 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import com.google.android.material.color.MaterialColors
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
@@ -75,6 +76,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import kotlinx.coroutines.launch
+import mozilla.components.browser.state.action.CrashAction
 import mozilla.components.browser.state.selector.selectedTab
 import mozilla.components.browser.toolbar.display.DisplayToolbar
 import mozilla.components.feature.session.FullScreenFeature
@@ -147,6 +149,13 @@ class MainActivity : AppCompatActivity() {
 
     /** Last tab the chrome rendered, so a switch can be told from a redraw. */
     private var lastSelectedTabId: String? = null
+
+    /**
+     * How many times each tab has been brought back from a killed content
+     * process. Bounded so a page that crashes on sight can't loop — see
+     * [restoreCrashedTabs].
+     */
+    private val crashRestores = mutableMapOf<String, Int>()
 
     /**
      * Google sign-in, launched from the app menu as well as from Settings.
@@ -605,19 +614,24 @@ class MainActivity : AppCompatActivity() {
     private fun queueSuggestions(text: String) {
         suggestionJob?.cancel()
         suggestionJob = lifecycleScope.launch {
-            // Same 250 ms as the history filter: one query per word typed
-            // rather than one per letter, still reads as live.
+            // One query per pause in typing rather than one per letter.
             delay(SUGGESTION_DEBOUNCE_MS)
 
-            // Two passes on purpose. What we already know — bookmarks, history,
-            // past searches — is three local reads and can be on screen
-            // straight away; the engine's completions take a network round-trip
-            // and land a moment later. Rendering both at once would mean the
-            // whole drop-down waits on the slowest half, which on a bad
-            // connection is "never".
+            // Both halves start together. What we already know — bookmarks,
+            // history, past searches — is three local reads and is on screen
+            // straight away; the engine's completions take a network
+            // round-trip and land a moment later.
+            //
+            // The ordering here is the whole point. Asking the engine only
+            // *after* the local reads came back meant the request hadn't even
+            // been sent by the time the next keystroke cancelled the job, so
+            // on anything but a deliberate pause the engine's half never
+            // arrived at all. Started first, it has the local reads and the
+            // render to itself.
+            val completions = async { suggestionSource.completions(text) }
             val local = suggestionSource.local(text)
             showSuggestions(local, text)
-            showSuggestions(suggestionSource.withRemote(text, local), text)
+            showSuggestions(suggestionSource.merge(local, completions.await()), text)
         }
     }
 
@@ -1203,6 +1217,53 @@ class MainActivity : AppCompatActivity() {
                 launch {
                     components.store.flow().collect { recordVisit(it.selectedTab) }
                 }
+
+                // Third collector: bring back tabs whose content process the
+                // system killed. See restoreCrashedTabs — this is the whole
+                // answer to "I switched away for a second and the page was
+                // gone".
+                launch {
+                    components.store.flow()
+                        .map { state ->
+                            state.tabs.filter { it.engineState.crashed }
+                                .map { it.id }
+                                .toSet()
+                        }
+                        .distinctUntilChanged()
+                        .collect(::restoreCrashedTabs)
+                }
+            }
+        }
+    }
+
+    /**
+     * Put a tab back after Android killed the process rendering it.
+     *
+     * A tab is not "crashed" in the sense of a bug: the overwhelming majority
+     * of these are the system reclaiming a background content process, which
+     * on a phone with aggressive memory management is what happens the moment
+     * the browser leaves the screen. android-components' own handling stops at
+     * marking the tab and suspending its session — correct for Firefox, which
+     * then shows a "this tab crashed, restore it?" page, and wrong for a
+     * browser with no such page: the tab simply came back blank and the user
+     * had to reload it by hand.
+     *
+     * Restoring is not a reload. The session's saved state went into the store
+     * on the way down, so the engine comes back with the page's own history,
+     * scroll position and form state, and only re-fetches what it must.
+     *
+     * Bounded per tab, because the other kind of crash exists too: a page that
+     * takes the content process down as soon as it renders would otherwise be
+     * restored, crash, and be restored again forever. After a few attempts the
+     * tab is left alone and the user can reload it themselves.
+     */
+    private fun restoreCrashedTabs(crashed: Set<String>) {
+        crashed.forEach { tabId ->
+            val attempts = crashRestores.getOrElse(tabId) { 0 }
+            if (attempts >= MAX_CRASH_RESTORES) return@forEach
+            crashRestores[tabId] = attempts + 1
+            runCatching {
+                components.store.dispatch(CrashAction.RestoreCrashedSessionAction(tabId))
             }
         }
     }
@@ -1877,10 +1938,21 @@ class MainActivity : AppCompatActivity() {
         private const val MAX_PIP_ASPECT = 2.39f
 
         /**
-         * Debounce before querying the omnibar drop-down. Same 250 ms the
-         * history filter uses: one query per word typed rather than one per
-         * letter, still fast enough to read as live.
+         * Debounce before querying the omnibar drop-down.
+         *
+         * 180 ms rather than 250: the engine's completions are now fetched in
+         * parallel with the local reads instead of after them, so the whole
+         * round-trip has to fit between two keystrokes, and a fifth of a second
+         * spent waiting to *start* is a fifth of a second it doesn't have.
          */
-        private const val SUGGESTION_DEBOUNCE_MS = 250L
+        private const val SUGGESTION_DEBOUNCE_MS = 180L
+
+        /**
+         * Attempts to revive one tab after its content process died. Three is
+         * generous for the memory case (which succeeds first time) and short
+         * enough that a page which genuinely crashes the engine gives up
+         * quickly instead of spinning.
+         */
+        private const val MAX_CRASH_RESTORES = 3
     }
 }

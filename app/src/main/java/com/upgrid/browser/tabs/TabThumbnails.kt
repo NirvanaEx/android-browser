@@ -53,6 +53,19 @@ class TabThumbnails {
         cache.snapshot().keys.forEach { if (it !in tabIds) cache.remove(it) }
     }
 
+    /**
+     * Give the whole cache back under memory pressure.
+     *
+     * Six megabytes of decoded bitmaps is a real fraction of what stands
+     * between the browser and being killed, and every one of them is a picture
+     * of a page that is still open and can be photographed again the next time
+     * it's on screen. Losing them costs a letter tile in the tab grid; keeping
+     * them can cost the whole session.
+     */
+    fun clear() {
+        cache.evictAll()
+    }
+
     private fun scale(source: Bitmap): Bitmap {
         if (source.width <= TARGET_WIDTH) return source
         val height = (source.height.toFloat() * TARGET_WIDTH / source.width).toInt().coerceAtLeast(1)

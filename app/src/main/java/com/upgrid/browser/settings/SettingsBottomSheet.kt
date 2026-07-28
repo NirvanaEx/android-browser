@@ -17,15 +17,12 @@ import com.upgrid.browser.account.AccountController
 import com.upgrid.browser.BuildConfig
 import com.upgrid.browser.MainActivity
 import com.upgrid.browser.R
-import com.upgrid.browser.bookmarks.BookmarkStore
 import com.upgrid.browser.databinding.FragmentSettingsBinding
-import com.upgrid.browser.history.HistoryStore
 import com.upgrid.browser.prefs.BrowserPreferences
 import com.upgrid.browser.privacy.BrowsingDataCleaner
 import com.upgrid.browser.privacy.ClearDataDialog
 import com.upgrid.browser.privacy.SiteDataActivity
 import com.upgrid.browser.search.SearchEngine
-import com.upgrid.browser.search.SearchHistory
 import com.upgrid.browser.sync.GoogleAccounts
 import com.upgrid.browser.sync.SignInDiagnostics
 import com.upgrid.browser.sync.SyncEngine
@@ -58,9 +55,14 @@ class SettingsBottomSheet : ExpandedBottomSheetFragment() {
     private val app get() = requireActivity().application as BrowserApplication
     private val components get() = app.components
     private val prefs by lazy { BrowserPreferences(app) }
-    private val searchHistory by lazy { SearchHistory(app) }
-    private val browsingHistory by lazy { HistoryStore(app) }
-    private val bookmarks by lazy { BookmarkStore(app) }
+
+    // Through components, never constructed here. Each of these owns a
+    // SQLiteOpenHelper, and a fresh one per sheet is a second connection and a
+    // second page cache against a file MainActivity already has open.
+    private val searchHistory get() = components.searchHistory
+    private val browsingHistory get() = components.browsingHistory
+    private val bookmarks get() = components.bookmarks
+
     private val adblock by lazy { AdblockController(components) }
     private val cleaner by lazy { BrowsingDataCleaner(app, components) }
 
@@ -147,6 +149,7 @@ class SettingsBottomSheet : ExpandedBottomSheetFragment() {
 
     private fun renderProfile() {
         val account = components.accounts.current
+        binding.profileAvatar.text = account?.name?.trim()?.firstOrNull()?.uppercase() ?: "?"
         binding.profileName.text =
             account?.name ?: getString(R.string.settings_profile_none)
         binding.profileStatus.setText(
@@ -499,9 +502,18 @@ class SettingsBottomSheet : ExpandedBottomSheetFragment() {
         binding.downloadsCount.text =
             resources.getQuantityString(R.plurals.settings_downloads_count, files, files)
 
-        binding.vpnSummary.text = getString(
-            if (components.vpn.isUp) R.string.settings_vpn_on else R.string.settings_vpn_off,
+        // The endpoint matters as much as the state: "connected" without
+        // saying where is half an answer, and the row has space for both.
+        val endpoint = components.vpnSettings.endpoint
+        val state = getString(
+            when {
+                components.vpn.isUp -> R.string.settings_vpn_on
+                components.vpnSettings.isConfigured -> R.string.settings_vpn_off
+                else -> R.string.vpn_not_configured
+            },
         )
+        binding.vpnSummary.text =
+            if (endpoint.isBlank()) state else getString(R.string.settings_vpn_via, state, endpoint)
 
         viewLifecycleOwner.lifecycleScope.launch {
             val pages = browsingHistory.count()

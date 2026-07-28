@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Upstream marker on the VPN speed readout. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24"
+    android:tint="?attr/colorPrimary">
+    <path
+        android:fillColor="@android:color/white"
+        android:pathData="M12,21a1,1 0,0 0,1 -1V8.83l3.88,3.88a1,1 0,1 0,1.41 -1.42l-5.58,-5.58a1,1 0,0 0,-1.42 0L5.71,11.29a1,1 0,1 0,1.41 1.42L11,8.83V20a1,1 0,0 0,1 1z" />
+</vector>

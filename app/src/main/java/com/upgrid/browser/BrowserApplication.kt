@@ -2,6 +2,7 @@ package com.upgrid.browser
 
 import android.app.ActivityManager
 import android.app.Application
+import android.content.ComponentCallbacks2
 import android.content.Context
 import android.util.Log
 import com.upgrid.browser.addons.AdblockBootstrap
@@ -9,13 +10,13 @@ import com.upgrid.browser.prefs.BrowserPreferences
 import com.upgrid.browser.ui.ThemeMode
 import com.upgrid.browser.ui.applyColorScheme
 import com.upgrid.browser.vpn.VpnNotifications
-import com.wireguard.android.backend.Tunnel
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import mozilla.components.browser.session.storage.SessionStorage
 import mozilla.components.browser.state.action.RestoreCompleteAction
+import mozilla.components.browser.state.action.SystemAction
 import mozilla.components.browser.state.action.TabListAction
 
 /**
@@ -85,12 +86,45 @@ class BrowserApplication : Application() {
         // because the tunnel outlives every screen — the notification has to
         // still be right after the browser is swiped out of the recents list,
         // and it is the only way back to a disconnect button from there.
+        //
+        // It renders off the sampled status rather than off the raw tunnel
+        // state, because "connected" is not the interesting half: a tunnel
+        // that is up and carrying nothing looks exactly like a healthy one
+        // until you can see the speed.
         val notifications = VpnNotifications(this)
+        components.vpnStatus.start(appScope)
         appScope.launch {
-            components.vpn.tunnelState.collect { notifications.render(it == Tunnel.State.UP) }
+            components.vpnStatus.state.collect { notifications.render(it) }
         }
 
         attachAutosave(components.sessionStorage)
+    }
+
+    /**
+     * Hand memory back before the system takes the whole process.
+     *
+     * This is the one lever an app has over "I switched away for a second and
+     * my page had to load again". Android kills what it needs to; the browser's
+     * job is to be worth less than it costs to kill. Without this the store
+     * keeps a live engine session for every tab that has ever been rendered —
+     * the middleware that suspends the ones nobody is looking at is already
+     * installed by [BrowserComponents], it just never hears about the pressure
+     * because nothing dispatches the action it listens for.
+     *
+     * Guarded by [isMainProcess] for the same reason [onCreate] is, and it
+     * matters more here: GeckoView's content processes get this callback too,
+     * `components` is lazy, and touching it there would build a second
+     * BrowserStore and a second GeckoEngine inside a child process — the exact
+     * thing the whole file exists to prevent, triggered by low memory.
+     */
+    override fun onTrimMemory(level: Int) {
+        super.onTrimMemory(level)
+        if (!isMainProcess()) return
+        runCatching { components.icons.onTrimMemory(level) }
+        runCatching { components.store.dispatch(SystemAction.LowMemoryAction(level)) }
+        if (level >= ComponentCallbacks2.TRIM_MEMORY_BACKGROUND) {
+            runCatching { components.tabThumbnails.clear() }
+        }
     }
 
     /**
