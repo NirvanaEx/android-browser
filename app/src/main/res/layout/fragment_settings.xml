@@ -223,18 +223,43 @@
         <com.google.android.material.card.MaterialCardView
             style="@style/Widget.UpgridBrowser.Card">
 
-            <LinearLayout
-                style="@style/Widget.UpgridBrowser.CardBody"
-                android:paddingTop="8dp"
-                android:paddingBottom="8dp">
+            <LinearLayout style="@style/Widget.UpgridBrowser.CardBody">
 
                 <RadioGroup
                     android:id="@+id/engineGroup"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:orientation="vertical"
+                    android:paddingTop="8dp"
+                    android:paddingBottom="8dp"
                     android:paddingStart="12dp"
                     android:paddingEnd="12dp" />
+
+                <View style="@style/Widget.UpgridBrowser.RowDivider" />
+
+                <LinearLayout style="@style/Widget.UpgridBrowser.Row.Static">
+
+                    <ImageView
+                        style="@style/Widget.UpgridBrowser.RowIcon"
+                        android:contentDescription="@null"
+                        android:src="@drawable/ic_add" />
+
+                    <LinearLayout style="@style/Widget.UpgridBrowser.RowText">
+
+                        <TextView
+                            style="@style/Widget.UpgridBrowser.RowTitle"
+                            android:text="@string/settings_links_new_tab" />
+
+                        <TextView
+                            style="@style/Widget.UpgridBrowser.RowSubtitle"
+                            android:text="@string/settings_links_new_tab_hint" />
+                    </LinearLayout>
+
+                    <com.google.android.material.materialswitch.MaterialSwitch
+                        android:id="@+id/switchLinksNewTab"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content" />
+                </LinearLayout>
             </LinearLayout>
         </com.google.android.material.card.MaterialCardView>
 

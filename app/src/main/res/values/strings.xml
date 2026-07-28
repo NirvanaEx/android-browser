@@ -5,6 +5,10 @@
          in lintVital) fails on a product name and a punctuation mark. -->
     <string name="app_name" translatable="false">Upgrid Browser</string>
     <string name="omnibar_hint">Search or enter address</string>
+    <!-- The edit-mode hint. Says which engine is going to answer, because the
+         setting lives three taps away in Settings and nobody remembers it. -->
+    <string name="omnibar_hint_engine">Search %1$s or enter address</string>
+    <string name="omnibar_engine_pick">Search engine: %1$s. Tap to change.</string>
 
     <!-- Typographic bullet between two inline fields. -->
     <string name="dot_separator" translatable="false">·</string>
@@ -81,6 +85,8 @@
     <string name="settings_theme_dark">Dark</string>
 
     <string name="settings_section_search">Search engine</string>
+    <string name="settings_links_new_tab">Open links in a new tab</string>
+    <string name="settings_links_new_tab_hint">When a page asks for a new window — a link marked "open in new tab" — give it one. Off, the link loads where you are.</string>
 
     <string name="settings_section_player">Video player</string>
     <string name="settings_seek_step">Double-tap seek step</string>

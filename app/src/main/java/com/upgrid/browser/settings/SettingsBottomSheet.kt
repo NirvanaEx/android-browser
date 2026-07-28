@@ -117,6 +117,7 @@ class SettingsBottomSheet : ExpandedBottomSheetFragment() {
         wirePrivacy()
         renderThemes()
         renderEngines()
+        wireLinkHandling()
         renderSeekSteps()
         wireBackgroundPlayback()
         wireDataButtons()
@@ -404,6 +405,19 @@ class SettingsBottomSheet : ExpandedBottomSheetFragment() {
             binding.engineGroup.addView(
                 radio(engine.displayName, engine == current) { prefs.searchEngine = engine }
             )
+        }
+    }
+
+    /**
+     * Whether a page may open a link in a tab of its own.
+     *
+     * In the search card rather than a card of its own: it is about what
+     * happens when you follow a link, which is the other half of what this
+     * section is for.
+     */
+    private fun wireLinkHandling() {
+        binding.switchLinksNewTab.setCheckedSilently(prefs.openLinksInNewTab) { _, on ->
+            prefs.openLinksInNewTab = on
         }
     }
 

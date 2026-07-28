@@ -201,7 +201,10 @@ dependencies {
     implementation("org.mozilla.components:browser-toolbar:$androidComponentsVersion")
     implementation("org.mozilla.components:browser-tabstray:$androidComponentsVersion")
     implementation("org.mozilla.components:browser-icons:$androidComponentsVersion")
-    implementation("org.mozilla.components:feature-toolbar:$androidComponentsVersion")
+    // The long-press menu on a link or an image. Brings ui-widgets with it for
+    // the snackbar it answers with; the dialog itself is a plain DialogFragment,
+    // which is why fragment-ktx below is not optional.
+    implementation("org.mozilla.components:feature-contextmenu:$androidComponentsVersion")
     implementation("androidx.recyclerview:recyclerview:1.3.2")
     implementation("androidx.fragment:fragment-ktx:1.8.5")
     // Pull-to-refresh. SwipeRefreshFeature (feature-session) drives it, but the

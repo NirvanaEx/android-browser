@@ -8,6 +8,8 @@
 -->
 <resources>
     <string name="omnibar_hint">Поиск или адрес сайта</string>
+    <string name="omnibar_hint_engine">Поиск в %1$s или адрес сайта</string>
+    <string name="omnibar_engine_pick">Поисковик: %1$s. Нажмите, чтобы сменить.</string>
     <string name="action_undo">Вернуть</string>
 
     <!-- Стартовая страница -->
@@ -72,6 +74,8 @@
     <string name="settings_theme_dark">Тёмная</string>
 
     <string name="settings_section_search">Поисковая система</string>
+    <string name="settings_links_new_tab">Открывать ссылки в новой вкладке</string>
+    <string name="settings_links_new_tab_hint">Когда страница просит новое окно — ссылка с пометкой «открыть в новой вкладке» — открывать его. Если выключить, ссылка откроется на текущей вкладке.</string>
 
     <string name="settings_section_player">Видеоплеер</string>
     <string name="settings_seek_step">Перемотка по двойному тапу</string>
