@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The app icon, drawn inside the app.
+
+  Same shield and same gradient as the launcher, on a rounded square rather than
+  an adaptive-icon canvas — the sign-in screen has no launcher mask to crop it,
+  so the shape has to be its own. Used at 72dp above the sign-in fields, which
+  is the one screen that is a door rather than a place.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <path android:pathData="M30,6 L78,6 A24,24 0 0,1 102,30 L102,78 A24,24 0 0,1 78,102 L30,102 A24,24 0 0,1 6,78 L6,30 A24,24 0 0,1 30,6 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:type="linear"
+                android:startX="6"
+                android:startY="6"
+                android:endX="102"
+                android:endY="102"
+                android:startColor="@color/brand_gradient_start"
+                android:endColor="@color/brand_gradient_end" />
+        </aapt:attr>
+    </path>
+
+    <path
+        android:fillColor="#FFFFFF"
+        android:fillType="evenOdd"
+        android:pathData="M54,26 L80,35 L80,54 C80,68.5 69.6,80.4 54,86 C38.4,80.4 28,68.5 28,54 L28,35 Z M54,37 L69,55 L60.5,55 L60.5,75 L47.5,75 L47.5,55 L39,55 Z" />
+</vector>

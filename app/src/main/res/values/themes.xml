@@ -85,7 +85,7 @@
 
     <style name="Widget.UpgridBrowser.BottomSheet" parent="Widget.Material3.BottomSheet.Modal">
         <item name="shapeAppearanceOverlay">@style/ShapeAppearance.UpgridBrowser.BottomSheet</item>
-        <item name="backgroundTint">?attr/colorSurfaceContainer</item>
+        <item name="backgroundTint">?attr/colorSurface</item>
     </style>
 
     <style name="ShapeAppearance.UpgridBrowser.BottomSheet" parent="">

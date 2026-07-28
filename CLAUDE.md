@@ -529,6 +529,96 @@ duplicate fails the build.
   user connects, never on first launch; refusing it changes nothing about the
   tunnel, so `VpnNotifications` treats "not allowed" as a normal state and
   posts nothing.
+- **"Connected" is not the interesting half — the speed is.** A tunnel that is
+  up and carrying nothing looks identical to a healthy one until you can see
+  numbers move. `VpnStatus` samples `backend.getStatistics` every two seconds
+  while the tunnel is up and turns the totals into a rate; the notification, the
+  app menu's VPN row and the VPN screen all render the same `Snapshot`, so they
+  cannot disagree. The sampling loop lives inside a `collectLatest` on the
+  tunnel state, so a disconnect cancels it rather than leaving a timer polling a
+  backend with nothing to say. `elapsedRealtime`, not wall clock: a rate divided
+  by a wall-clock delta goes wrong the one time the phone's clock is corrected.
+  The first sample has no rate to report, only the absence of one — hence
+  `Snapshot.sampled`, and no row of zeroes under a shield that just went green.
+- **The notification channel id changed, and it had to.** A channel's importance
+  is fixed at creation; an app cannot raise it later. The first version shipped
+  `IMPORTANCE_LOW`, which can never produce the pop-up the user asked for, so
+  `upgrid_vpn` was replaced by `upgrid_vpn_status` at `IMPORTANCE_DEFAULT` and
+  the old id is deleted on first render. `setOnlyAlertOnce(true)` is what keeps
+  that from meaning a heads-up card every two seconds: it announces itself when
+  the tunnel comes up and is silent for every update after.
+- `VpnFormat` exists so the three places that print bytes print them the same
+  way, through the platform formatter, in the phone's locale.
+
+## Surviving the background
+
+"I switched away for a second and the page had to load again" is a memory
+problem, not a lifecycle one, and it has two halves.
+
+**Give memory back before the system takes the process.**
+`BrowserApplication.onTrimMemory` dispatches `SystemAction.LowMemoryAction` and
+calls `BrowserIcons.onTrimMemory`. `EngineMiddleware.create` already installs
+`TrimMemoryMiddleware`, which suspends the engine sessions of tabs nobody is
+looking at — it had simply never been told there was any pressure, because
+nothing dispatched the action it listens for. Tab thumbnails (up to 6 MB of
+decoded bitmaps of pages that are still open) are dropped at
+`TRIM_MEMORY_BACKGROUND` and up. The `isMainProcess` guard matters more here
+than in `onCreate`: GeckoView's content processes get this callback too,
+`components` is lazy, and touching it there would build a second BrowserStore
+and a second GeckoEngine inside a child process — triggered by low memory, of
+all things.
+
+**Bring back what the system took anyway.** When Android reclaims a content
+process, GeckoView reports it, a-c marks the tab crashed and suspends its
+session, and there it stops — correct for Firefox, which then shows a "restore
+this tab?" page, and wrong for a browser without one: the tab came back blank.
+`MainActivity.restoreCrashedTabs` collects the set of crashed tab ids off the
+store and dispatches `CrashAction.RestoreCrashedSessionAction`. That is not a
+reload: the session's saved state went into the store on the way down and
+`CreateEngineSessionMiddleware` calls `restoreState` with it, so history, scroll
+position and form state come back and the engine re-fetches only what it must.
+Bounded per tab (`MAX_CRASH_RESTORES`), because a page that takes the content
+process down on sight would otherwise be restored, crash and be restored again
+forever. The collector lives inside `repeatOnLifecycle(STARTED)`, so nothing
+spawns a content process while the browser is in the background.
+
+## Cards and rows: the shape of every settings-ish screen
+
+Settings, the VPN screen and sign-in share one layout language, defined in
+[values/styles.xml](app/src/main/res/values/styles.xml): a stack of cards, each
+card a group of 60dp rows, each row an icon in a tinted circle, a title, a
+subtitle and one control on the right. Screen background `colorSurface`, cards
+`colorSurfaceContainerHigh` — that ordering is right in both light and dark,
+which the obvious alternative (container background, surface cards) is not.
+
+Two rules keep new rows from drifting:
+
+- **A subtitle answers "what does this do / what is it set to now."** Never
+  leave a row whose subtitle repeats its own title. The VPN row says whether the
+  tunnel is up and through what; the data rows say how much there is. A row that
+  only reads "Site data" makes you open it to find out whether there's anything
+  to do.
+- **Same icon in the menu and in Settings for the same thing.** The leading
+  circle is the row's identity.
+
+What this replaced was a single column of section captions with loose text and
+buttons floating between them at four different indents. Nothing was wrong with
+any individual row; the screen had no structure, so everything read as equally
+important and none of it looked finished.
+
+## The brand mark
+
+One path, three uses. `ic_launcher_foreground` is a shield with an arrow cut
+through it by `fillType="evenOdd"` — the arrow is a *hole*, not a second shape,
+which is what lets the same geometry serve as the launcher foreground (over
+`bg_launcher`'s gradient), as the Android 13 `monochrome` layer (over whatever
+colour the system themes it) and as `ic_brand_mark` on the sign-in screen,
+without three versions drifting apart. Everything sits inside the 66 × 66 safe
+zone of the 108 × 108 adaptive-icon canvas; outside it the launcher's mask may
+crop.
+
+minSdk is 26, so `mipmap-anydpi-v26` is the whole story — there are no PNG
+densities to keep in step and nothing older to fall back for.
 
 ## Pull to refresh
 
@@ -567,7 +657,8 @@ flight and never blank for a site with no icon at all.
 ## Omnibar suggestions
 
 Typing in the URL bar drops down a list built from what the user has already
-done: **bookmarks first**, then visited pages, then past search queries
+done — **bookmarks first**, then visited pages, then past search queries — plus
+what the search engine thinks they're typing
 ([Suggestions.kt](app/src/main/java/com/upgrid/browser/search/Suggestions.kt)).
 
 The order is fixed rather than scored. A bookmark is a page the user chose to
@@ -576,6 +667,33 @@ ranking all three sources by a relevance score lets a page that got refreshed
 twenty times outrank something deliberately saved. Duplicates are dropped by URL
 as the list is built, so a bookmarked page that's also in history appears once,
 as a bookmark.
+
+**The two halves run in parallel, and that is load-bearing.** `local()` is three
+SQLite reads and `completions()` is a network round-trip; `MainActivity` starts
+the second with `async` *before* awaiting the first, renders the local half as
+soon as it lands, and merges the engine's when it arrives. Chained the other way
+round — which is how it shipped, and why "поисковик не показывает варианты" was
+a real complaint — the request wasn't even sent until the local reads came back,
+so on anything but a deliberate pause the next keystroke cancelled the job
+before the engine had been asked at all. The debounce is 180 ms for the same
+reason: the whole round-trip has to fit between two keystrokes.
+
+`local()` runs on `Dispatchers.IO`. It used to be a suspend function that never
+left the caller's dispatcher, so three database reads happened on the main
+thread on every keystroke, while the engine was laying out a page.
+
+**The "search for what I typed" row is produced by the local half**, not the
+remote one, so the drop-down offers the search engine instantly and can never
+come back empty. It goes *first* when the input reads as words and last when it
+reads as a hostname — same `looksLikeQuery` rule the address bar applies on
+commit, and it has to stay the same one, or the list offers to search for
+something the bar would have loaded.
+
+`SearchSuggestionClient` sends a browser User-Agent rather than the fetch
+layer's default `MozacFetch/<version>`, keeps a small LRU of recent answers (a
+backspace walks back over queries just asked), and waits 5 s — the first
+completion of a session pays DNS plus a TLS handshake, and that is exactly the
+one that decides whether the user believes the feature exists.
 
 **Two rows are the same row in two ways**, and `Suggestions.Dedup` checks both.
 Same destination: `https://ya.ru`, `http://www.ya.ru/` and `ya.ru/#top` are one
@@ -714,6 +832,23 @@ naming it.
 Builds run in GitHub Actions, not on the VPS: the repo is public (free
 unlimited minutes) and a Gecko-dependent Gradle build wants more RAM than that
 box has spare.
+
+## A char literal that isn't the character you typed
+
+Twice now a `+ ' ' +` in Kotlin has landed on disk as a **literal NUL byte**
+rather than a space (`Suggestions.kt`'s dedup key, `SearchSuggestionClient`'s
+cache key). The code still compiles and still works, and then:
+
+- `file` reports the source as `data`, `git diff` shows `Bin`, and **every grep
+  over that file silently returns nothing** — which is how a whole feature once
+  looked like it had never been wired up at all.
+
+Write separators as string templates with an explicit escape
+(`"${a} $b"`), never as a bare char literal, and check before committing:
+
+```bash
+git ls-files -z -- '*.kt' | xargs -0 grep -lP '\x00'
+```
 
 ## Testing notes
 

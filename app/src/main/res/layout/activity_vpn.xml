@@ -1,11 +1,17 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  VPN: a switch, and every knob behind a door.
+  VPN.
 
-  The knobs used to be the screen. They are still all here — a WireGuard profile
-  is nine values and any of them can need changing — but signing in fills them
-  in, so the ordinary case is now "open, tap Connect, leave". Everything below
-  the divider is collapsed until asked for.
+  Top of the screen is one big card that answers the only question this screen
+  is really for: am I protected, through what, and is anything moving. It has a
+  shield the size of a shield, the server underneath it, a live speed pair, and
+  one full-width button. Everything else is a row in a card below, and the nine
+  fields of a WireGuard profile are behind a fold — signing in fills them in, so
+  the ordinary case is "open, tap Connect, leave".
+
+  The speed pair is the reason the status card is a card and not a line of text.
+  "Connected" is not enough: a tunnel that is up and carrying nothing looks
+  exactly like a healthy one until you can see the numbers move.
 
   IDs are referenced by VpnActivity via ViewBinding.
 -->
@@ -32,129 +38,271 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="vertical"
-            android:paddingStart="16dp"
-            android:paddingEnd="16dp"
+            android:paddingTop="6dp"
             android:paddingBottom="28dp">
 
             <!-- ============== Status ============== -->
 
             <com.google.android.material.card.MaterialCardView
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                app:cardCornerRadius="20dp"
-                app:cardElevation="0dp"
-                app:cardBackgroundColor="?attr/colorSurfaceContainerHigh">
+                style="@style/Widget.UpgridBrowser.Card">
 
                 <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:orientation="vertical"
-                    android:padding="18dp">
+                    android:gravity="center_horizontal"
+                    android:paddingStart="20dp"
+                    android:paddingEnd="20dp"
+                    android:paddingTop="24dp"
+                    android:paddingBottom="20dp">
 
-                    <LinearLayout
+                    <ImageView
+                        android:id="@+id/vpnStateIcon"
+                        android:layout_width="76dp"
+                        android:layout_height="76dp"
+                        android:padding="18dp"
+                        android:background="@drawable/bg_row_icon"
+                        android:contentDescription="@null"
+                        android:src="@drawable/ic_shield_off"
+                        app:tint="?attr/colorOnSurfaceVariant" />
+
+                    <TextView
+                        android:id="@+id/vpnState"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="14dp"
+                        android:textAppearance="?attr/textAppearanceHeadlineSmall"
+                        android:textColor="?attr/colorOnSurface"
+                        tools:text="Подключено" />
+
+                    <TextView
+                        android:id="@+id/vpnDetail"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
+                        android:layout_marginTop="4dp"
+                        android:gravity="center"
+                        android:textSize="13sp"
+                        android:textColor="?attr/colorOnSurfaceVariant"
+                        tools:text="193.160.119.15:443" />
+
+                    <!--
+                      Live throughput. Hidden while the tunnel is down and for
+                      the first sample after it comes up: there is no rate yet,
+                      only the absence of one, and two zeroes under a shield
+                      that just went green say the wrong thing.
+                    -->
+                    <LinearLayout
+                        android:id="@+id/vpnSpeedRow"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="16dp"
                         android:orientation="horizontal"
-                        android:gravity="center_vertical">
+                        android:gravity="center_vertical"
+                        android:visibility="gone"
+                        tools:visibility="visible">
 
                         <ImageView
-                            android:id="@+id/vpnStateIcon"
-                            android:layout_width="24dp"
-                            android:layout_height="24dp"
+                            android:layout_width="18dp"
+                            android:layout_height="18dp"
                             android:contentDescription="@null"
-                            android:src="@drawable/ic_shield_off"
-                            app:tint="?attr/colorOnSurfaceVariant" />
+                            android:src="@drawable/ic_speed_down" />
 
-                        <LinearLayout
-                            android:layout_width="0dp"
+                        <TextView
+                            android:id="@+id/vpnDownstream"
+                            android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
-                            android:layout_weight="1"
-                            android:layout_marginStart="14dp"
-                            android:orientation="vertical">
+                            android:layout_marginStart="6dp"
+                            android:layout_marginEnd="20dp"
+                            android:textSize="15sp"
+                            android:textStyle="bold"
+                            android:textColor="?attr/colorOnSurface"
+                            tools:text="1,2 МБ/с" />
 
-                            <TextView
-                                android:id="@+id/vpnState"
-                                android:layout_width="match_parent"
-                                android:layout_height="wrap_content"
-                                android:textAppearance="?attr/textAppearanceTitleMedium"
-                                android:textColor="?attr/colorOnSurface"
-                                tools:text="Отключено" />
+                        <ImageView
+                            android:layout_width="18dp"
+                            android:layout_height="18dp"
+                            android:contentDescription="@null"
+                            android:src="@drawable/ic_speed_up" />
 
-                            <TextView
-                                android:id="@+id/vpnDetail"
-                                android:layout_width="match_parent"
-                                android:layout_height="wrap_content"
-                                android:layout_marginTop="2dp"
-                                android:textSize="12sp"
-                                android:textColor="?attr/colorOnSurfaceVariant"
-                                tools:text="vpn.example.com:51820" />
-                        </LinearLayout>
+                        <TextView
+                            android:id="@+id/vpnUpstream"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginStart="6dp"
+                            android:textSize="15sp"
+                            android:textStyle="bold"
+                            android:textColor="?attr/colorOnSurface"
+                            tools:text="240 КБ/с" />
                     </LinearLayout>
+
+                    <TextView
+                        android:id="@+id/vpnTotals"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="6dp"
+                        android:visibility="gone"
+                        android:textSize="12sp"
+                        android:textColor="?attr/colorOnSurfaceVariant"
+                        tools:visibility="visible"
+                        tools:text="Принято 1,2 ГБ · отправлено 88 МБ" />
 
                     <com.google.android.material.button.MaterialButton
                         android:id="@+id/btnVpnToggle"
                         android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="14dp"
+                        android:layout_height="52dp"
+                        android:layout_marginTop="20dp"
+                        app:cornerRadius="26dp"
                         app:icon="@drawable/ic_shield"
                         android:text="@string/vpn_connect" />
+
+                    <com.google.android.material.materialswitch.MaterialSwitch
+                        android:id="@+id/vpnAutoConnect"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:minHeight="48dp"
+                        android:textSize="14sp"
+                        android:text="@string/vpn_auto_connect" />
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
 
-            <!-- Where the profile came from: the account, or nowhere yet. -->
+            <!-- ============== Where the profile comes from ============== -->
+
             <TextView
-                android:id="@+id/vpnProvision"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="14dp"
-                android:layout_marginStart="4dp"
-                android:layout_marginEnd="4dp"
-                android:textSize="13sp"
-                android:textColor="?attr/colorOnSurfaceVariant"
-                tools:text="Настроено аккаунтом superadmin." />
+                style="@style/Widget.UpgridBrowser.GroupHeader"
+                android:text="@string/vpn_section_profile" />
 
-            <com.google.android.material.button.MaterialButton
-                android:id="@+id/btnVpnSignIn"
-                style="@style/Widget.Material3.Button.TonalButton"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="10dp"
-                app:icon="@drawable/ic_key"
-                android:text="@string/account_sign_in" />
+            <com.google.android.material.card.MaterialCardView
+                style="@style/Widget.UpgridBrowser.Card">
 
-            <!--
-              The other way in, for a profile that arrives as a file: pick the
-              .conf and every field below fills itself in. Top level rather than
-              behind "advanced" because for anyone handed a config by someone
-              else this IS the setup, and the fields are what they were trying
-              to avoid.
-            -->
-            <com.google.android.material.button.MaterialButton
-                android:id="@+id/btnVpnImport"
-                style="@style/Widget.Material3.Button.TonalButton"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="8dp"
-                app:icon="@drawable/ic_download"
-                android:text="@string/vpn_import" />
+                <LinearLayout style="@style/Widget.UpgridBrowser.CardBody">
 
-            <com.google.android.material.materialswitch.MaterialSwitch
-                android:id="@+id/vpnAutoConnect"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="8dp"
-                android:minHeight="48dp"
-                android:textSize="14sp"
-                android:text="@string/vpn_auto_connect" />
+                    <LinearLayout style="@style/Widget.UpgridBrowser.Row.Static">
 
-            <!-- ============== Everything else ============== -->
+                        <ImageView
+                            style="@style/Widget.UpgridBrowser.RowIcon"
+                            android:contentDescription="@null"
+                            android:src="@drawable/ic_person" />
+
+                        <LinearLayout style="@style/Widget.UpgridBrowser.RowText">
+
+                            <TextView
+                                style="@style/Widget.UpgridBrowser.RowTitle"
+                                android:text="@string/settings_section_profile" />
+
+                            <TextView
+                                android:id="@+id/vpnProvision"
+                                style="@style/Widget.UpgridBrowser.RowSubtitle"
+                                tools:text="Настроено аккаунтом superadmin" />
+                        </LinearLayout>
+                    </LinearLayout>
+
+                    <View style="@style/Widget.UpgridBrowser.RowDivider" />
+
+                    <!-- Sign in: the way a profile is supposed to arrive. Hidden
+                         once one has, because there is nothing left to do. -->
+                    <LinearLayout
+                        android:id="@+id/btnVpnSignIn"
+                        style="@style/Widget.UpgridBrowser.Row">
+
+                        <ImageView
+                            style="@style/Widget.UpgridBrowser.RowIcon"
+                            android:contentDescription="@null"
+                            android:src="@drawable/ic_key" />
+
+                        <LinearLayout style="@style/Widget.UpgridBrowser.RowText">
+
+                            <TextView
+                                style="@style/Widget.UpgridBrowser.RowTitle"
+                                android:text="@string/account_sign_in" />
+
+                            <TextView
+                                style="@style/Widget.UpgridBrowser.RowSubtitle"
+                                android:text="@string/vpn_sign_in_hint" />
+                        </LinearLayout>
+
+                        <ImageView
+                            style="@style/Widget.UpgridBrowser.RowChevron"
+                            android:contentDescription="@null"
+                            android:src="@drawable/ic_chevron_right" />
+                    </LinearLayout>
+
+                    <View
+                        android:id="@+id/vpnSignInDivider"
+                        style="@style/Widget.UpgridBrowser.RowDivider" />
+
+                    <!--
+                      The other way in, for a profile that arrives as a file:
+                      pick the .conf and every field below fills itself in. Top
+                      level rather than behind "advanced" because for anyone
+                      handed a config by someone else this IS the setup, and the
+                      fields are what they were trying to avoid.
+                    -->
+                    <LinearLayout
+                        android:id="@+id/btnVpnImport"
+                        style="@style/Widget.UpgridBrowser.Row">
+
+                        <ImageView
+                            style="@style/Widget.UpgridBrowser.RowIcon"
+                            android:contentDescription="@null"
+                            android:src="@drawable/ic_download" />
+
+                        <LinearLayout style="@style/Widget.UpgridBrowser.RowText">
+
+                            <TextView
+                                style="@style/Widget.UpgridBrowser.RowTitle"
+                                android:text="@string/vpn_import" />
+
+                            <TextView
+                                style="@style/Widget.UpgridBrowser.RowSubtitle"
+                                android:text="@string/vpn_import_hint" />
+                        </LinearLayout>
+
+                        <ImageView
+                            style="@style/Widget.UpgridBrowser.RowChevron"
+                            android:contentDescription="@null"
+                            android:src="@drawable/ic_chevron_right" />
+                    </LinearLayout>
+
+                    <View style="@style/Widget.UpgridBrowser.RowDivider" />
+
+                    <LinearLayout
+                        android:id="@+id/btnVpnPaste"
+                        style="@style/Widget.UpgridBrowser.Row">
+
+                        <ImageView
+                            style="@style/Widget.UpgridBrowser.RowIcon"
+                            android:contentDescription="@null"
+                            android:src="@drawable/ic_copy" />
+
+                        <LinearLayout style="@style/Widget.UpgridBrowser.RowText">
+
+                            <TextView
+                                style="@style/Widget.UpgridBrowser.RowTitle"
+                                android:text="@string/vpn_paste" />
+
+                            <TextView
+                                style="@style/Widget.UpgridBrowser.RowSubtitle"
+                                android:text="@string/vpn_paste_hint" />
+                        </LinearLayout>
+
+                        <ImageView
+                            style="@style/Widget.UpgridBrowser.RowChevron"
+                            android:contentDescription="@null"
+                            android:src="@drawable/ic_chevron_right" />
+                    </LinearLayout>
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
+            <!-- ============== Everything nobody should have to open ============== -->
 
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/btnVpnAdvanced"
                 style="@style/Widget.Material3.Button.TextButton.Icon"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="4dp"
+                android:layout_marginStart="18dp"
+                android:layout_marginEnd="18dp"
                 android:gravity="start|center_vertical"
                 app:icon="@drawable/ic_chevron_down"
                 android:text="@string/vpn_advanced" />
@@ -164,43 +312,21 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:orientation="vertical"
+                android:paddingStart="16dp"
+                android:paddingEnd="16dp"
                 android:visibility="gone"
                 tools:visibility="visible">
 
                 <TextView
-                    style="@style/Widget.UpgridBrowser.SectionLabel"
+                    style="@style/Widget.UpgridBrowser.GroupHeader"
+                    android:layout_marginStart="12dp"
                     android:layout_marginTop="8dp"
-                    android:layout_marginStart="4dp"
-                    app:drawableStartCompat="@drawable/ic_key"
                     android:text="@string/vpn_section_device" />
-
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:orientation="horizontal">
-
-                    <com.google.android.material.button.MaterialButton
-                        android:id="@+id/btnVpnPaste"
-                        style="@style/Widget.Material3.Button.TonalButton"
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:layout_weight="1"
-                        android:layout_marginEnd="6dp"
-                        android:text="@string/vpn_paste" />
-
-                    <com.google.android.material.button.MaterialButton
-                        android:id="@+id/btnVpnGenerate"
-                        style="@style/Widget.Material3.Button.TonalButton"
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:layout_weight="1"
-                        android:layout_marginStart="6dp"
-                        android:text="@string/vpn_generate" />
-                </LinearLayout>
 
                 <com.google.android.material.textfield.TextInputLayout
                     android:id="@+id/vpnPrivateField"
                     style="@style/Widget.UpgridBrowser.Field"
+                    android:layout_marginTop="0dp"
                     android:hint="@string/vpn_private_key"
                     app:endIconMode="password_toggle">
 
@@ -213,9 +339,18 @@
                         android:textSize="14sp" />
                 </com.google.android.material.textfield.TextInputLayout>
 
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnVpnGenerate"
+                    style="@style/Widget.Material3.Button.TextButton.Icon"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    app:icon="@drawable/ic_key"
+                    android:text="@string/vpn_generate" />
+
                 <com.google.android.material.textfield.TextInputLayout
                     android:id="@+id/vpnPublicField"
                     style="@style/Widget.UpgridBrowser.Field"
+                    android:layout_marginTop="4dp"
                     android:hint="@string/vpn_public_key"
                     app:helperText="@string/vpn_public_key_hint"
                     app:endIconMode="custom"
@@ -274,10 +409,9 @@
                 </com.google.android.material.textfield.TextInputLayout>
 
                 <TextView
-                    style="@style/Widget.UpgridBrowser.SectionLabel"
+                    style="@style/Widget.UpgridBrowser.GroupHeader"
+                    android:layout_marginStart="12dp"
                     android:layout_marginTop="22dp"
-                    android:layout_marginStart="4dp"
-                    app:drawableStartCompat="@drawable/ic_shield"
                     android:text="@string/vpn_section_server" />
 
                 <com.google.android.material.textfield.TextInputLayout

@@ -20,7 +20,6 @@ import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.upgrid.browser.BrowserApplication
 import com.upgrid.browser.R
 import com.upgrid.browser.databinding.ActivityVpnBinding
-import com.wireguard.android.backend.Tunnel
 import com.wireguard.crypto.Key
 import com.wireguard.crypto.KeyPair
 import kotlinx.coroutines.launch
@@ -42,7 +41,11 @@ class VpnActivity : AppCompatActivity() {
     private lateinit var binding: ActivityVpnBinding
     private val components get() = (application as BrowserApplication).components
     private val controller get() = components.vpn
-    private val settings by lazy { VpnSettings(this) }
+
+    // The process-wide instance, not a second one: two VpnSettings objects mean
+    // two SharedPreferences caches over one file, and this screen writes on
+    // every pause while the app menu reads on every open.
+    private val settings get() = components.vpnSettings
 
     private val permissionLauncher =
         registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
@@ -95,10 +98,13 @@ class VpnActivity : AppCompatActivity() {
         // it for them beats a collapsed screen with one dead button on it.
         setAdvancedOpen(!settings.isConfigured)
 
+        // One collector for the whole card: up/down, the server, the live
+        // speed and the totals all come off the same snapshot, so they cannot
+        // disagree with each other the way three separate renders could.
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
                 controller.refresh()
-                controller.tunnelState.collect { renderState(it) }
+                components.vpnStatus.state.collect(::renderState)
             }
         }
     }
@@ -116,7 +122,7 @@ class VpnActivity : AppCompatActivity() {
         renderProvision()
         // Signing in can have filled the profile in while we were away, and the
         // card renders off the settings as well as off the tunnel state.
-        renderState(controller.tunnelState.value)
+        renderState(components.vpnStatus.state.value)
     }
 
     /**
@@ -134,6 +140,7 @@ class VpnActivity : AppCompatActivity() {
             else -> getString(R.string.vpn_provision_sign_in)
         }
         binding.btnVpnSignIn.isVisible = !provisioned
+        binding.vpnSignInDivider.isVisible = !provisioned
     }
 
     // --- Form --------------------------------------------------------------
@@ -212,7 +219,7 @@ class VpnActivity : AppCompatActivity() {
         btnVpnSave.setOnClickListener {
             save()
             renderPublicKey()
-            renderState(controller.tunnelState.value)
+            renderState(components.vpnStatus.state.value)
             toast(getString(R.string.vpn_saved))
         }
 
@@ -246,7 +253,7 @@ class VpnActivity : AppCompatActivity() {
         }
         load()
         setAdvancedOpen(false)
-        renderState(controller.tunnelState.value)
+        renderState(components.vpnStatus.state.value)
         toast(getString(R.string.vpn_paste_ok))
     }
 
@@ -316,8 +323,8 @@ class VpnActivity : AppCompatActivity() {
 
     // --- Render ------------------------------------------------------------
 
-    private fun renderState(state: Tunnel.State) {
-        val up = state == Tunnel.State.UP
+    private fun renderState(status: VpnStatus.Snapshot) {
+        val up = status.up
         // "Disconnected" and "not set up" are different answers to the same
         // question and only one of them means "press the button".
         binding.vpnState.setText(
@@ -342,26 +349,21 @@ class VpnActivity : AppCompatActivity() {
             if (up) R.drawable.ic_shield_off else R.drawable.ic_shield,
         )
 
-        if (up) {
-            binding.vpnDetail.isVisible = true
-            lifecycleScope.launch {
-                val transfer = controller.transfer()
-                binding.vpnDetail.text = if (transfer == null) {
-                    settings.endpoint
-                } else {
-                    getString(
-                        R.string.vpn_transfer,
-                        android.text.format.Formatter.formatShortFileSize(this@VpnActivity, transfer.first),
-                        android.text.format.Formatter.formatShortFileSize(this@VpnActivity, transfer.second),
-                    )
-                }
-            }
-        } else {
-            // The endpoint is the one line worth reading when it's down; with
-            // nothing set up there is no second line to write, and the card
-            // saying "not set up" twice reads as an error.
-            binding.vpnDetail.text = settings.endpoint
-            binding.vpnDetail.isVisible = settings.endpoint.isNotBlank()
+        // The endpoint is the one line worth reading either way; with nothing
+        // set up there is no second line to write, and the card saying "not set
+        // up" twice reads as an error.
+        binding.vpnDetail.text = settings.endpoint
+        binding.vpnDetail.isVisible = settings.endpoint.isNotBlank()
+
+        // Speed appears only once there are two samples to derive it from —
+        // see VpnStatus.Snapshot.sampled.
+        val hasRate = up && status.sampled
+        binding.vpnSpeedRow.isVisible = hasRate
+        binding.vpnTotals.isVisible = hasRate
+        if (hasRate) {
+            binding.vpnDownstream.text = VpnFormat.perSecond(this, status.downstream)
+            binding.vpnUpstream.text = VpnFormat.perSecond(this, status.upstream)
+            binding.vpnTotals.text = VpnFormat.total(this, status)
         }
     }
 

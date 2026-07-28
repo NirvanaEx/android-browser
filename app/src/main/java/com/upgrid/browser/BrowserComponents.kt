@@ -13,6 +13,7 @@ import com.upgrid.browser.search.SearchHistory
 import com.upgrid.browser.tabs.TabThumbnails
 import com.upgrid.browser.vpn.VpnController
 import com.upgrid.browser.vpn.VpnSettings
+import com.upgrid.browser.vpn.VpnStatus
 import mozilla.components.browser.engine.gecko.GeckoEngine
 import mozilla.components.browser.icons.BrowserIcons
 import mozilla.components.browser.session.storage.SessionStorage
@@ -139,6 +140,13 @@ class BrowserComponents(val context: Context) {
      */
     val vpnSettings: VpnSettings by lazy { VpnSettings(context) }
     val vpn: VpnController by lazy { VpnController(context) }
+
+    /**
+     * The tunnel's live readout — up/down plus the current speed. Sampled from
+     * one place so the notification and the VPN screen can't disagree about
+     * what the connection is doing.
+     */
+    val vpnStatus: VpnStatus by lazy { VpnStatus(vpn) }
 
     /**
      * Owns the built-in WebExtension behind the built-in video player.

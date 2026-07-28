@@ -331,15 +331,15 @@
     <string name="clear_type_passwords">Saved passwords</string>
 
     <!-- ============== Settings: new sections ============== -->
-    <string name="settings_section_privacy">VPN and passwords</string>
-    <string name="settings_section_data">Cookies and cache</string>
+    <string name="settings_section_privacy">Protection</string>
+    <string name="settings_section_data">Data on this phone</string>
     <string name="settings_section_downloads">Downloads</string>
     <string name="settings_open_vpn">VPN</string>
     <string name="settings_open_passwords">Passwords</string>
     <string name="settings_save_passwords">Save and fill passwords</string>
     <string name="settings_save_passwords_hint">Stored on this phone only, encrypted with a key that never leaves it.</string>
-    <string name="settings_vpn_on">VPN: connected</string>
-    <string name="settings_vpn_off">VPN: disconnected</string>
+    <string name="settings_vpn_on">Connected</string>
+    <string name="settings_vpn_off">Disconnected</string>
     <string name="settings_open_site_data">Site data</string>
     <string name="settings_clear_data">Clear data</string>
     <string name="settings_data_size">Cache and site data: %1$s</string>
@@ -376,4 +376,20 @@
     <string name="vpn_provision_none">The account has not sent a profile yet — fill it in below or paste a config.</string>
     <string name="vpn_provision_sign_in">Sign in and the profile fills itself in.</string>
 
+
+    <!-- ============== Rows added with the card layout ============== -->
+    <string name="settings_clear_short">Clear</string>
+    <string name="settings_passwords_hint">Saved sign-ins and the sites they belong to</string>
+    <string name="settings_auto_sync_hint">After every change, whenever the phone is online</string>
+    <string name="settings_vpn_via">%1$s \u00b7 %2$s</string>
+    <string name="vpn_section_profile">Profile</string>
+    <string name="vpn_sign_in_hint">The profile comes with the account</string>
+    <string name="vpn_import_hint">Pick a .conf file</string>
+    <string name="vpn_paste_hint">From the clipboard</string>
+    <!-- Down arrow, speed, separator, up arrow, speed. The separator is a
+         middle dot rather than a run of spaces: consecutive spaces in a string
+         resource are collapsed to one by the resource compiler, so the gap
+         that looked right here would not have survived the build. -->
+    <string name="vpn_notification_rate">\u2193 %1$s \u00b7 \u2191 %2$s</string>
+    <string name="vpn_speed_per_second">%1$s/s</string>
 </resources>

@@ -4,10 +4,15 @@
 
   Two fields and a button, on purpose. Everything this screen actually does —
   fetching the VPN profile, filling it in, arming the tunnel — happens after the
-  button and is never asked about.
+  button and is never asked about, so the screen says what it will do rather
+  than what it is about to ask for.
 
-  The server address is at the bottom, small, disclosed only when it matters.
-  IDs are referenced by LoginActivity via ViewBinding.
+  The logo mark at the top is the same one the launcher uses. This is the only
+  screen in the app that is a *door* rather than a place, and a door with the
+  app's face on it is how you know which app you're signing in to.
+
+  The server address is at the bottom, in a card of its own, disclosed only when
+  it matters. IDs are referenced by LoginActivity via ViewBinding.
 -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
@@ -32,99 +37,129 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="vertical"
-            android:paddingStart="20dp"
-            android:paddingEnd="20dp"
             android:paddingBottom="28dp">
+
+            <ImageView
+                android:layout_width="72dp"
+                android:layout_height="72dp"
+                android:layout_gravity="center_horizontal"
+                android:layout_marginTop="18dp"
+                android:contentDescription="@null"
+                android:src="@drawable/ic_brand_mark" />
 
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_gravity="center_horizontal"
-                android:layout_marginTop="24dp"
-                android:textSize="30sp"
-                android:textStyle="bold"
-                android:fontFamily="sans-serif-light"
-                android:letterSpacing="0.04"
-                android:textColor="?attr/colorPrimary"
+                android:layout_marginTop="10dp"
+                android:textAppearance="?attr/textAppearanceHeadlineSmall"
+                android:letterSpacing="0.02"
+                android:textColor="?attr/colorOnSurface"
                 android:text="@string/app_name" />
 
             <TextView
                 android:id="@+id/loginTagline"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="8dp"
-                android:layout_marginBottom="18dp"
+                android:layout_marginStart="36dp"
+                android:layout_marginEnd="36dp"
+                android:layout_marginTop="6dp"
+                android:layout_marginBottom="20dp"
                 android:gravity="center"
                 android:textSize="13sp"
                 android:textColor="?attr/colorOnSurfaceVariant"
                 android:text="@string/account_tagline" />
 
-            <com.google.android.material.textfield.TextInputLayout
-                style="@style/Widget.UpgridBrowser.Field"
-                android:hint="@string/account_login"
-                app:startIconDrawable="@drawable/ic_key">
+            <com.google.android.material.card.MaterialCardView
+                style="@style/Widget.UpgridBrowser.Card">
 
-                <com.google.android.material.textfield.TextInputEditText
-                    android:id="@+id/accountLogin"
+                <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:inputType="textNoSuggestions"
-                    android:maxLines="1"
-                    android:imeOptions="actionNext"
-                    tools:text="superadmin" />
-            </com.google.android.material.textfield.TextInputLayout>
+                    android:orientation="vertical"
+                    android:padding="16dp">
 
-            <com.google.android.material.textfield.TextInputLayout
-                style="@style/Widget.UpgridBrowser.Field"
-                android:hint="@string/account_password"
-                app:endIconMode="password_toggle">
+                    <com.google.android.material.textfield.TextInputLayout
+                        style="@style/Widget.UpgridBrowser.Field"
+                        android:layout_marginTop="0dp"
+                        android:hint="@string/account_login"
+                        app:startIconDrawable="@drawable/ic_person">
 
-                <com.google.android.material.textfield.TextInputEditText
-                    android:id="@+id/accountPassword"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:inputType="textPassword"
-                    android:maxLines="1"
-                    android:imeOptions="actionDone" />
-            </com.google.android.material.textfield.TextInputLayout>
+                        <com.google.android.material.textfield.TextInputEditText
+                            android:id="@+id/accountLogin"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:inputType="textNoSuggestions"
+                            android:maxLines="1"
+                            android:imeOptions="actionNext"
+                            tools:text="superadmin" />
+                    </com.google.android.material.textfield.TextInputLayout>
 
-            <com.google.android.material.button.MaterialButton
-                android:id="@+id/btnSignIn"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="16dp"
-                android:text="@string/account_sign_in" />
+                    <com.google.android.material.textfield.TextInputLayout
+                        style="@style/Widget.UpgridBrowser.Field"
+                        android:hint="@string/account_password"
+                        app:startIconDrawable="@drawable/ic_lock"
+                        app:endIconMode="password_toggle">
+
+                        <com.google.android.material.textfield.TextInputEditText
+                            android:id="@+id/accountPassword"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:inputType="textPassword"
+                            android:maxLines="1"
+                            android:imeOptions="actionDone" />
+                    </com.google.android.material.textfield.TextInputLayout>
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btnSignIn"
+                        android:layout_width="match_parent"
+                        android:layout_height="52dp"
+                        android:layout_marginTop="16dp"
+                        app:cornerRadius="26dp"
+                        android:text="@string/account_sign_in" />
+
+                    <TextView
+                        android:id="@+id/loginStatus"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="10dp"
+                        android:gravity="center"
+                        android:textSize="13sp"
+                        android:textColor="?attr/colorOnSurfaceVariant"
+                        tools:text="Профиль получен, VPN настроен." />
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
 
             <TextView
-                android:id="@+id/loginStatus"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="12dp"
-                android:textSize="13sp"
-                android:textColor="?attr/colorOnSurfaceVariant"
-                tools:text="Профиль получен, VPN настроен." />
-
-            <View style="@style/Widget.UpgridBrowser.SheetDivider" />
-
-            <TextView
-                style="@style/Widget.UpgridBrowser.SectionLabel"
-                android:layout_marginStart="0dp"
-                app:drawableStartCompat="@drawable/ic_settings"
+                style="@style/Widget.UpgridBrowser.GroupHeader"
+                android:layout_marginTop="8dp"
                 android:text="@string/account_server_section" />
 
-            <com.google.android.material.textfield.TextInputLayout
-                style="@style/Widget.UpgridBrowser.Field"
-                android:hint="@string/account_server"
-                app:helperText="@string/account_server_hint">
+            <com.google.android.material.card.MaterialCardView
+                style="@style/Widget.UpgridBrowser.Card">
 
-                <com.google.android.material.textfield.TextInputEditText
-                    android:id="@+id/accountServer"
+                <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:inputType="textUri"
-                    android:maxLines="1"
-                    android:textSize="13sp" />
-            </com.google.android.material.textfield.TextInputLayout>
+                    android:orientation="vertical"
+                    android:padding="16dp">
+
+                    <com.google.android.material.textfield.TextInputLayout
+                        style="@style/Widget.UpgridBrowser.Field"
+                        android:layout_marginTop="0dp"
+                        android:hint="@string/account_server"
+                        app:helperText="@string/account_server_hint">
+
+                        <com.google.android.material.textfield.TextInputEditText
+                            android:id="@+id/accountServer"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:inputType="textUri"
+                            android:maxLines="1"
+                            android:textSize="13sp" />
+                    </com.google.android.material.textfield.TextInputLayout>
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
         </LinearLayout>
     </ScrollView>
 </LinearLayout>

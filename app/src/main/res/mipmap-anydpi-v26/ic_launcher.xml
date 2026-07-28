@@ -1,5 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+  minSdk is 26, so this is the only launcher icon there is: no PNG densities to
+  keep in step, and nothing older to fall back for.
+
+  `monochrome` is the Android 13 themed-icon layer. The attribute arrived in
+  API 33 and is ignored by everything before it, which is why it can live here
+  rather than in a second -v33 folder.
+-->
 <adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
-    <background android:drawable="@color/ic_launcher_background" />
+    <background android:drawable="@drawable/bg_launcher" />
     <foreground android:drawable="@drawable/ic_launcher_foreground" />
+    <monochrome android:drawable="@drawable/ic_launcher_monochrome" />
 </adaptive-icon>
