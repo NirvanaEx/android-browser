@@ -33,12 +33,43 @@ class BrowserPreferences(context: Context) {
             prefs.edit().putInt(KEY_PLAYER_SEEK, value).apply()
         }
 
+    /**
+     * When the last successful Drive sync finished, or 0 if never. Written by
+     * [com.upgrid.browser.sync.SyncEngine]; read by settings and by the
+     * auto-sync check on resume.
+     */
+    var lastSyncAt: Long
+        get() = prefs.getLong(KEY_LAST_SYNC, 0L)
+        set(value) {
+            prefs.edit().putLong(KEY_LAST_SYNC, value).apply()
+        }
+
+    /**
+     * Sync in the background when the app comes to the foreground and the last
+     * run is older than [AUTO_SYNC_INTERVAL_MS]. Off means the "Sync now"
+     * button is the only trigger.
+     */
+    var autoSync: Boolean
+        get() = prefs.getBoolean(KEY_AUTO_SYNC, true)
+        set(value) {
+            prefs.edit().putBoolean(KEY_AUTO_SYNC, value).apply()
+        }
+
     companion object {
         private const val FILE = "upgrid_prefs"
         private const val KEY_SEARCH_ENGINE = "search_engine"
         private const val KEY_PLAYER_SEEK = "player_seek_seconds"
+        private const val KEY_LAST_SYNC = "last_sync_at"
+        private const val KEY_AUTO_SYNC = "auto_sync"
 
         const val PLAYER_SEEK_DEFAULT = 10
         val PLAYER_SEEK_OPTIONS = listOf(5, 10, 15, 30)
+
+        /**
+         * Foreground syncs are throttled to this. Bookmarks are added by hand a
+         * few times a day at most — anything tighter spends battery and Drive
+         * quota re-uploading a document that didn't change.
+         */
+        const val AUTO_SYNC_INTERVAL_MS = 30 * 60 * 1000L
     }
 }

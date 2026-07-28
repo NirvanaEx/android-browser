@@ -1,14 +1,23 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+  English has exactly two CLDR categories, `one` and `other`. A `zero` item is
+  accepted by the build and then never selected — getQuantityString(…, 0) picks
+  `other` — so writing one only creates a string that looks live and isn't.
+  Zero reads fine through `other`: "0 bookmarks".
+-->
 <resources>
     <plurals name="settings_history_count">
-        <item quantity="zero">No saved searches</item>
         <item quantity="one">%d saved search</item>
         <item quantity="other">%d saved searches</item>
     </plurals>
 
     <plurals name="settings_pages_count">
-        <item quantity="zero">No pages visited yet</item>
         <item quantity="one">%d page in history</item>
         <item quantity="other">%d pages in history</item>
+    </plurals>
+
+    <plurals name="settings_bookmarks_count">
+        <item quantity="one">%d bookmark</item>
+        <item quantity="other">%d bookmarks</item>
     </plurals>
 </resources>

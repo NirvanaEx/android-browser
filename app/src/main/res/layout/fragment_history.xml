@@ -1,12 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  Browsing-history bottom sheet. Same shape as the tabs tray: drag handle,
-  header row with a title + "Clear all", then the list. A search field sits
-  between the header and the list; typing filters URL and title.
+  Browsing history. Full-height sheet: drag handle, header with "Clear all",
+  a search pill, then the day-grouped list.
 
-  The list wraps its content, so a handful of entries renders compact while a
-  long history scrolls inside the sheet. (RecyclerView ignores maxHeight — the
-  real bound is the sheet's own measure spec.)
+  The search field used to be a Material OutlinedBox TextInputLayout, which
+  brings a floating label, a focus animation and 20dp of vertical chrome for
+  what is one line of filter text. A plain EditText on a rounded fill is the
+  same control at half the height and reads as a search box on sight.
 
   IDs are referenced by HistoryFragment.kt via ViewBinding.
 -->
@@ -14,7 +14,7 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
-    android:layout_height="wrap_content"
+    android:layout_height="match_parent"
     android:orientation="vertical"
     android:background="?attr/colorSurfaceContainer">
 
@@ -27,8 +27,9 @@
         android:layout_height="wrap_content"
         android:orientation="horizontal"
         android:gravity="center_vertical"
-        android:paddingHorizontal="16dp"
-        android:paddingTop="4dp"
+        android:paddingStart="20dp"
+        android:paddingEnd="12dp"
+        android:paddingTop="2dp"
         android:paddingBottom="8dp">
 
         <TextView
@@ -44,60 +45,78 @@
             style="@style/Widget.Material3.Button.TextButton"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
+            android:minWidth="0dp"
             android:text="@string/history_clear_all" />
     </LinearLayout>
 
-    <com.google.android.material.textfield.TextInputLayout
+    <LinearLayout
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        style="@style/Widget.Material3.TextInputLayout.OutlinedBox"
-        android:layout_marginHorizontal="16dp"
-        android:layout_marginBottom="8dp"
-        app:startIconDrawable="@drawable/ic_find"
-        app:boxBackgroundMode="outline">
+        android:layout_height="44dp"
+        android:layout_marginStart="16dp"
+        android:layout_marginEnd="16dp"
+        android:layout_marginBottom="10dp"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:paddingStart="14dp"
+        android:paddingEnd="8dp"
+        android:background="@drawable/bg_sheet_search">
 
-        <com.google.android.material.textfield.TextInputEditText
+        <ImageView
+            android:layout_width="18dp"
+            android:layout_height="18dp"
+            android:contentDescription="@null"
+            android:src="@drawable/ic_find"
+            app:tint="?attr/colorOnSurfaceVariant" />
+
+        <EditText
             android:id="@+id/searchInput"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:layout_marginStart="10dp"
+            android:background="@null"
             android:hint="@string/history_search_hint"
+            android:textColorHint="?attr/colorOnSurfaceVariant"
+            android:textColor="?attr/colorOnSurface"
+            android:textSize="14sp"
             android:inputType="text"
             android:imeOptions="actionSearch"
-            android:maxLines="1" />
-    </com.google.android.material.textfield.TextInputLayout>
+            android:maxLines="1"
+            android:singleLine="true"
+            android:importantForAutofill="no" />
+    </LinearLayout>
 
     <FrameLayout
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:minHeight="320dp">
+        android:layout_height="0dp"
+        android:layout_weight="1">
 
         <androidx.recyclerview.widget.RecyclerView
             android:id="@+id/historyList"
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:paddingHorizontal="8dp"
+            android:layout_height="match_parent"
+            android:paddingStart="8dp"
+            android:paddingEnd="8dp"
             android:paddingBottom="16dp"
             android:clipToPadding="false"
-            android:maxHeight="520dp"
-            android:nestedScrollingEnabled="true"
             android:overScrollMode="never" />
 
         <LinearLayout
             android:id="@+id/emptyState"
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
+            android:layout_height="match_parent"
             android:orientation="vertical"
             android:gravity="center"
-            android:paddingVertical="48dp"
-            android:paddingHorizontal="32dp"
+            android:paddingStart="32dp"
+            android:paddingEnd="32dp"
             android:visibility="gone"
             tools:visibility="visible">
 
             <ImageView
-                android:layout_width="96dp"
-                android:layout_height="96dp"
+                android:layout_width="92dp"
+                android:layout_height="92dp"
                 android:contentDescription="@null"
-                android:alpha="0.4"
+                android:alpha="0.35"
                 android:src="@drawable/ic_history"
                 app:tint="?attr/colorOnSurface" />
 

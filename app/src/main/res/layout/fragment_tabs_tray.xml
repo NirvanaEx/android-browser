@@ -1,19 +1,20 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  Bottom-sheet tabs tray. Material drag handle at the top, header row with the
-  current tab count + "Close all" + "+ New", then a card-style RecyclerView.
-  Sheet height is capped via maxHeight on the list so a few tabs render compact
-  but a long list scrolls inside the sheet rather than pushing the system bars.
+  Tabs tray. Full-height sheet with a two-column grid of cards.
 
-  When tabs.isEmpty() we hide the list and show a Banana-style empty-state
-  illustration with copy. The sheet stays open in this state — TabsTrayFragment
-  drops a fresh HOME tab on dismiss so MainActivity isn't left empty-handed.
+  Height is match_parent rather than wrap_content: a grid that resizes the sheet
+  as tabs are closed makes the remaining cards jump under the finger, and
+  closing several in a row turns into whack-a-mole. Fixed height, list shrinks.
+
+  When tabs.isEmpty() the grid is swapped for an illustration. The sheet stays
+  open in that state — TabsTrayFragment drops a fresh HOME tab on dismiss so
+  MainActivity isn't left with nothing to render.
 -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
-    android:layout_height="wrap_content"
+    android:layout_height="match_parent"
     android:orientation="vertical"
     android:background="?attr/colorSurfaceContainer">
 
@@ -26,9 +27,10 @@
         android:layout_height="wrap_content"
         android:orientation="horizontal"
         android:gravity="center_vertical"
-        android:paddingHorizontal="16dp"
-        android:paddingTop="4dp"
-        android:paddingBottom="12dp">
+        android:paddingStart="20dp"
+        android:paddingEnd="12dp"
+        android:paddingTop="2dp"
+        android:paddingBottom="10dp">
 
         <TextView
             android:id="@+id/tabsTitle"
@@ -44,7 +46,7 @@
             style="@style/Widget.Material3.Button.TextButton"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginEnd="4dp"
+            android:minWidth="0dp"
             android:text="@string/tabs_tray_close_all" />
 
         <com.google.android.material.button.MaterialButton
@@ -52,44 +54,41 @@
             style="@style/Widget.Material3.Button.TonalButton.Icon"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
+            android:layout_marginStart="4dp"
             app:icon="@drawable/ic_add"
             android:text="@string/tabs_tray_new" />
     </LinearLayout>
 
-    <!--
-      Content area: RecyclerView and empty-state stacked. Min height keeps the
-      sheet from collapsing to nothing while the empty state is showing.
-    -->
     <FrameLayout
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:minHeight="320dp">
+        android:layout_height="0dp"
+        android:layout_weight="1">
 
         <androidx.recyclerview.widget.RecyclerView
             android:id="@+id/tabsList"
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:paddingHorizontal="12dp"
+            android:layout_height="match_parent"
+            android:paddingStart="9dp"
+            android:paddingEnd="9dp"
             android:paddingBottom="16dp"
             android:clipToPadding="false"
-            android:maxHeight="520dp"
-            android:nestedScrollingEnabled="true"
             android:overScrollMode="never" />
 
         <LinearLayout
             android:id="@+id/emptyState"
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
+            android:layout_height="match_parent"
             android:orientation="vertical"
             android:gravity="center"
-            android:paddingVertical="32dp"
-            android:paddingHorizontal="32dp"
+            android:paddingStart="32dp"
+            android:paddingEnd="32dp"
             android:visibility="gone"
             tools:visibility="visible">
 
             <ImageView
-                android:layout_width="120dp"
-                android:layout_height="120dp"
+                android:layout_width="110dp"
+                android:layout_height="110dp"
+                android:alpha="0.5"
                 android:contentDescription="@null"
                 android:src="@drawable/ic_empty_tabs"
                 app:tint="?attr/colorOnSurface" />

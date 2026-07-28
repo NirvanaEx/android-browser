@@ -1,0 +1,136 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Русская локализация. Подхватывается автоматически, когда язык системы —
+  русский; values/strings.xml остаётся английским фолбэком для всех остальных.
+
+  app_name намеренно не переводится — это название продукта.
+  dot_separator и menu_adblock_state_* тоже: символ и ON/OFF одинаковы везде.
+-->
+<resources>
+    <string name="omnibar_hint">Поиск или адрес сайта</string>
+    <string name="action_undo">Вернуть</string>
+
+    <!-- Стартовая страница -->
+    <string name="start_page_tagline">Ищите в сети. Без рекламы.</string>
+
+    <!-- Верхняя панель -->
+    <string name="nav_back">Назад</string>
+    <string name="nav_forward">Вперёд</string>
+    <string name="nav_home">Главная</string>
+    <string name="nav_tabs">Вкладки</string>
+    <string name="nav_menu">Меню</string>
+    <string name="nav_video_pip">Открыть видео в плеере</string>
+    <string name="nav_pip">Отдельное окно</string>
+
+    <!-- Настройки -->
+    <string name="settings_title">Настройки</string>
+
+    <string name="settings_section_account">Аккаунт</string>
+    <string name="settings_account_none">Google-аккаунт не подключён</string>
+    <string name="settings_account_hint">Подключите, чтобы закладки и история синхронизировались между устройствами.</string>
+    <string name="settings_account_connected_hint">Закладки и история синхронизируются через ваш Google Диск.</string>
+    <string name="settings_account_connect">Подключить</string>
+    <string name="settings_account_disconnect">Отключить</string>
+    <string name="settings_account_disconnect_title">Отключить аккаунт?</string>
+    <string name="settings_account_disconnect_message">Синхронизация остановится. Всё сохранённое останется на этом устройстве, копия в Диске тоже не тронется.</string>
+    <string name="settings_account_disconnected">Аккаунт отключён</string>
+    <string name="settings_account_cancelled">Вход отменён</string>
+    <string name="settings_account_not_configured">Вход через Google для этой сборки ещё не настроен — нет OAuth-клиента.</string>
+    <string name="settings_sync_now">Синхронизировать</string>
+    <string name="settings_sync_never">Ещё не синхронизировалось</string>
+    <string name="settings_sync_last">Последняя синхронизация: %1$s</string>
+    <string name="settings_sync_running">Синхронизация…</string>
+    <string name="settings_sync_failed">Не удалось синхронизировать: %1$s</string>
+    <string name="settings_sync_needs_account">Сначала подключите Google-аккаунт</string>
+    <string name="settings_sync_consent_declined">Доступ к Диску не выдан — синхронизировать некуда.</string>
+    <string name="settings_auto_sync">Синхронизировать автоматически</string>
+
+    <string name="settings_section_content">Блокировка контента</string>
+    <string name="settings_adblock">Блокировать рекламу и трекеры</string>
+    <string name="settings_adblock_hint">uBlock Origin работает на каждой странице. Если выключить, перестанет работать и косметическая фильтрация.</string>
+
+    <string name="settings_section_search">Поисковая система</string>
+
+    <string name="settings_section_player">Видеоплеер</string>
+    <string name="settings_seek_step">Перемотка по двойному тапу</string>
+    <string name="settings_seek_option">%1$d секунд</string>
+
+    <string name="settings_section_bookmarks">Закладки</string>
+    <string name="settings_open_bookmarks">Открыть закладки</string>
+    <string name="settings_clear_bookmarks">Удалить все</string>
+    <string name="settings_clear_bookmarks_message">Все сохранённые страницы будут удалены. Быстрый доступ вернётся к стандартному набору.</string>
+
+    <string name="settings_section_browsing">История посещений</string>
+    <string name="settings_open_history">Открыть историю</string>
+    <string name="settings_clear_browsing">Очистить историю</string>
+
+    <string name="settings_section_history">История поиска</string>
+    <string name="settings_clear_history">Очистить запросы</string>
+
+    <string name="settings_section_about">О программе</string>
+    <string name="settings_version">Версия %1$s · %2$s</string>
+
+    <!-- Встроенный плеер -->
+    <string name="player_no_video">На этой странице нет видео</string>
+    <string name="player_seek_back">−%1$d с</string>
+    <string name="player_seek_forward">+%1$d с</string>
+    <string name="player_volume">Громкость %1$d%%</string>
+    <string name="player_brightness">Яркость %1$d%%</string>
+    <string name="player_not_ready">Плеер ещё запускается — попробуйте ещё раз</string>
+    <string name="player_play">Воспроизвести</string>
+    <string name="player_pause">Пауза</string>
+
+    <!-- Отдельное окно -->
+    <string name="pip_unsupported">Устройство не поддерживает режим отдельного окна</string>
+    <string name="pip_failed">Не удалось открыть плавающее окно</string>
+    <string name="pip_needs_player">Сначала откройте видео в плеере</string>
+
+    <!-- История -->
+    <string name="history_title">История</string>
+    <string name="history_search_hint">Поиск по истории</string>
+    <string name="history_clear_all">Очистить</string>
+    <string name="history_clear_all_title">Очистить историю?</string>
+    <string name="history_clear_all_message">Все посещённые страницы будут удалены из списка.</string>
+    <string name="history_clear_all_confirm">Очистить</string>
+    <string name="history_delete_entry">Удалить из истории</string>
+    <string name="history_today">Сегодня</string>
+    <string name="history_yesterday">Вчера</string>
+    <string name="history_empty_title">Здесь появятся страницы, которые вы открывали.</string>
+    <string name="history_empty_search">Ничего не найдено.</string>
+
+    <!-- Закладки -->
+    <string name="bookmarks_title">Закладки</string>
+    <string name="bookmarks_add_current">Добавить</string>
+    <string name="bookmarks_search_hint">Поиск по закладкам</string>
+    <string name="bookmarks_empty_title">Сохранённых страниц пока нет.</string>
+    <string name="bookmarks_empty_subtitle">Нажмите звёздочку в меню — страница попадёт сюда и в быстрый доступ.</string>
+    <string name="bookmarks_empty_search">Ничего не найдено.</string>
+    <string name="bookmark_added">Сохранено в закладки</string>
+    <string name="bookmark_removed">Удалено из закладок</string>
+    <string name="bookmark_not_saveable">Эту страницу нельзя добавить в закладки</string>
+    <string name="bookmark_delete">Удалить закладку</string>
+
+    <!-- Меню -->
+    <string name="menu_new_tab">Новая вкладка</string>
+    <string name="menu_refresh">Обновить</string>
+    <string name="menu_share">Поделиться</string>
+    <string name="menu_adblock">Блокировщик</string>
+    <string name="menu_adblock_state_on">ВКЛ</string>
+    <string name="menu_adblock_state_off">ВЫКЛ</string>
+    <string name="menu_find_in_page">Найти на странице</string>
+    <string name="menu_desktop_site">Версия для ПК</string>
+    <string name="menu_bookmarks">Закладки</string>
+    <string name="menu_bookmark_add">В закладки</string>
+    <string name="menu_bookmark_remove">Убрать из закладок</string>
+    <string name="menu_history">История</string>
+    <string name="menu_settings">Настройки</string>
+
+    <!-- Вкладки -->
+    <string name="tabs_tray_title">Вкладки</string>
+    <string name="tabs_tray_title_count">Вкладки · %1$d</string>
+    <string name="tabs_tray_close">Закрыть вкладку</string>
+    <string name="tabs_tray_close_all">Закрыть все</string>
+    <string name="tabs_tray_new">Новая</string>
+    <string name="tabs_tray_empty_title">Здесь будут ваши вкладки.</string>
+    <string name="tabs_tray_empty_subtitle">Вкладки нужны, чтобы держать несколько страниц открытыми сразу.</string>
+</resources>

@@ -14,9 +14,16 @@ captures/
 .DS_Store
 Thumbs.db
 
-# Keystores (never commit)
+# Keystores. The RELEASE key must never land here.
+#
+# The debug key is the documented exception and IS committed: Google Sign-In
+# identifies the app by (application id, signing certificate SHA-1), so a key
+# that Gradle regenerates per machine would break sign-in on every build but
+# one. See signingConfigs in app/build.gradle.kts.
 *.keystore
 *.jks
+*.p12
+!keystore/upgrid-debug.p12
 release/
 
 # Logs

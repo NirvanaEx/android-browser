@@ -1,43 +1,78 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">Upgrid Browser</string>
+    <!-- translatable="false" on the few strings that are the same in every
+         locale. Without it a release build's lint (MissingTranslation is fatal
+         in lintVital) fails on a product name and a punctuation mark. -->
+    <string name="app_name" translatable="false">Upgrid Browser</string>
     <string name="omnibar_hint">Search or enter address</string>
+
+    <!-- Typographic bullet between two inline fields. -->
+    <string name="dot_separator" translatable="false">·</string>
+    <string name="action_undo">Undo</string>
 
     <!-- Start page -->
     <string name="start_page_tagline">Search the web. Quietly ad-free.</string>
 
-    <!-- Bottom bar / nav -->
+    <!-- Toolbar -->
     <string name="nav_back">Back</string>
     <string name="nav_forward">Forward</string>
     <string name="nav_home">Home</string>
-    <string name="nav_reload">Reload</string>
     <string name="nav_tabs">Tabs</string>
     <string name="nav_menu">Menu</string>
+    <string name="nav_video_pip">Open video in the player</string>
+    <!-- The player overlay's own PiP button (view_fullscreen_controls). -->
     <string name="nav_pip">Picture in picture</string>
-    <string name="nav_adblock">AdBlock</string>
-    <string name="nav_bookmarks">Bookmarks</string>
-    <string name="nav_reader">Reader view</string>
-
-    <!-- Generic shorts -->
-    <string name="coming_soon">Coming soon</string>
 
     <!-- Settings -->
     <string name="settings_title">Settings</string>
+
+    <string name="settings_section_account">Account</string>
+    <string name="settings_account_none">No Google account</string>
+    <string name="settings_account_hint">Connect one to sync bookmarks and history across your devices.</string>
+    <string name="settings_account_connected_hint">Bookmarks and history sync through your Google Drive.</string>
+    <string name="settings_account_connect">Connect</string>
+    <string name="settings_account_disconnect">Disconnect</string>
+    <string name="settings_account_disconnect_title">Disconnect account?</string>
+    <string name="settings_account_disconnect_message">Syncing stops. Everything already saved stays on this device, and the copy in Drive is left untouched.</string>
+    <string name="settings_account_disconnected">Account disconnected</string>
+    <string name="settings_account_cancelled">Sign-in cancelled</string>
+    <!-- Shown for DEVELOPER_ERROR (code 10): this build's app id + signing key
+         aren't registered as an OAuth client. A setup step, not a user error. -->
+    <string name="settings_account_not_configured">Google sign-in isn\'t set up for this build yet — the OAuth client is missing.</string>
+    <string name="settings_sync_now">Sync now</string>
+    <string name="settings_sync_never">Not synced yet</string>
+    <string name="settings_sync_last">Last sync: %1$s</string>
+    <string name="settings_sync_running">Syncing…</string>
+    <string name="settings_sync_failed">Sync failed: %1$s</string>
+    <string name="settings_sync_needs_account">Connect a Google account first</string>
+    <string name="settings_sync_consent_declined">Drive access wasn\'t granted, so there\'s nowhere to sync to.</string>
+    <string name="settings_auto_sync">Sync automatically</string>
+
+    <string name="settings_section_content">Content blocking</string>
+    <string name="settings_adblock">Block ads and trackers</string>
+    <string name="settings_adblock_hint">uBlock Origin runs on every page. Turning it off also stops cosmetic filtering.</string>
+
     <string name="settings_section_search">Search engine</string>
-    <string name="settings_section_history">Search history</string>
-    <string name="settings_clear_history">Clear history</string>
+
     <string name="settings_section_player">Video player</string>
     <string name="settings_seek_step">Double-tap seek step</string>
     <string name="settings_seek_option">%1$d seconds</string>
+
+    <string name="settings_section_bookmarks">Bookmarks</string>
+    <string name="settings_open_bookmarks">Open bookmarks</string>
+    <string name="settings_clear_bookmarks">Delete all</string>
+    <string name="settings_clear_bookmarks_message">Every saved page will be removed. The speed dial goes back to its defaults.</string>
+
     <string name="settings_section_browsing">Browsing history</string>
     <string name="settings_open_history">Open history</string>
-    <string name="settings_clear_browsing">Clear browsing history</string>
+    <string name="settings_clear_browsing">Clear history</string>
+
+    <string name="settings_section_history">Search history</string>
+    <string name="settings_clear_history">Clear searches</string>
+
     <string name="settings_section_about">About</string>
     <!-- versionName, then the short commit the build came from. -->
     <string name="settings_version">Version %1$s · %2$s</string>
-
-    <!-- Topbar -->
-    <string name="nav_video_pip">Open video in PiP</string>
 
     <!-- Built-in video player -->
     <string name="player_no_video">No video found on this page</string>
@@ -67,28 +102,34 @@
     <string name="history_empty_title">Pages you visit will show up here.</string>
     <string name="history_empty_search">Nothing matches that search.</string>
 
+    <!-- Bookmarks -->
+    <string name="bookmarks_title">Bookmarks</string>
+    <string name="bookmarks_add_current">Add page</string>
+    <string name="bookmarks_search_hint">Search bookmarks</string>
+    <string name="bookmarks_empty_title">No saved pages yet.</string>
+    <string name="bookmarks_empty_subtitle">Tap the star in the menu to keep a page here — and on your speed dial.</string>
+    <string name="bookmarks_empty_search">Nothing matches that search.</string>
+    <string name="bookmark_added">Saved to bookmarks</string>
+    <string name="bookmark_removed">Removed from bookmarks</string>
+    <string name="bookmark_not_saveable">This page can\'t be bookmarked</string>
+    <string name="bookmark_delete">Remove bookmark</string>
+
     <!-- App menu (popup) -->
     <string name="menu_new_tab">New tab</string>
-    <string name="menu_refresh">Refresh</string>
+    <string name="menu_refresh">Reload</string>
     <string name="menu_share">Share</string>
-    <string name="menu_home">Home</string>
-    <string name="menu_close_tab">Close tab</string>
     <string name="menu_adblock">AdBlock</string>
     <string name="menu_adblock_state_on">ON</string>
     <string name="menu_adblock_state_off">OFF</string>
     <string name="menu_find_in_page">Find in page</string>
     <string name="menu_desktop_site">Desktop site</string>
     <string name="menu_bookmarks">Bookmarks</string>
+    <string name="menu_bookmark_add">Add bookmark</string>
+    <string name="menu_bookmark_remove">Remove bookmark</string>
     <string name="menu_history">History</string>
-    <string name="menu_downloads">Downloads</string>
     <string name="menu_settings">Settings</string>
-    <string name="menu_settings_subtitle">Coming soon</string>
-    <string name="menu_pill_soon">Soon</string>
-
-    <!-- Legacy strings — kept for backwards compat with menu/app_menu.xml until
-         we delete it; safe to remove once that resource file is gone. -->
-    <string name="menu_adblock_on">AdBlock: ON</string>
-    <string name="menu_adblock_off">AdBlock: OFF</string>
+    <!-- Shown on the Settings row while a Google account is connected. -->
+    <string name="menu_sync_badge" translatable="false">SYNC</string>
 
     <!-- Tabs tray -->
     <string name="tabs_tray_title">Tabs</string>

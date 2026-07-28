@@ -24,29 +24,41 @@ app/src/main/
 ├── java/com/upgrid/browser/
 │   ├── BrowserApplication.kt       ← components; restore session; uBO bootstrap; autosave
 │   ├── BrowserComponents.kt        ← single source of truth for runtime/engine/store/tabs
-│   ├── MainActivity.kt             ← topbar (home + URL chip) + GeckoEngineView +
-│   │                                 6-slot Banana-style bottom bar + Session/Toolbar features
-│   ├── AdblockController.kt        ← thin façade for the AdBlock on/off menu toggle
+│   ├── MainActivity.kt             ← the single top bar + GeckoEngineView + Session/Toolbar
+│   │                                 features. No bottom bar — see below.
+│   ├── AdblockController.kt        ← thin façade for the AdBlock on/off toggle
 │   ├── addons/AdblockBootstrap.kt  ← silent uBO install + version pin
+│   ├── bookmarks/
+│   │   ├── BookmarkStore.kt        ← SQLite, one row per URL, no folders
+│   │   ├── BookmarkAdapter.kt
+│   │   └── BookmarksFragment.kt    ← bottom-sheet list, undo on delete
 │   ├── fullscreen/
 │   │   ├── VideoPlayerBridge.kt    ← native ⇆ extension port; takeover trigger
 │   │   └── PlayerOverlayController.kt ← overlay buttons, seek bar, gestures
 │   ├── history/
 │   │   ├── HistoryStore.kt         ← SQLite visits table (one row per URL)
-│   │   ├── HistoryAdapter.kt       ← day headers + rows
+│   │   ├── HistoryAdapter.kt       ← day chips + rows
 │   │   └── HistoryFragment.kt      ← bottom-sheet history browser
-│   ├── home/                       ← speed-dial start page
-│   ├── menu/AppMenuPopup.kt        ← Banana-style drop-down menu (PopupWindow, not BottomSheet)
+│   ├── home/                       ← speed-dial start page (bookmarks, topped up from SEED)
+│   ├── menu/AppMenuPopup.kt        ← 236dp drop-down menu (PopupWindow, not BottomSheet)
 │   ├── prefs/BrowserPreferences.kt ← typed SharedPreferences façade (all settings)
 │   ├── search/                     ← SearchEngine enum + SearchHistory
-│   ├── settings/SettingsBottomSheet.kt ← settings sheet (search engine, seek step, history)
-│   └── tabs/
-│       ├── TabsTrayFragment.kt     ← BottomSheet tabs tray (RecyclerView, store-driven)
-│       └── TabViewHolder.kt
+│   ├── settings/SettingsBottomSheet.kt ← account, adblock, search, player, data, about
+│   ├── sync/
+│   │   ├── AccountSync.kt          ← GoogleAccounts (sign-in) + SyncEngine (merge loop)
+│   │   ├── DriveAppData.kt         ← the four Drive v3 calls, over HttpURLConnection
+│   │   └── SyncPayload.kt          ← the versioned JSON document
+│   ├── tabs/
+│   │   ├── TabsTrayFragment.kt     ← 2-column card grid, store-driven
+│   │   └── TabViewHolder.kt
+│   └── ui/
+│       ├── HostTile.kt             ← per-host letter + color, shared by every list
+│       └── ExpandedBottomSheetFragment.kt ← sheets open full height
 └── res/
-    ├── layout/                     ← activity_main + app_menu_popup + fragment_tabs_tray +
-    │                                 view_fullscreen_controls (player overlay) + …
-    ├── menu/app_menu.xml           ← New tab / Close tab / AdBlock toggle
+    ├── layout/                     ← activity_main + app_menu_popup + fragment_{tabs_tray,
+    │                                 history,bookmarks,settings} + view_fullscreen_controls + …
+    ├── values/styles.xml           ← row/tile styles for the menu and the sheets
+    ├── values-ru/                  ← Russian translation (device-locale driven)
     └── values, drawable, mipmap…
 ```
 
@@ -190,8 +202,8 @@ The AMO file id changes per release; the version in the filename is cosmetic.
 
 - **Phase 1 — MVP.** Single session, omnibar, silent uBO. **Done.**
 - **Phase 2 — Tabs + persistence.** `BrowserStore`-driven; `BrowserToolbar`; `SessionFeature`/`ToolbarFeature`; bottom-sheet tabs tray; `SessionStorage` autosave/restore; AdBlock on/off in app menu. **Done.**
-- **Phase 3 — History & bookmarks.** History **done**, but *not* on `browser-storage-sync` as originally planned — see below. Bookmarks + downloads (`feature-downloads`) still open.
-- **Phase 4 — Settings.** Theme picker, search engine, default-browser prompt, "use system dark mode", about-page. Move the AdBlock toggle from popup menu into the settings screen.
+- **Phase 3 — History & bookmarks.** **Done**, but *not* on `browser-storage-sync` as originally planned — see below. Downloads (`feature-downloads`) still open, and is the one thing the menu no longer even hints at.
+- **Phase 4 — Settings.** Search engine, AdBlock toggle, data management, about-page, Google account: **done**. Theme picker, default-browser prompt and "use system dark mode" still open.
 - **Phase 5 — Optional extensions.** Surface a curated list (Dark Reader, Bitwarden, Tampermonkey) via `feature-addons`'s `AddonManager`. Behind a "Power user" setting.
 
 ## Architecture notes (phase 2)
@@ -200,7 +212,103 @@ The AMO file id changes per release; the version in the filename is cosmetic.
 - **Features are the glue.** `SessionFeature` renders the selected tab into `GeckoEngineView`; `ToolbarFeature` keeps `BrowserToolbar` synced. Both are bound through `ViewBoundFeatureWrapper` so they stop/start with the view lifecycle.
 - **`BrowserApplication.restorePreviousSession`** restores tabs *before* the bootstrap installs uBO — this guarantees tabs are visible the moment the user sees the activity even if AMO is unreachable.
 - **Tab close → empty state:** `MainActivity.wireBackPress` finishes the activity when the last tab is closed via the system back button. The tabs tray itself does *not* auto-dismiss when `tabs.isEmpty()` — it shows a Banana-style empty illustration. If the user swipes the tray away with zero tabs, `TabsTrayFragment.onDismiss` opens a fresh HOME tab so MainActivity isn't left empty-handed.
-- **App menu is a `PopupWindow`, not a BottomSheet.** [AppMenuPopup](app/src/main/java/com/upgrid/browser/menu/AppMenuPopup.kt) is a 300dp drop-down anchored to `btnMenu` via `showAsDropDown(anchor, 0, 0, Gravity.END)`. The auto-flip-above behavior places it correctly even though the anchor is at the bottom of the screen. Construct a new instance per tap (cheap, avoids stale toggle state).
+- **App menu is a `PopupWindow`, not a BottomSheet.** [AppMenuPopup](app/src/main/java/com/upgrid/browser/menu/AppMenuPopup.kt) is a 236dp drop-down anchored to `btnTopMenu` via `showAsDropDown(anchor, 0, 0, Gravity.END)`. Construct a new instance per tap (cheap, avoids stale toggle state) — but note `PopupWindow` keeps its content view between shows, so anything derived from browser state is re-read in `showFrom`, not at construction.
+- **Every other panel is an [ExpandedBottomSheetFragment](app/src/main/java/com/upgrid/browser/ui/ExpandedBottomSheetFragment.kt).** Tabs, history, bookmarks and settings all open at full height with `skipCollapsed = true`. They're destinations the user asked for by name; the default half-open state made each of them start with a drag, and without `skipCollapsed` a downward swipe parks at peek height instead of dismissing.
+- **One site looks the same everywhere.** [HostTile](app/src/main/java/com/upgrid/browser/ui/HostTile.kt) derives a letter and a color from the host, and history rows, bookmark rows, tab cards and speed-dial tiles all use it. The hash is computed by hand rather than via `String.hashCode()` so the colors can't reshuffle between releases. Favicons are used *on top of* the tile in the tabs grid, never instead of it — they arrive over the network and popping in mid-scroll reads as flicker.
+
+## Chrome: one bar, and where the bottom bar went
+
+There is **one** bar, at the top: home · URL chip · player button · tab counter ·
+menu. The five-slot bottom bar is gone. It cost ~60dp of page height on every
+screen, sat where the system gesture bar and most sites' sticky footers are, and
+two of its five slots only ever produced a "coming soon" toast.
+
+Its contents were redistributed, not deleted — if you're looking for one:
+
+| was | now |
+|---|---|
+| forward / reload | quick-action strip at the top of the app menu |
+| adblock shield | app menu row (ON/OFF pill) **and** a switch in Settings |
+| bookmarks | app menu row + the star in that same quick strip |
+| reader view | dropped — it was never implemented |
+| tabs + counter | top bar (`btnTopTabs`, same `tabCount` TextView) |
+
+Two consequences worth knowing before you "restore" something:
+
+- **`applyVideoFocus` only hides `toolbarWrapper` + `toolbarDivider` now.** Any
+  new chrome that should vanish in video focus has to be added there explicitly.
+- **Nothing on a store tick may read uBO's state.** That lookup is async through
+  the engine and firing one per tick ANRs the UI (see the AdblockController
+  section above). The switch renders when the menu or Settings opens — that's
+  the whole trigger list.
+
+The app menu is a 236dp `PopupWindow` (down from 300dp) of 42dp rows. Row sizing
+lives in `values/styles.xml`, not inline: it's eight visually identical rows and
+the previous copy-paste version had drifted out of alignment with itself.
+
+**The division of labour is: menu = acts on the page in front of you; Settings =
+things you set once.** New per-page action → menu. New preference → Settings.
+Desktop-site stayed in the menu despite being a toggle because it's per-tab.
+
+## Bookmarks
+
+Flat SQLite table, one row per URL, **no folders** — a tree needs a tree UI, a
+move gesture and breadcrumbs, none of which fit this app. Star a saved page
+again and it un-saves; `toggle()` returns the resulting state so the caller can
+flip its icon without a second query.
+
+The speed dial is backed by bookmarks, topped up from `QuickLink.SEED` to fill
+the grid, deduped by URL. Saving one page must not blank the other seven tiles
+on a fresh install — that's what the top-up is for. Anything that changes
+bookmarks has to call `MainActivity.refreshStartPage()`; the menu star, the
+bookmarks sheet and a completed sync all do.
+
+## Google account & sync
+
+Sign in with Google, and bookmarks + history live in that account's Drive
+**app-data folder** — hidden per-app storage under the `drive.appdata` scope. We
+request that scope and nothing else: it cannot see, list or touch a single file
+the user didn't create through this app. One JSON document, read-merge-write, no
+server ([SyncPayload.kt](app/src/main/java/com/upgrid/browser/sync/SyncPayload.kt)).
+
+**The merge is a union and never a subtraction.** Without a tombstone log,
+"this URL isn't in the remote document" and "this URL was deleted on the other
+device" are the same bytes. Guessing wrong destroys the user's bookmarks, so
+deletions deliberately don't propagate. `visits` takes MAX of the two counts,
+not the sum — summing re-adds the remote number every sync and a page visited
+twice climbs into the hundreds inside a week.
+
+### Setting up the OAuth client (required, one-time)
+
+Sign-in fails with `DEVELOPER_ERROR` (code 10) until an OAuth client in Google
+Cloud Console matches this build's **application id + signing certificate**.
+The settings sheet renders that specific code as "sign-in isn't set up yet"
+rather than a bare number.
+
+1. <https://console.cloud.google.com> → new project → **APIs & Services**.
+2. Enable the **Google Drive API**.
+3. OAuth consent screen: External, add the account as a **test user**.
+   `drive.appdata` is a sensitive scope — testing mode is fine for a private
+   build; a public release would need verification.
+4. Credentials → OAuth client ID → **Android**:
+   - package name `com.upgrid.browser.debug` (note the `.debug` suffix that
+     `buildTypes.debug` appends — a release build is `com.upgrid.browser`)
+   - SHA-1 `DA:81:89:45:70:EE:9B:5C:A1:27:04:E3:48:37:39:E0:7B:C1:3B:18`
+
+That SHA-1 belongs to [keystore/upgrid-debug.p12](keystore/upgrid-debug.p12),
+which is **committed on purpose**. Gradle otherwise generates a debug key per
+machine, so the fingerprint would differ on every developer box and on any CI
+runner that missed the cache — sign-in would work on one build and fail on the
+rest. It signs debug builds only, its password is the conventional `android`,
+and it grants nothing: Play uploads need the release key, which is not in this
+repo. To regenerate (and then re-register the new SHA-1):
+
+```bash
+docker run --rm -v "$PWD/keystore:/ks" -w /ks eclipse-temurin:17-jre-alpine \
+  keytool -genkeypair -keystore upgrid-debug.p12 -storetype PKCS12 \
+    -alias upgrid -keyalg RSA -keysize 2048 -validity 10950 \
+    -storepass android -keypass android -dname "CN=Upgrid Browser Debug"
+```
 
 ## History: why not `browser-storage-sync`
 
@@ -229,11 +337,14 @@ short sha. Settings → About shows the pair, which is the first thing to ask fo
 in a bug report. Bump `baseVersion` there — CI greps that same line, so there's
 nothing to keep in sync.
 
-Two consequences to respect:
+Three consequences to respect:
 
 - **CI must check out with `fetch-depth: 0`.** A shallow clone counts 1 commit,
   so every build would be versionCode 1 and Android would refuse the upgrade.
 - **Don't hand-edit `versionCode`.** It's derived; an edit is silently lost.
+- **Debug builds are signed with the committed key**, not a generated one — see
+  "Google account & sync" above. Don't "clean up" `signingConfigs`; it is load-
+  bearing for sign-in, and swapping the key means re-registering its SHA-1.
 
 [.github/workflows/android.yml](.github/workflows/android.yml) builds on every
 branch, publishes the rolling `latest-debug` pre-release only from `main`, and

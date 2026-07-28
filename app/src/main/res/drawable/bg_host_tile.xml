@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Letter-tile background. The solid white here is a placeholder: every use site
+  overrides it with backgroundTintList from HostTile.colorFor(host), so the fill
+  must stay opaque white or the tint comes out muddy.
+-->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <solid android:color="#FFFFFFFF" />
+    <corners android:radius="12dp" />
+</shape>

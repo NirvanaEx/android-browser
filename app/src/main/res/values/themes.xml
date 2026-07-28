@@ -43,9 +43,13 @@
         <item name="colorOutline">@color/md_outline_light</item>
         <item name="colorOutlineVariant">@color/md_outline_variant_light</item>
 
-        <!-- System bars -->
+        <!-- System bars.
+             The nav bar used to be colorSurfaceContainer to match the bottom
+             bar sitting right above it. With that bar gone the strip is now
+             directly under the page, and the contrast step read as a seam —
+             colorSurface continues the page instead. -->
         <item name="android:statusBarColor">?attr/colorSurface</item>
-        <item name="android:navigationBarColor">?attr/colorSurfaceContainer</item>
+        <item name="android:navigationBarColor">?attr/colorSurface</item>
         <item name="android:windowLightStatusBar">true</item>
         <item name="android:windowLightNavigationBar">true</item>
 

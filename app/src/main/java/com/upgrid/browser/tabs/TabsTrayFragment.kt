@@ -9,13 +9,13 @@ import androidx.core.view.isVisible
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
-import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.RecyclerView
-import com.google.android.material.bottomsheet.BottomSheetDialogFragment
 import com.upgrid.browser.BrowserApplication
 import com.upgrid.browser.MainActivity
 import com.upgrid.browser.R
 import com.upgrid.browser.databinding.FragmentTabsTrayBinding
+import com.upgrid.browser.ui.ExpandedBottomSheetFragment
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
@@ -23,14 +23,13 @@ import mozilla.components.browser.state.state.TabSessionState
 import mozilla.components.lib.state.ext.flow
 
 /**
- * Bottom-sheet tabs tray.
+ * Tabs tray: a two-column grid of cards in a full-height bottom sheet.
  *
  * Hand-rolled adapter rather than `browser-tabstray`'s built-in views — those
- * pull in Compose dependencies and a richer model than we need for MVP.
- * Favicons are read straight off the tab state in the holder; see
- * [TabViewHolder] for the rationale.
+ * pull in Compose dependencies and a richer model than we need. Favicons are
+ * read straight off the tab state in the holder; see [TabViewHolder].
  */
-class TabsTrayFragment : BottomSheetDialogFragment() {
+class TabsTrayFragment : ExpandedBottomSheetFragment() {
 
     private var _binding: FragmentTabsTrayBinding? = null
     private val binding get() = _binding!!
@@ -57,8 +56,12 @@ class TabsTrayFragment : BottomSheetDialogFragment() {
             },
             onClose = { tab -> components.tabsUseCases.removeTab(tab.id) }
         )
-        binding.tabsList.layoutManager = LinearLayoutManager(requireContext())
+        binding.tabsList.layoutManager = GridLayoutManager(requireContext(), COLUMNS)
         binding.tabsList.adapter = adapter
+        // Cards are a fixed size regardless of position, so RecyclerView can
+        // skip re-measuring the whole grid on every insert/remove — closing a
+        // tab out of a long list is otherwise visibly janky.
+        binding.tabsList.setHasFixedSize(true)
 
         binding.btnNewTab.setOnClickListener {
             components.tabsUseCases.addTab(url = MainActivity.HOME_URL, selectTab = true)
@@ -110,6 +113,11 @@ class TabsTrayFragment : BottomSheetDialogFragment() {
     override fun onDestroyView() {
         super.onDestroyView()
         _binding = null
+    }
+
+    private companion object {
+        /** Two columns fits a readable title on a phone; three truncates it. */
+        const val COLUMNS = 2
     }
 }
 

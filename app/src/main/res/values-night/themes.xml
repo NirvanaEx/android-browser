@@ -33,8 +33,10 @@
         <item name="colorOutline">@color/md_outline_dark</item>
         <item name="colorOutlineVariant">@color/md_outline_variant_dark</item>
 
+        <!-- Matches the light theme: the nav strip continues the page now that
+             there's no bottom bar between them. -->
         <item name="android:statusBarColor">?attr/colorSurface</item>
-        <item name="android:navigationBarColor">?attr/colorSurfaceContainer</item>
+        <item name="android:navigationBarColor">?attr/colorSurface</item>
         <item name="android:windowLightStatusBar">false</item>
         <item name="android:windowLightNavigationBar">false</item>
 

@@ -15,8 +15,6 @@ import android.media.AudioManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
-import android.os.Handler
-import android.os.Looper
 import android.util.Rational
 import android.view.MotionEvent
 import android.view.View
@@ -29,6 +27,8 @@ import androidx.core.content.ContextCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.core.view.isVisible
+import com.upgrid.browser.bookmarks.BookmarkStore
+import com.upgrid.browser.bookmarks.BookmarksFragment
 import com.upgrid.browser.databinding.ActivityMainBinding
 import com.upgrid.browser.fullscreen.PlayerOverlayController
 import com.upgrid.browser.history.HistoryFragment
@@ -38,6 +38,8 @@ import com.upgrid.browser.home.StartPagePresenter
 import com.upgrid.browser.menu.AppMenuPopup
 import com.upgrid.browser.prefs.BrowserPreferences
 import com.upgrid.browser.search.SearchHistory
+import com.upgrid.browser.sync.GoogleAccounts
+import com.upgrid.browser.sync.SyncEngine
 import com.upgrid.browser.tabs.TabsTrayFragment
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
@@ -63,10 +65,13 @@ import mozilla.components.support.base.feature.ViewBoundFeatureWrapper
  *  - [ToolbarFeature]      — keeps the toolbar URL/title/progress bound to the selected tab
  *  - [FindInPageFeature]   — wires the find-in-page bar to the engine session
  *
- * Three observers on the store flow drive the rest of the UI:
- *  - tab count + nav button enabled-state (existing).
- *  - selected tab URL → toggle the speed-dial overlay vs engine view.
- *  - selected tab mediaSessionState → toggle the floating PiP button.
+ * One observer on the store flow drives the rest of the chrome: the tab
+ * counter, the start-page-vs-engine swap, the player button's visibility, and
+ * the history write for the page that just settled.
+ *
+ * All chrome lives in the single top bar; there is no bottom bar (see the note
+ * at the top of activity_main.xml for where its contents went). Everything
+ * else the browser offers is behind the ⋮ menu, the tabs tray, or Settings.
  *
  * If the store has zero tabs at startup we open one to [HOME_URL]; on cold
  * start [BrowserApplication] tries to restore the previous session first.
@@ -77,9 +82,6 @@ class MainActivity : AppCompatActivity() {
     private lateinit var startPage: StartPagePresenter
     private val components get() = (application as BrowserApplication).components
 
-    /** Cached uBO façade. Used by the bottom-bar shield button for instant toggle. */
-    private val adblock by lazy { AdblockController(components) }
-
     /** App-wide preferences (search engine, etc.). */
     private val preferences by lazy { BrowserPreferences(this) }
 
@@ -88,6 +90,9 @@ class MainActivity : AppCompatActivity() {
 
     /** Visited pages. Written from the store observer once a load settles. */
     private val browsingHistory by lazy { HistoryStore(this) }
+
+    /** Saved pages. Backs the speed dial and the menu's star. */
+    private val bookmarks by lazy { BookmarkStore(this) }
 
     /**
      * Last (url, title) written to history, per tab id. The store ticks many
@@ -174,10 +179,10 @@ class MainActivity : AppCompatActivity() {
         wireToolbar()
         wireFeatures()
         wireDismissKeyboardOnEngineTap()
-        wireBottomBar()
         wirePlayerOverlay()
         wireBackPress()
         observeStore()
+        refreshStartPage()
 
         ContextCompat.registerReceiver(
             this,
@@ -217,9 +222,12 @@ class MainActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
-        // Catch state drift from sources that don't notify us — e.g. user
-        // toggled uBO from the menu popup before backgrounding the app.
-        if (::binding.isInitialized) renderAdblockShield()
+        if (!::binding.isInitialized) return
+        // Bookmarks can change from anywhere (menu star, bookmarks sheet, a
+        // sync that pulled in another device's), and the speed dial is drawn
+        // from them.
+        refreshStartPage()
+        maybeAutoSync()
     }
 
     // --- View wiring -------------------------------------------------------
@@ -240,6 +248,13 @@ class MainActivity : AppCompatActivity() {
         // the menu icon (auto-positioned by showAsDropDown).
         binding.btnTopMenu.setOnClickListener {
             AppMenuPopup(this@MainActivity).showFrom(it)
+        }
+
+        // Tabs moved up from the removed bottom bar. The counter inside the
+        // button is the same TextView the bottom bar carried, so observeStore's
+        // update needs no change.
+        binding.btnTopTabs.setOnClickListener {
+            TabsTrayFragment().show(supportFragmentManager, "tabs")
         }
 
         // Topbar video button → take over the page's video with the built-in
@@ -376,64 +391,6 @@ class MainActivity : AppCompatActivity() {
         )
     }
 
-    private fun wireBottomBar() = with(binding) {
-        btnForward.setOnClickListener { components.sessionUseCases.goForward() }
-
-        // Slot 2 — uBO quick toggle. The killer-feature switch lives here so the
-        // user can flip it without opening the menu. The icon flip is the only
-        // affordance; we deliberately don't show a toast on tap (Banana doesn't).
-        btnAdblockShield.setOnClickListener {
-            lifecycleScope.launch {
-                runCatching { adblock.toggle() }
-                renderAdblockShield()
-            }
-        }
-
-        // Phase-3 stubs. Wired now so the buttons are tappable instead of dead;
-        // the toast doubles as a roadmap hint to the user.
-        btnBookmarks.setOnClickListener { stubToast() }
-        btnReader.setOnClickListener { stubToast() }
-
-        btnTabs.setOnClickListener { TabsTrayFragment().show(supportFragmentManager, "tabs") }
-
-        renderAdblockShield()
-    }
-
-    /** "Coming soon" feedback for the not-yet-implemented bookmarks/reader slots. */
-    private fun stubToast() {
-        Toast.makeText(this, R.string.coming_soon, Toast.LENGTH_SHORT).show()
-    }
-
-    /**
-     * Sync the shield button's icon + tint with the current uBO state. We run
-     * the lookup in a coroutine because [AdblockController.isEnabled] has to
-     * await the engine's `listInstalledWebExtensions` callback — calling it
-     * synchronously races with the engine and would always read "OFF" on
-     * cold start, even when uBO is installed and active.
-     *
-     * Trigger points: wireBottomBar() (initial), after our own tap on the
-     * shield, after AppMenuPopup toggles uBO, and onResume(). Deliberately
-     * NOT called per store tick — that storms the engine and ANRs the UI.
-     */
-    internal fun renderAdblockShield() {
-        lifecycleScope.launch {
-            val on = adblock.isEnabled()
-            binding.btnAdblockShield.setImageResource(
-                if (on) R.drawable.ic_shield else R.drawable.ic_shield_off
-            )
-            val tint = if (on) {
-                com.google.android.material.color.MaterialColors.getColor(
-                    binding.btnAdblockShield, androidx.appcompat.R.attr.colorPrimary
-                )
-            } else {
-                com.google.android.material.color.MaterialColors.getColor(
-                    binding.btnAdblockShield, com.google.android.material.R.attr.colorOnSurfaceVariant
-                )
-            }
-            binding.btnAdblockShield.setColorFilter(tint)
-        }
-    }
-
     private fun wireBackPress() {
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
@@ -496,8 +453,6 @@ class MainActivity : AppCompatActivity() {
         val v = if (focused) View.GONE else View.VISIBLE
         binding.toolbarWrapper.visibility = v
         binding.toolbarDivider.visibility = v
-        binding.bottomDivider.visibility = v
-        binding.bottomBar.visibility = v
 
         val controller = WindowInsetsControllerCompat(window, window.decorView)
         if (focused) {
@@ -630,17 +585,11 @@ class MainActivity : AppCompatActivity() {
                     val tab = state.selectedTab
                     binding.tabCount.text = state.tabs.size.toString()
 
-                    // Forward only — back is the system gesture (slot removed).
-                    val canForward = tab?.content?.canGoForward == true
-                    binding.btnForward.isEnabled = canForward
-                    binding.btnForward.alpha = if (canForward) 1f else 0.35f
-
-                    // NOTE: do NOT call renderAdblockShield() here. The shield's
-                    // state is read async via the engine; firing one async lookup
-                    // per store tick (dozens during a page load) backs up the
-                    // engine queue and ANRs the main thread. Shield is refreshed
-                    // explicitly: at wireBottomBar(), after our own tap, and on
-                    // each onResume() (covers menu-popup toggles).
+                    // NOTE: nothing here may read uBO's state. That lookup is
+                    // async through the engine, and firing one per store tick
+                    // (dozens during a page load) backs the engine queue up and
+                    // ANRs the main thread. The AdBlock switch is rendered when
+                    // the menu or the settings sheet opens — never on a tick.
 
                     // Speed-dial overlay vs engine view. Empty/blank URL == start page.
                     val url = tab?.content?.url.orEmpty()
@@ -696,9 +645,14 @@ class MainActivity : AppCompatActivity() {
         lifecycleScope.launch { browsingHistory.record(url, title) }
     }
 
-    /** Browsing history sheet. Opened from the app menu. */
+    /** Browsing history sheet. Opened from the app menu and from settings. */
     fun showHistory() {
         HistoryFragment().show(supportFragmentManager, HistoryFragment.TAG)
+    }
+
+    /** Bookmarks sheet. Opened from the app menu and from settings. */
+    fun showBookmarks() {
+        BookmarksFragment().show(supportFragmentManager, BookmarksFragment.TAG)
     }
 
     // --- Speed-dial --------------------------------------------------------
@@ -706,6 +660,52 @@ class MainActivity : AppCompatActivity() {
     private fun onQuickLinkClick(link: QuickLink) {
         components.sessionUseCases.loadUrl(link.url)
         // Start page hides automatically when tab.content.url changes.
+    }
+
+    /**
+     * Redraw the speed dial from the user's bookmarks.
+     *
+     * Bookmarks come first, then defaults fill whatever slots are left — saving
+     * one page shouldn't wipe the other seven tiles off a brand-new install.
+     * `distinctBy(url)` keeps a bookmarked default (say, YouTube) from
+     * appearing twice.
+     *
+     * Public because the menu star, the bookmarks sheet and a completed sync
+     * all change the answer.
+     */
+    fun refreshStartPage() {
+        lifecycleScope.launch {
+            val saved = bookmarks.all().map { QuickLink.of(it) }
+            startPage.setLinks(
+                (saved + QuickLink.SEED)
+                    .distinctBy { it.url }
+                    .take(BookmarkStore.SPEED_DIAL_SLOTS)
+            )
+        }
+    }
+
+    // --- Sync --------------------------------------------------------------
+
+    /**
+     * Sync in the background on resume, at most every
+     * [BrowserPreferences.AUTO_SYNC_INTERVAL_MS].
+     *
+     * Silent by design: no spinner, no toast, no error. A background sync that
+     * interrupts the user to report a network hiccup is worse than one that
+     * quietly tries again in half an hour — the Settings sheet is where a
+     * failure is worth reading, because that's where the user went to ask.
+     */
+    private fun maybeAutoSync() {
+        if (!preferences.autoSync) return
+        if (GoogleAccounts.current(this) == null) return
+        val since = System.currentTimeMillis() - preferences.lastSyncAt
+        if (since < BrowserPreferences.AUTO_SYNC_INTERVAL_MS) return
+
+        lifecycleScope.launch {
+            runCatching { SyncEngine(applicationContext).sync() }
+            // Another device's bookmarks may have landed.
+            refreshStartPage()
+        }
     }
 
     fun showFindInPage() {

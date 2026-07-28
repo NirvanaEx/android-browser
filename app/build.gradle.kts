@@ -75,6 +75,20 @@ android {
         }
     }
 
+    signingConfigs {
+        // Optional local key; never commit it. Otherwise Gradle generates a debug key.
+        getByName("debug") {
+            val privateDebugKey = rootProject.file(System.getenv("UPGRID_DEBUG_KEYSTORE") ?: "keystore/upgrid-debug.p12")
+            if (privateDebugKey.isFile) {
+                storeFile = privateDebugKey
+                storeType = "PKCS12"
+                storePassword = System.getenv("UPGRID_DEBUG_STORE_PASSWORD") ?: "android"
+                keyAlias = System.getenv("UPGRID_DEBUG_KEY_ALIAS") ?: "upgrid"
+                keyPassword = System.getenv("UPGRID_DEBUG_KEY_PASSWORD") ?: "android"
+            }
+        }
+    }
+
     buildTypes {
         debug {
             isMinifyEnabled = false
@@ -193,6 +207,14 @@ dependencies {
     implementation("org.mozilla.components:support-base:$androidComponentsVersion")
     implementation("org.mozilla.components:support-ktx:$androidComponentsVersion")
     implementation("org.mozilla.components:support-utils:$androidComponentsVersion")
+
+    // --- Google account (bookmark/history sync via Drive appDataFolder) ---
+    // Only the sign-in half of Play services. The Drive REST calls are made by
+    // hand over HttpURLConnection in sync/DriveAppData.kt rather than through
+    // google-api-services-drive, which drags in the whole Google API client
+    // stack (~3 MB of jars, its own HTTP layer and a Guava slice) to send the
+    // four requests we actually make.
+    implementation("com.google.android.gms:play-services-auth:21.2.0")
 
     // Coroutines for async work.
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")

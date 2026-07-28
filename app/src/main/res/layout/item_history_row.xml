@@ -1,8 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  One visited page. Leading tile shows the host's first letter (we don't fetch
-  favicons here — the list scrolls fast and a letter never pops in late), then
-  title over URL, the visit time, and a trash button.
+  One visited page.
+
+  The leading tile carries the host's first letter on a color derived from the
+  host itself (see HostTile), so a long history reads as bands of the same few
+  sites rather than a uniform wall of text. The same tile appears in bookmarks,
+  the tabs grid and the speed dial — one site looks the same everywhere.
+
+  Time moved from the right edge to under the title: there it competed with the
+  delete button for the same corner and squeezed the URL into an ellipsis two
+  characters in.
 
   IDs are bound in HistoryAdapter.EntryHolder.
 -->
@@ -16,25 +23,21 @@
     android:background="?attr/selectableItemBackground"
     android:clickable="true"
     android:focusable="true"
-    android:paddingHorizontal="8dp"
-    android:paddingVertical="8dp">
+    android:paddingStart="12dp"
+    android:paddingEnd="4dp"
+    android:paddingTop="9dp"
+    android:paddingBottom="9dp">
 
     <TextView
         android:id="@+id/historyInitial"
-        android:layout_width="36dp"
-        android:layout_height="36dp"
-        android:gravity="center"
-        android:background="@drawable/bg_favicon"
-        android:textStyle="bold"
-        android:textSize="15sp"
-        android:textColor="?attr/colorOnSurfaceVariant"
+        style="@style/Widget.UpgridBrowser.HostTile"
         tools:text="G" />
 
     <LinearLayout
         android:layout_width="0dp"
         android:layout_height="wrap_content"
         android:layout_weight="1"
-        android:layout_marginStart="12dp"
+        android:layout_marginStart="14dp"
         android:orientation="vertical">
 
         <TextView
@@ -43,29 +46,46 @@
             android:layout_height="wrap_content"
             android:maxLines="1"
             android:ellipsize="end"
-            android:textAppearance="?attr/textAppearanceBodyMedium"
+            android:textSize="14sp"
             android:textColor="?attr/colorOnSurface"
             tools:text="Upgrid Browser — GitHub" />
 
-        <TextView
-            android:id="@+id/historyUrl"
+        <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:maxLines="1"
-            android:ellipsize="end"
-            android:textSize="12sp"
-            android:textColor="?attr/colorOnSurfaceVariant"
-            tools:text="https://github.com/NirvanaEx/android-browser" />
-    </LinearLayout>
+            android:layout_marginTop="1dp"
+            android:orientation="horizontal"
+            android:gravity="center_vertical">
 
-    <TextView
-        android:id="@+id/historyTime"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_marginStart="8dp"
-        android:textSize="12sp"
-        android:textColor="?attr/colorOnSurfaceVariant"
-        tools:text="14:03" />
+            <TextView
+                android:id="@+id/historyTime"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textSize="12sp"
+                android:textColor="?attr/colorPrimary"
+                tools:text="14:03" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="6dp"
+                android:layout_marginEnd="6dp"
+                android:textSize="12sp"
+                android:textColor="?attr/colorOnSurfaceVariant"
+                android:text="@string/dot_separator" />
+
+            <TextView
+                android:id="@+id/historyUrl"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:maxLines="1"
+                android:ellipsize="end"
+                android:textSize="12sp"
+                android:textColor="?attr/colorOnSurfaceVariant"
+                tools:text="github.com/NirvanaEx/android-browser" />
+        </LinearLayout>
+    </LinearLayout>
 
     <ImageButton
         android:id="@+id/btnDeleteEntry"

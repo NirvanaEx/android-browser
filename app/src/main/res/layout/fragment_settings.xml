@@ -1,14 +1,20 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  Settings bottom sheet. For now: search-engine picker + clear-search-history.
-  Grows from this single section as more settings land.
+  Settings. This is where everything that isn't a per-page action ended up when
+  the app menu was cut down: the AdBlock switch, both history stores, bookmarks
+  management, and the Google account.
+
+  Order is by how often it's touched, not by importance — Account first because
+  it's the one thing here that needs doing once and then never again, and
+  burying a one-time setup step is how it never gets done.
 
   IDs are referenced by SettingsBottomSheet.kt via ViewBinding.
 -->
 <androidx.core.widget.NestedScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
-    android:layout_height="wrap_content"
+    android:layout_height="match_parent"
     android:background="?attr/colorSurfaceContainer"
     android:fillViewport="false">
 
@@ -16,7 +22,7 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="vertical"
-        android:paddingBottom="20dp">
+        android:paddingBottom="28dp">
 
         <com.google.android.material.bottomsheet.BottomSheetDragHandleView
             android:layout_width="match_parent"
@@ -25,22 +31,147 @@
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginHorizontal="20dp"
-            android:layout_marginTop="4dp"
-            android:layout_marginBottom="20dp"
+            android:layout_marginStart="20dp"
+            android:layout_marginEnd="20dp"
+            android:layout_marginTop="2dp"
+            android:layout_marginBottom="18dp"
             android:textAppearance="?attr/textAppearanceTitleLarge"
             android:textColor="?attr/colorOnSurface"
             android:text="@string/settings_title" />
 
+        <!-- ============== Section: Google account ============== -->
+
+        <TextView
+            style="@style/Widget.UpgridBrowser.SectionLabel"
+            android:text="@string/settings_section_account" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:paddingStart="20dp"
+            android:paddingEnd="16dp"
+            android:paddingTop="4dp"
+            android:paddingBottom="4dp">
+
+            <!-- Never tint this: the Google mark is four coloured paths and a
+                 tint flattens all of them into one. -->
+            <ImageView
+                android:layout_width="28dp"
+                android:layout_height="28dp"
+                android:contentDescription="@null"
+                android:src="@drawable/ic_google" />
+
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:layout_marginStart="14dp"
+                android:orientation="vertical">
+
+                <TextView
+                    android:id="@+id/accountName"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:maxLines="1"
+                    android:ellipsize="end"
+                    android:textSize="14sp"
+                    android:textColor="?attr/colorOnSurface"
+                    tools:text="user@gmail.com" />
+
+                <TextView
+                    android:id="@+id/accountStatus"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="1dp"
+                    android:textSize="12sp"
+                    android:textColor="?attr/colorOnSurfaceVariant"
+                    tools:text="Bookmarks and history sync across your devices" />
+            </LinearLayout>
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:layout_marginStart="12dp"
+            android:layout_marginEnd="12dp"
+            android:layout_marginTop="4dp">
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnAccountAction"
+                style="@style/Widget.Material3.Button.TonalButton"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/settings_account_connect" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnSyncNow"
+                style="@style/Widget.Material3.Button.TextButton.Icon"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                app:icon="@drawable/ic_sync"
+                android:text="@string/settings_sync_now" />
+        </LinearLayout>
+
+        <TextView
+            android:id="@+id/syncStatus"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="20dp"
+            android:layout_marginEnd="20dp"
+            android:layout_marginTop="4dp"
+            android:textSize="12sp"
+            android:textColor="?attr/colorOnSurfaceVariant"
+            tools:text="Last sync: today at 14:03" />
+
+        <com.google.android.material.materialswitch.MaterialSwitch
+            android:id="@+id/switchAutoSync"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="20dp"
+            android:layout_marginEnd="20dp"
+            android:layout_marginTop="10dp"
+            android:minHeight="44dp"
+            android:textSize="14sp"
+            android:textColor="?attr/colorOnSurface"
+            android:text="@string/settings_auto_sync" />
+
+        <View style="@style/Widget.UpgridBrowser.SheetDivider" />
+
+        <!-- ============== Section: Content blocking ============== -->
+
+        <TextView
+            style="@style/Widget.UpgridBrowser.SectionLabel"
+            android:text="@string/settings_section_content" />
+
+        <com.google.android.material.materialswitch.MaterialSwitch
+            android:id="@+id/switchAdblock"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="20dp"
+            android:layout_marginEnd="20dp"
+            android:minHeight="44dp"
+            android:textSize="14sp"
+            android:textColor="?attr/colorOnSurface"
+            android:text="@string/settings_adblock" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="20dp"
+            android:layout_marginEnd="20dp"
+            android:textSize="12sp"
+            android:textColor="?attr/colorOnSurfaceVariant"
+            android:text="@string/settings_adblock_hint" />
+
+        <View style="@style/Widget.UpgridBrowser.SheetDivider" />
+
         <!-- ============== Section: Search engine ============== -->
 
         <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginHorizontal="20dp"
-            android:layout_marginBottom="6dp"
-            android:textAppearance="?attr/textAppearanceLabelLarge"
-            android:textColor="?attr/colorOnSurfaceVariant"
+            style="@style/Widget.UpgridBrowser.SectionLabel"
             android:text="@string/settings_section_search" />
 
         <RadioGroup
@@ -48,32 +179,23 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="vertical"
-            android:paddingHorizontal="12dp" />
+            android:paddingStart="12dp"
+            android:paddingEnd="12dp" />
 
-        <View
-            android:layout_width="match_parent"
-            android:layout_height="1dp"
-            android:layout_marginVertical="14dp"
-            android:layout_marginHorizontal="16dp"
-            android:background="?attr/colorOutlineVariant"
-            android:alpha="0.5" />
+        <View style="@style/Widget.UpgridBrowser.SheetDivider" />
 
         <!-- ============== Section: Video player ============== -->
 
         <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginHorizontal="20dp"
-            android:layout_marginBottom="2dp"
-            android:textAppearance="?attr/textAppearanceLabelLarge"
-            android:textColor="?attr/colorOnSurfaceVariant"
+            style="@style/Widget.UpgridBrowser.SectionLabel"
             android:text="@string/settings_section_player" />
 
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginHorizontal="20dp"
-            android:layout_marginBottom="6dp"
+            android:layout_marginStart="20dp"
+            android:layout_marginEnd="20dp"
+            android:layout_marginBottom="4dp"
             android:textSize="13sp"
             android:textColor="?attr/colorOnSurface"
             android:text="@string/settings_seek_step" />
@@ -83,70 +205,65 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="vertical"
-            android:paddingHorizontal="12dp" />
+            android:paddingStart="12dp"
+            android:paddingEnd="12dp" />
 
-        <View
-            android:layout_width="match_parent"
-            android:layout_height="1dp"
-            android:layout_marginVertical="14dp"
-            android:layout_marginHorizontal="16dp"
-            android:background="?attr/colorOutlineVariant"
-            android:alpha="0.5" />
+        <View style="@style/Widget.UpgridBrowser.SheetDivider" />
 
-        <!-- ============== Section: Search history ============== -->
+        <!-- ============== Section: Bookmarks ============== -->
 
         <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginHorizontal="20dp"
-            android:layout_marginBottom="6dp"
-            android:textAppearance="?attr/textAppearanceLabelLarge"
-            android:textColor="?attr/colorOnSurfaceVariant"
-            android:text="@string/settings_section_history" />
+            style="@style/Widget.UpgridBrowser.SectionLabel"
+            android:text="@string/settings_section_bookmarks" />
 
         <TextView
-            android:id="@+id/historyCount"
+            android:id="@+id/bookmarksCount"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginHorizontal="20dp"
-            android:layout_marginBottom="10dp"
+            android:layout_marginStart="20dp"
+            android:layout_marginEnd="20dp"
+            android:layout_marginBottom="8dp"
             android:textSize="13sp"
             android:textColor="?attr/colorOnSurface"
-            tools:text="3 saved searches" />
+            tools:text="12 bookmarks" />
 
-        <com.google.android.material.button.MaterialButton
-            android:id="@+id/btnClearHistory"
-            style="@style/Widget.Material3.Button.TextButton"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginHorizontal="12dp"
-            android:text="@string/settings_clear_history" />
-
-        <View
+        <LinearLayout
             android:layout_width="match_parent"
-            android:layout_height="1dp"
-            android:layout_marginVertical="14dp"
-            android:layout_marginHorizontal="16dp"
-            android:background="?attr/colorOutlineVariant"
-            android:alpha="0.5" />
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:layout_marginStart="12dp"
+            android:layout_marginEnd="12dp">
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnOpenBookmarks"
+                style="@style/Widget.Material3.Button.TonalButton"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/settings_open_bookmarks" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnClearBookmarks"
+                style="@style/Widget.Material3.Button.TextButton"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/settings_clear_bookmarks" />
+        </LinearLayout>
+
+        <View style="@style/Widget.UpgridBrowser.SheetDivider" />
 
         <!-- ============== Section: Browsing history ============== -->
 
         <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginHorizontal="20dp"
-            android:layout_marginBottom="6dp"
-            android:textAppearance="?attr/textAppearanceLabelLarge"
-            android:textColor="?attr/colorOnSurfaceVariant"
+            style="@style/Widget.UpgridBrowser.SectionLabel"
             android:text="@string/settings_section_browsing" />
 
         <TextView
             android:id="@+id/browsingCount"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginHorizontal="20dp"
-            android:layout_marginBottom="10dp"
+            android:layout_marginStart="20dp"
+            android:layout_marginEnd="20dp"
+            android:layout_marginBottom="8dp"
             android:textSize="13sp"
             android:textColor="?attr/colorOnSurface"
             tools:text="128 pages in history" />
@@ -155,7 +272,8 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="horizontal"
-            android:layout_marginHorizontal="12dp">
+            android:layout_marginStart="12dp"
+            android:layout_marginEnd="12dp">
 
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/btnOpenHistory"
@@ -172,23 +290,40 @@
                 android:text="@string/settings_clear_browsing" />
         </LinearLayout>
 
-        <View
-            android:layout_width="match_parent"
-            android:layout_height="1dp"
-            android:layout_marginVertical="14dp"
-            android:layout_marginHorizontal="16dp"
-            android:background="?attr/colorOutlineVariant"
-            android:alpha="0.5" />
+        <View style="@style/Widget.UpgridBrowser.SheetDivider" />
+
+        <!-- ============== Section: Search history ============== -->
+
+        <TextView
+            style="@style/Widget.UpgridBrowser.SectionLabel"
+            android:text="@string/settings_section_history" />
+
+        <TextView
+            android:id="@+id/historyCount"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="20dp"
+            android:layout_marginEnd="20dp"
+            android:layout_marginBottom="8dp"
+            android:textSize="13sp"
+            android:textColor="?attr/colorOnSurface"
+            tools:text="3 saved searches" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnClearHistory"
+            style="@style/Widget.Material3.Button.TextButton"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="12dp"
+            android:layout_marginEnd="12dp"
+            android:text="@string/settings_clear_history" />
+
+        <View style="@style/Widget.UpgridBrowser.SheetDivider" />
 
         <!-- ============== Section: About ============== -->
 
         <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginHorizontal="20dp"
-            android:layout_marginBottom="6dp"
-            android:textAppearance="?attr/textAppearanceLabelLarge"
-            android:textColor="?attr/colorOnSurfaceVariant"
+            style="@style/Widget.UpgridBrowser.SectionLabel"
             android:text="@string/settings_section_about" />
 
         <!-- Which build is actually on the phone — the first question worth
@@ -197,7 +332,8 @@
             android:id="@+id/versionLabel"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginHorizontal="20dp"
+            android:layout_marginStart="20dp"
+            android:layout_marginEnd="20dp"
             android:textSize="13sp"
             android:textColor="?attr/colorOnSurfaceVariant"
             tools:text="Version 0.2.0.12 · a1b2c3d" />

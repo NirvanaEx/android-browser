@@ -153,6 +153,58 @@ class HistoryStore(context: Context) {
             }
         }
 
+    /**
+     * Fold a remote history set into the local table — the pull half of Drive
+     * sync. Union by URL, never subtraction; see
+     * [com.upgrid.browser.bookmarks.BookmarkStore.mergeIn] for why.
+     *
+     * `visits` takes the MAX of the two counts rather than their sum. Summing
+     * looks more correct for a moment and is badly wrong over time: every sync
+     * re-reads the same remote number and adds it again, so a page visited
+     * twice climbs into the hundreds after a week of syncing. MAX converges.
+     */
+    suspend fun mergeIn(incoming: List<HistoryEntry>) = withContext(dbContext) {
+        val db = helper.writableDatabase
+        db.beginTransaction()
+        try {
+            incoming.forEach { entry ->
+                if (!isRecordable(entry.url)) return@forEach
+                val updated = db.compileStatement(
+                    """
+                    UPDATE $TABLE
+                       SET visited_at = MAX(visited_at, ?),
+                           visits = MAX(visits, ?),
+                           title = COALESCE(NULLIF(?, ''), title)
+                     WHERE url = ?
+                    """.trimIndent()
+                ).use { stmt ->
+                    stmt.bindLong(1, entry.visitedAt)
+                    stmt.bindLong(2, entry.visits.toLong())
+                    stmt.bindString(3, entry.title)
+                    stmt.bindString(4, entry.url)
+                    stmt.executeUpdateDelete()
+                }
+                if (updated == 0) {
+                    db.insertWithOnConflict(
+                        TABLE, null,
+                        ContentValues().apply {
+                            put("url", entry.url)
+                            put("title", entry.title)
+                            put("host", hostOf(entry.url))
+                            put("visited_at", entry.visitedAt)
+                            put("visits", entry.visits)
+                        },
+                        SQLiteDatabase.CONFLICT_IGNORE,
+                    )
+                }
+            }
+            trim(db)
+            db.setTransactionSuccessful()
+        } finally {
+            db.endTransaction()
+        }
+    }
+
     suspend fun delete(id: Long) = withContext(dbContext) {
         helper.writableDatabase.delete(TABLE, "_id = ?", arrayOf(id.toString()))
         Unit

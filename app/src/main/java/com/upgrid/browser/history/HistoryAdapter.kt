@@ -1,10 +1,12 @@
 package com.upgrid.browser.history
 
+import android.content.res.ColorStateList
 import android.view.LayoutInflater
 import android.view.ViewGroup
 import androidx.recyclerview.widget.RecyclerView
 import com.upgrid.browser.databinding.ItemHistoryHeaderBinding
 import com.upgrid.browser.databinding.ItemHistoryRowBinding
+import com.upgrid.browser.ui.HostTile
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
@@ -92,11 +94,17 @@ class HistoryAdapter(
             // Pages often have no <title> until late (or at all); the host
             // reads better than a raw URL as a fallback headline.
             historyTitle.text = entry.title.ifBlank { entry.host.ifBlank { entry.url } }
-            historyUrl.text = entry.url
+            // The scheme is the same on every row and eats the width the path
+            // needs, which is the part that actually distinguishes two entries
+            // from the same site.
+            historyUrl.text = entry.url.removePrefix("https://").removePrefix("http://")
             historyTime.text = Instant.ofEpochMilli(entry.visitedAt)
                 .atZone(ZoneId.systemDefault())
                 .format(TIME_FORMAT)
-            historyInitial.text = (entry.host.firstOrNull() ?: '?').uppercase()
+
+            historyInitial.text = HostTile.letterFor(entry.host)
+            historyInitial.backgroundTintList =
+                ColorStateList.valueOf(HostTile.colorFor(entry.host))
 
             root.setOnClickListener { onOpen(entry) }
             btnDeleteEntry.setOnClickListener { onDelete(entry) }
