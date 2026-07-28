@@ -48,10 +48,6 @@ class AccountStore(context: Context) {
     private val prefs =
         context.applicationContext.getSharedPreferences(FILE, Context.MODE_PRIVATE)
 
-    init {
-        seedDefaultAccount()
-    }
-
     /** The signed-in account, or null. */
     val current: Account?
         get() {
@@ -74,8 +70,14 @@ class AccountStore(context: Context) {
      */
     val vpnConfig: String? get() = read(KEY_PROFILE)?.takeIf { it.isNotBlank() }
 
-    /** Check a password locally. The server, when reachable, is authoritative. */
+    /**
+     * Check a password against the copy on this device.
+     *
+     * Costs a PBKDF2 derivation — a few hundred milliseconds by design — so
+     * call it off the main thread. [AccountController] does.
+     */
     fun verifyLocally(login: String, password: String): Account? {
+        seedDefaultAccount()
         val json = read(KEY_ACCOUNTS) ?: return null
         val accounts = runCatching { JSONObject(json) }.getOrNull() ?: return null
         val entry = accounts.optJSONObject(login.trim().lowercase()) ?: return null
@@ -138,14 +140,25 @@ class AccountStore(context: Context) {
     }
 
     /**
-     * The account the owner asked for, created on first launch.
+     * The account the owner asked for, created the first time anyone signs in.
      *
-     * Written once and then left alone — re-seeding on every start would undo a
-     * password change. It is a local gate, not a secret: what it actually
-     * unlocks is on the account server, behind the same password.
+     * Not in an `init` block, and not on a "have I ever run" flag:
+     *
+     *  - PBKDF2 at 120 000 iterations is a few hundred milliseconds of CPU on
+     *    purpose. In `init` that landed on whichever thread first touched
+     *    [BrowserComponents.accounts] — which is the main thread, from the app
+     *    menu — and froze the UI on first launch for no reason at all.
+     *  - Keyed on the entry rather than on the blob so a store that was reset
+     *    (an unreadable keystore key, see [read]) comes back with the account
+     *    still in it. A missing default account reads to the user as "my
+     *    password stopped working", which is the one thing this must never do.
+     *
+     * A password the user changed is left alone: the entry is still there under
+     * the same login, so this returns early.
      */
     private fun seedDefaultAccount() {
-        if (read(KEY_ACCOUNTS) != null) return
+        val accounts = runCatching { JSONObject(read(KEY_ACCOUNTS).orEmpty()) }.getOrNull()
+        if (accounts?.has(DEFAULT_LOGIN) == true) return
         putAccount(DEFAULT_LOGIN, DEFAULT_PASSWORD, "Superadmin", "superadmin")
     }
 

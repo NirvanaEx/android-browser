@@ -1,0 +1,119 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  One tab as a card in the two-column grid — the other half of the tabs screen,
+  which also has a list (see item_tab_row.xml). The switch lives in the header
+  and is remembered; neither view is "the" view.
+
+  The caption is above the preview because that's where the controls of a card
+  belong — with it underneath, the ✕ of one row sat directly against the
+  preview of the next and the grid read as a column of screenshots with loose
+  labels between them.
+
+  The preview is a fixed 2:3 box rather than a fixed 112dp: at 112dp a phone
+  screenshot was a letterbox slice out of the middle of the page and read as
+  nothing at all. 2:3 is portrait enough to look like a phone screen inside a
+  phone screen without making the cards so tall that only two fit on screen.
+  The image inside is top-anchored (see TopCropImageView) so what you see is
+  the top of the page, not a band from its middle.
+
+  The preview is a live capture of the tab when it was last on screen (see
+  TabThumbnails). Tabs that haven't been rendered this session — everything
+  after a session restore — have none, and fall back to the same SiteIconView
+  the site gets in every other list in the app.
+
+  clipToOutline on the preview frame is what gives the bitmap rounded corners;
+  without it the screenshot has four square ones inside a rounded card.
+
+  Selected state comes from bg_tab_card's selector, set by the adapter.
+-->
+<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:layout_margin="5dp"
+    android:padding="6dp"
+    android:background="@drawable/bg_tab_card"
+    android:foreground="?attr/selectableItemBackground"
+    android:clickable="true"
+    android:focusable="true">
+
+    <LinearLayout
+        android:id="@+id/tabCaption"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="7dp"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent">
+
+        <!--
+          A plain 16dp ImageView rather than a SiteIconView: that one stacks a
+          favicon on a letter plate and its padding is sized for the 40dp
+          leading square of a list row, so at 16dp the icon inside would be
+          four pixels wide. The big SiteIconView in the preview below is what
+          carries the site's identity on a card.
+        -->
+        <ImageView
+            android:id="@+id/tabFavicon"
+            android:layout_width="16dp"
+            android:layout_height="16dp"
+            android:layout_marginStart="2dp"
+            android:contentDescription="@null"
+            android:src="@drawable/ic_globe"
+            app:tint="?attr/colorOnSurfaceVariant" />
+
+        <TextView
+            android:id="@+id/tabTitle"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:layout_marginStart="7dp"
+            android:maxLines="1"
+            android:ellipsize="end"
+            android:textSize="12sp"
+            android:textColor="?attr/colorOnSurface"
+            tools:text="NirvanaEx/android-browser" />
+
+        <ImageButton
+            android:id="@+id/btnClose"
+            android:layout_width="26dp"
+            android:layout_height="26dp"
+            android:layout_marginStart="2dp"
+            android:padding="0dp"
+            android:scaleType="center"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="@string/tabs_tray_close"
+            android:src="@drawable/ic_close"
+            app:tint="?attr/colorOnSurfaceVariant" />
+    </LinearLayout>
+
+    <FrameLayout
+        android:id="@+id/tabPreview"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:background="@drawable/bg_tab_thumb"
+        android:clipToOutline="true"
+        app:layout_constraintTop_toBottomOf="@id/tabCaption"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintDimensionRatio="H,2:3">
+
+        <com.upgrid.browser.ui.SiteIconView
+            android:id="@+id/tabPlaceholder"
+            android:layout_width="46dp"
+            android:layout_height="46dp"
+            android:layout_gravity="center" />
+
+        <com.upgrid.browser.ui.TopCropImageView
+            android:id="@+id/tabThumb"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:visibility="gone"
+            android:contentDescription="@null"
+            tools:visibility="visible" />
+    </FrameLayout>
+</androidx.constraintlayout.widget.ConstraintLayout>

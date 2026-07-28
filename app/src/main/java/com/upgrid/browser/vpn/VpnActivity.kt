@@ -65,6 +65,11 @@ class VpnActivity : AppCompatActivity() {
         wireButtons()
         renderProvision()
 
+        // Nothing configured means the only useful things on this screen are
+        // behind the "advanced" fold — paste a config, generate a key. Opening
+        // it for them beats a collapsed screen with one dead button on it.
+        setAdvancedOpen(!settings.isConfigured)
+
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
                 controller.refresh()
@@ -84,6 +89,9 @@ class VpnActivity : AppCompatActivity() {
         super.onResume()
         load()
         renderProvision()
+        // Signing in can have filled the profile in while we were away, and the
+        // card renders off the settings as well as off the tunnel state.
+        renderState(controller.tunnelState.value)
     }
 
     /**
@@ -155,13 +163,7 @@ class VpnActivity : AppCompatActivity() {
         }
 
         // Everything below the divider is the part nobody should have to open.
-        btnVpnAdvanced.setOnClickListener {
-            val open = !vpnAdvanced.isVisible
-            vpnAdvanced.isVisible = open
-            btnVpnAdvanced.setIconResource(
-                if (open) R.drawable.ic_chevron_up else R.drawable.ic_chevron_down,
-            )
-        }
+        btnVpnAdvanced.setOnClickListener { setAdvancedOpen(!vpnAdvanced.isVisible) }
 
         vpnAutoConnect.setOnCheckedChangeListener { _, checked ->
             settings.autoConnect = checked
@@ -183,6 +185,7 @@ class VpnActivity : AppCompatActivity() {
         btnVpnSave.setOnClickListener {
             save()
             renderPublicKey()
+            renderState(controller.tunnelState.value)
             toast(getString(R.string.vpn_saved))
         }
 
@@ -210,6 +213,7 @@ class VpnActivity : AppCompatActivity() {
             return
         }
         load()
+        renderState(controller.tunnelState.value)
         toast(getString(R.string.vpn_paste_ok))
     }
 
@@ -236,6 +240,13 @@ class VpnActivity : AppCompatActivity() {
 
     // --- Connect -----------------------------------------------------------
 
+    private fun setAdvancedOpen(open: Boolean) {
+        binding.vpnAdvanced.isVisible = open
+        binding.btnVpnAdvanced.setIconResource(
+            if (open) R.drawable.ic_chevron_up else R.drawable.ic_chevron_down,
+        )
+    }
+
     private fun toggle() {
         save()
         if (controller.isUp) {
@@ -243,7 +254,10 @@ class VpnActivity : AppCompatActivity() {
             return
         }
         if (!settings.isConfigured) {
+            // Say what's missing and put it in front of them, rather than
+            // toasting at a screen that shows no way to fix it.
             toast(getString(R.string.vpn_incomplete))
+            setAdvancedOpen(true)
             return
         }
         // Returns an Intent the first time, and null once the user has agreed.
@@ -266,7 +280,15 @@ class VpnActivity : AppCompatActivity() {
 
     private fun renderState(state: Tunnel.State) {
         val up = state == Tunnel.State.UP
-        binding.vpnState.setText(if (up) R.string.vpn_state_on else R.string.vpn_state_off)
+        // "Disconnected" and "not set up" are different answers to the same
+        // question and only one of them means "press the button".
+        binding.vpnState.setText(
+            when {
+                up -> R.string.vpn_state_on
+                settings.isConfigured -> R.string.vpn_state_off
+                else -> R.string.vpn_not_configured
+            },
+        )
         binding.vpnStateIcon.setImageResource(
             if (up) R.drawable.ic_shield else R.drawable.ic_shield_off,
         )
@@ -283,6 +305,7 @@ class VpnActivity : AppCompatActivity() {
         )
 
         if (up) {
+            binding.vpnDetail.isVisible = true
             lifecycleScope.launch {
                 val transfer = controller.transfer()
                 binding.vpnDetail.text = if (transfer == null) {
@@ -296,9 +319,11 @@ class VpnActivity : AppCompatActivity() {
                 }
             }
         } else {
-            binding.vpnDetail.text = settings.endpoint.ifBlank {
-                getString(R.string.vpn_not_configured)
-            }
+            // The endpoint is the one line worth reading when it's down; with
+            // nothing set up there is no second line to write, and the card
+            // saying "not set up" twice reads as an error.
+            binding.vpnDetail.text = settings.endpoint
+            binding.vpnDetail.isVisible = settings.endpoint.isNotBlank()
         }
     }
 

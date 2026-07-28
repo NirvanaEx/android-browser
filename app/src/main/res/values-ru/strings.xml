@@ -178,6 +178,7 @@
     <string name="tabs_tray_close">Закрыть вкладку</string>
     <string name="tabs_tray_close_all">Закрыть все</string>
     <string name="tabs_tray_new">Новая</string>
+    <string name="tabs_tray_layout">Плитки или список</string>
     <string name="tabs_tray_empty_title">Здесь будут ваши вкладки.</string>
     <string name="tabs_tray_empty_subtitle">Вкладки нужны, чтобы держать несколько страниц открытыми сразу.</string>
 
@@ -339,8 +340,7 @@
     <string name="account_welcome">С возвращением, %1$s</string>
     <string name="account_wrong">Неверный логин или пароль.</string>
     <string name="account_needs_both">Введите логин и пароль.</string>
-    <string name="account_offline_cached">Сервер недоступен — вошли по данным телефона, профиль взят прошлый.</string>
-    <string name="account_offline_bare">Сервер недоступен — вошли по данным телефона, но профиль не получен.</string>
+    <string name="account_signed_in_no_profile">С возвращением, %1$s. Профиль VPN пока не выдан.</string>
     <string name="account_server_section">Сервер</string>
     <string name="account_server">Сервер аккаунтов</string>
     <string name="account_server_hint">Оставьте пустым, чтобы входить только по данным телефона</string>

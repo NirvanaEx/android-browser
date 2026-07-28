@@ -2,6 +2,8 @@ package com.upgrid.browser.account
 
 import com.upgrid.browser.BrowserComponents
 import com.upgrid.browser.prefs.BrowserPreferences
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 /**
  * Signing in, and what signing in sets up.
@@ -20,48 +22,61 @@ class AccountController(private val components: BrowserComponents) {
     private val api by lazy { AccountApi(components.httpClient) }
 
     sealed interface Result {
-        /** Signed in, and the server handed over a profile. */
-        data class Provisioned(val account: Account) : Result
-
-        /** Signed in against the device. [cached] = an earlier profile is in place. */
-        data class Offline(val account: Account, val cached: Boolean, val reason: String) : Result
+        /**
+         * Signed in — the only success, whichever half carried it.
+         *
+         * The distinction the user cares about is not "server or device", it is
+         * whether the VPN is now set up: [provisioned] is true when a profile is
+         * in place, freshly fetched or kept from an earlier sign-in.
+         */
+        data class Success(val account: Account, val provisioned: Boolean) : Result
 
         data object WrongCredentials : Result
     }
 
     val current: Account? get() = store.current
 
-    suspend fun signIn(login: String, password: String): Result {
+    /**
+     * The local half runs on IO: verifying a password is a PBKDF2 derivation,
+     * deliberately slow, and this is called from a click handler.
+     */
+    suspend fun signIn(login: String, password: String): Result = withContext(Dispatchers.IO) {
         val server = prefs.accountServer.trim()
+        if (server.isBlank()) return@withContext locally(login, password)
 
-        if (server.isNotBlank()) {
-            when (val outcome = api.signIn(server, login, password)) {
-                is AccountApi.Outcome.Success -> {
-                    val provision = outcome.provision
-                    store.signIn(provision.account, provision.vpnConfig)
-                    provision.vpnConfig?.let(::applyVpn)
-                    return Result.Provisioned(provision.account)
-                }
-                // The server is the authority when it answers: a rejected
-                // password must not then be waved through by the local copy.
-                AccountApi.Outcome.BadCredentials -> return Result.WrongCredentials
-                is AccountApi.Outcome.Unreachable -> {
-                    val account = store.verifyLocally(login, password)
-                        ?: return Result.WrongCredentials
-                    return offline(account, outcome.reason)
-                }
+        when (val outcome = api.signIn(server, login, password)) {
+            is AccountApi.Outcome.Success -> {
+                val provision = outcome.provision
+                store.signIn(provision.account, provision.vpnConfig)
+                provision.vpnConfig?.let(::applyVpn)
+                Result.Success(provision.account, provision.vpnConfig != null)
             }
+            // A server that answers 401 is not automatically right about this
+            // phone. It answers exactly the same way to a login it has never
+            // heard of, to a path that belongs to some other site, and to a
+            // half-finished setup — and the result of believing it would be a
+            // browser its owner cannot sign in to with the correct password.
+            // So a rejection sends us to the device's own copy, which is the
+            // thing the owner actually controls. The VPN profile is unaffected:
+            // it only ever comes from the server.
+            AccountApi.Outcome.BadCredentials -> locally(login, password)
+            is AccountApi.Outcome.Unreachable -> locally(login, password)
         }
-
-        val account = store.verifyLocally(login, password) ?: return Result.WrongCredentials
-        return offline(account, "")
     }
 
-    private fun offline(account: Account, reason: String): Result {
+    /**
+     * Sign in against the copy on this device.
+     *
+     * This is a first-class path, not a degraded one: the browser must not be
+     * locked out by a network, and the profile fetched last time stays in place
+     * and keeps working.
+     */
+    private fun locally(login: String, password: String): Result {
+        val account = store.verifyLocally(login, password) ?: return Result.WrongCredentials
         store.signIn(account, null)
         val cached = store.vpnConfig
         cached?.let(::applyVpn)
-        return Result.Offline(account, cached != null, reason)
+        return Result.Success(account, cached != null)
     }
 
     /**

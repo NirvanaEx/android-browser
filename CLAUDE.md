@@ -253,7 +253,7 @@ The AMO file id changes per release; the version in the filename is cosmetic.
 - **Tab close → empty state:** `MainActivity.wireBackPress` finishes the activity when the last tab is closed via the system back button. The tabs screen does *not* close itself when `tabs.isEmpty()` — it shows an empty illustration. `TabsActivity.finish()` is overridden to open a fresh HOME tab when the list is empty, because leaving with zero tabs would drop MainActivity onto an unrendered engine view. It's on `finish()` rather than in a click handler since three paths reach it: the back arrow, the back gesture, and picking a tab.
 - **App menu is a `PopupWindow`, not a BottomSheet.** [AppMenuPopup](app/src/main/java/com/upgrid/browser/menu/AppMenuPopup.kt) is a 236dp drop-down anchored to `btnTopMenu` via `showAsDropDown(anchor, 0, 0, Gravity.END)`. Construct a new instance per tap (cheap, avoids stale toggle state) — but note `PopupWindow` keeps its content view between shows, so anything derived from browser state is re-read in `showFrom`, not at construction.
 - **History, bookmarks and tabs are Activities, not sheets.** A sheet gave each list whatever height was left over and put a drag handle where a back arrow belongs. They dispatch to the shared `BrowserStore` and finish — no results to hand back, nothing for MainActivity to keep in sync. They share [view_page_header.xml](app/src/main/res/layout/view_page_header.xml) and [view_page_search.xml](app/src/main/res/layout/view_page_search.xml) via `<include>` so the three can't drift apart. Settings is still a sheet ([ExpandedBottomSheetFragment](app/src/main/java/com/upgrid/browser/ui/ExpandedBottomSheetFragment.kt)) — it's a flat list of switches with no navigation inside it.
-- **Tabs are a list, not a grid of previews.** Two preview cards per screen width means eight tabs before scrolling and a title cut to three words, and the preview is a photograph of a page you are one tap from opening for real. The list shows a dozen, keeps the titles, and reads exactly like history and bookmarks. `TabThumbnails` and `EngineView.captureThumbnail` are gone with it — that capture ran on every `onPause` and cost a full-window bitmap each time.
+- **Tabs are cards *or* a list, and the header switches them.** Both are right some of the time — cards are how you pick one tab out of six, a list is how you get through thirty without every title cut to three words — so this is a preference the user sets by using it (`BrowserPreferences.tabsGrid`, cards by default) rather than one buried in Settings. One RecyclerView either way; only the layout manager and the item view type change. Two consequences: swipe-to-close is list-only (`getSwipeDirs` returns 0 in the grid, where a sideways swipe reads as scrolling between columns), and the recycled view pool is cleared on every switch because it is keyed by view type and would otherwise sit on inflated cards while the list wants rows. `MainActivity.captureCurrentThumbnail` — a full-window bitmap on every `onPause` — is gated on the same preference, so choosing the list turns the cost off entirely.
 - **The bookmark star is a toolbar page action**, not a sixth button. Four 44dp targets plus the video button already leave the URL under half a phone screen. `Toolbar.ActionToggleButton` owns its own selected state and only repaints on `invalidateActions()`, so `renderBookmarkAction` drives it and memoises the last URL it looked up — the store observer fires many times per load and each miss is a database round-trip.
 - **One site looks the same everywhere.** [SiteIconView](app/src/main/java/com/upgrid/browser/ui/SiteIconView.kt) is the leading square in every list — history, bookmarks, tabs, downloads, saved passwords, site data, the omnibar drop-down. It stacks the real favicon **on top of** [HostTile](app/src/main/java/com/upgrid/browser/ui/HostTile.kt)'s letter rather than swapping it in: the letter is there the instant the row binds, the icon covers it when it arrives, and a site with no icon still looks like something. The hash behind the colour is computed by hand rather than via `String.hashCode()` so the colours can't reshuffle between releases. `BrowserIcons.loadIntoView` is not used — in a-c 150 it nulls the ImageView before its fetch starts, which flashes an empty square for every row on the first scroll. Icons whose `source` is `GENERATOR` are dropped: that is BrowserIcons drawing its own letter tile, and we already have one.
 
@@ -450,12 +450,33 @@ Sign-in has two halves and either can carry it
 ([AccountController](app/src/main/java/com/upgrid/browser/account/AccountController.kt)):
 
 - **The account server**, when it answers. HTTP basic auth over TLS against a
-  static JSON per account; the server is the authority when it replies, so a
-  password it rejects is not then waved through locally.
-- **The device**, when the server can't be reached. A PBKDF2-SHA256 hash stored
-  in the same keystore-backed AES-GCM box as saved website passwords, seeded on
-  first launch with the account the owner asked for. The browser is never locked
-  out by a network, and a profile fetched earlier stays in place.
+  static JSON per account. It is the authority on **profiles** — the VPN config
+  only ever comes from there — but not on whether you may open your own browser.
+- **The device**, otherwise. A PBKDF2-SHA256 hash stored in the same
+  keystore-backed AES-GCM box as saved website passwords, seeded with the
+  account the owner asked for. The browser is never locked out by a network, and
+  a profile fetched earlier stays in place.
+
+Two rules that took a round of "I can't sign in" to get right:
+
+- **A 401 is not a verdict.** The server answers exactly the same way to a login
+  it has never heard of, to a path that belongs to some other site on the same
+  host, and to a setup nobody has run yet — so a rejection falls through to the
+  device's copy instead of ending the attempt. Believing it meant a browser its
+  owner could not sign in to with the correct password.
+- **The local path is a success, not a warning.** Signing in closes the screen
+  and says "welcome" either way. It used to stay open with *"server unreachable
+  — signed in on this phone"* under the button, which is a true sentence about
+  our plumbing and, to the person reading it, indistinguishable from a refusal.
+  Whether a VPN profile arrived is a different question and it is answered on
+  the VPN screen, which has room to say what to do about it.
+
+Seeding is on the entry (`accounts.has(DEFAULT_LOGIN)`), not on a first-run flag,
+and it happens inside `verifyLocally` rather than in an `init` block: PBKDF2 at
+120 000 iterations is a few hundred milliseconds of CPU by design, and in `init`
+that landed on whichever thread first touched `components.accounts` — the main
+one, from the app menu. `AccountController.signIn` wraps the whole local half in
+`Dispatchers.IO` for the same reason.
 
 The server side is four things in one script
 ([tools/account-server-setup.sh](tools/account-server-setup.sh)): a WireGuard key

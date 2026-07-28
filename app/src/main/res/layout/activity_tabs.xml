@@ -1,12 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  Tabs, as a full screen list.
+  Tabs, as a full screen — cards with page previews or a plain list, switched
+  by the icon in the header and remembered between visits.
 
-  Was a two-column grid of preview cards, and before that a bottom sheet. The
-  grid showed eight tabs to a screen with their titles cut short, and the
-  previews were pictures of pages the user was one tap away from opening for
-  real. The list shows a dozen, keeps the titles, and looks like the history and
-  bookmarks screens — which is the point: three lists of pages, one layout.
+  Both are here because both are right some of the time: cards are how you pick
+  one tab out of six, and a list is how you get through thirty without cutting
+  every title to three words. The RecyclerView is the same one either way; only
+  its layout manager and its item view type change (see TabsActivity).
 
   "New tab" is an icon in the header (see view_page_header). It used to be a
   floating button at the bottom, which is the far corner of a screen whose every

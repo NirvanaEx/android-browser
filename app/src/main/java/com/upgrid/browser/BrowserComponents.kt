@@ -10,6 +10,7 @@ import com.upgrid.browser.fullscreen.VideoPlayerBridge
 import com.upgrid.browser.history.HistoryStore
 import com.upgrid.browser.logins.LoginStore
 import com.upgrid.browser.search.SearchHistory
+import com.upgrid.browser.tabs.TabThumbnails
 import com.upgrid.browser.vpn.VpnController
 import com.upgrid.browser.vpn.VpnSettings
 import mozilla.components.browser.engine.gecko.GeckoEngine
@@ -118,6 +119,12 @@ class BrowserComponents(val context: Context) {
 
     /** Saved logins, encrypted with a key that never leaves the device. */
     val logins: LoginStore by lazy { LoginStore(context) }
+
+    /**
+     * Page previews for the tabs grid. Memory only, and only filled while the
+     * grid is the chosen view — see [com.upgrid.browser.tabs.TabThumbnails].
+     */
+    val tabThumbnails: TabThumbnails by lazy { TabThumbnails() }
 
     /**
      * The browser's own account — who is signed in, and what that sign-in

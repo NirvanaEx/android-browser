@@ -10,6 +10,7 @@ import androidx.core.view.isVisible
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
+import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.ItemTouchHelper
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
@@ -17,6 +18,7 @@ import com.upgrid.browser.BrowserApplication
 import com.upgrid.browser.MainActivity
 import com.upgrid.browser.R
 import com.upgrid.browser.databinding.ActivityTabsBinding
+import com.upgrid.browser.prefs.BrowserPreferences
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
@@ -26,7 +28,13 @@ import mozilla.components.browser.state.state.TabSessionState
 import mozilla.components.lib.state.ext.flow
 
 /**
- * The tab switcher: a list of open tabs.
+ * The tab switcher, in either of two views.
+ *
+ * Cards with page previews and a plain list are both right answers and which
+ * one is right depends on how many tabs you keep: previews are how you find one
+ * of six, a list is how you get through thirty. The icon in the header switches
+ * them and the choice is remembered, so this is a preference the user sets by
+ * using it rather than one buried in Settings.
  *
  * Selecting or closing tabs only dispatches to the shared
  * [mozilla.components.browser.state.store.BrowserStore]; MainActivity renders
@@ -37,6 +45,7 @@ class TabsActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityTabsBinding
     private val components get() = (application as BrowserApplication).components
+    private val preferences by lazy { BrowserPreferences(this) }
     private lateinit var adapter: TabsAdapter
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -56,6 +65,12 @@ class TabsActivity : AppCompatActivity() {
             finish()
         }
 
+        binding.header.btnHeaderToggle.isVisible = true
+        binding.header.btnHeaderToggle.setOnClickListener {
+            preferences.tabsGrid = !preferences.tabsGrid
+            applyLayout()
+        }
+
         binding.header.btnHeaderAction.setText(R.string.tabs_tray_close_all)
         binding.header.btnHeaderAction.setOnClickListener {
             components.tabsUseCases.removeAllTabs()
@@ -64,18 +79,22 @@ class TabsActivity : AppCompatActivity() {
         adapter = TabsAdapter(
             icons = components.icons,
             scope = lifecycleScope,
+            thumbnails = components.tabThumbnails,
             onClick = { tab ->
                 components.tabsUseCases.selectTab(tab.id)
                 finish()
             },
-            onClose = { tab -> components.tabsUseCases.removeTab(tab.id) },
+            onClose = { tab ->
+                components.tabThumbnails.remove(tab.id)
+                components.tabsUseCases.removeTab(tab.id)
+            },
         )
-        binding.tabsList.layoutManager = LinearLayoutManager(this)
         binding.tabsList.adapter = adapter
-        // Rows are a fixed height regardless of position, so RecyclerView can
-        // skip re-measuring the whole list on every insert and remove — closing
-        // several tabs in a row is visibly janky otherwise.
+        // Rows and cards are each a fixed size regardless of position, so
+        // RecyclerView can skip re-measuring the whole list on every insert and
+        // remove — closing several tabs in a row is visibly janky otherwise.
         binding.tabsList.setHasFixedSize(true)
+        applyLayout()
         attachSwipeToClose()
 
         observeTabs()
@@ -83,17 +102,47 @@ class TabsActivity : AppCompatActivity() {
     }
 
     /**
+     * Put the chosen view on screen.
+     *
+     * The recycled view pool is cleared because it holds inflated cards when
+     * the list is about to want rows: the pool is keyed by view type, so stale
+     * entries would simply sit there holding bitmaps until the screen closes.
+     */
+    private fun applyLayout() {
+        val grid = preferences.tabsGrid
+        adapter.grid = grid
+        binding.tabsList.layoutManager = if (grid) {
+            GridLayoutManager(this, COLUMNS)
+        } else {
+            LinearLayoutManager(this)
+        }
+        binding.tabsList.recycledViewPool.clear()
+        adapter.notifyDataSetChanged()
+        // The icon shows what the other view is — a switch, not a status.
+        binding.header.btnHeaderToggle.setImageResource(
+            if (grid) R.drawable.ic_list else R.drawable.ic_grid,
+        )
+    }
+
+    /**
      * Swipe a row aside to close that tab.
      *
-     * The ✕ is still there and is still the discoverable way; this is the one
-     * every other tab list has taught, and closing five tabs with five swipes
-     * beats hitting a 40dp target five times.
+     * List only. The ✕ is still there and is still the discoverable way; this
+     * is the one every other tab list has taught, and closing five tabs with
+     * five swipes beats hitting a 40dp target five times. In the grid a
+     * sideways swipe is the gesture for scrolling between columns as far as the
+     * hand is concerned, so it stays off.
      */
     private fun attachSwipeToClose() {
         val callback = object : ItemTouchHelper.SimpleCallback(
             0,
             ItemTouchHelper.START or ItemTouchHelper.END,
         ) {
+            override fun getSwipeDirs(
+                recyclerView: RecyclerView,
+                viewHolder: RecyclerView.ViewHolder,
+            ): Int = if (preferences.tabsGrid) 0 else super.getSwipeDirs(recyclerView, viewHolder)
+
             override fun onMove(
                 recyclerView: RecyclerView,
                 viewHolder: RecyclerView.ViewHolder,
@@ -102,6 +151,7 @@ class TabsActivity : AppCompatActivity() {
 
             override fun onSwiped(viewHolder: RecyclerView.ViewHolder, direction: Int) {
                 adapter.tabAt(viewHolder.bindingAdapterPosition)?.let { tab ->
+                    components.tabThumbnails.remove(tab.id)
                     components.tabsUseCases.removeTab(tab.id)
                 }
             }
@@ -123,8 +173,11 @@ class TabsActivity : AppCompatActivity() {
                             getString(R.string.tabs_tray_title_count, tabs.size)
                         }
                         binding.header.btnHeaderAction.isVisible = tabs.isNotEmpty()
+                        binding.header.btnHeaderToggle.isVisible = tabs.isNotEmpty()
                         binding.tabsList.isVisible = tabs.isNotEmpty()
                         binding.emptyState.isVisible = tabs.isEmpty()
+                        // Previews for tabs that no longer exist are just memory.
+                        components.tabThumbnails.retainOnly(tabs.map { it.id }.toSet())
                     }
             }
         }
@@ -150,6 +203,9 @@ class TabsActivity : AppCompatActivity() {
     }
 
     companion object {
+        /** Two columns on a phone: three makes the title one word wide. */
+        private const val COLUMNS = 2
+
         fun intent(context: Context): Intent = Intent(context, TabsActivity::class.java)
     }
 }
@@ -157,12 +213,16 @@ class TabsActivity : AppCompatActivity() {
 private class TabsAdapter(
     private val icons: BrowserIcons,
     private val scope: CoroutineScope,
+    private val thumbnails: TabThumbnails,
     private val onClick: (TabSessionState) -> Unit,
     private val onClose: (TabSessionState) -> Unit,
 ) : RecyclerView.Adapter<TabViewHolder>() {
 
     private var tabs: List<TabSessionState> = emptyList()
     private var selectedId: String? = null
+
+    /** Which of the two views to inflate. Set by the screen, never guessed. */
+    var grid: Boolean = true
 
     fun submit(tabs: List<TabSessionState>, selectedId: String?) {
         this.tabs = tabs
@@ -173,8 +233,10 @@ private class TabsAdapter(
     /** The tab at a list position, or null if the list moved under a gesture. */
     fun tabAt(position: Int): TabSessionState? = tabs.getOrNull(position)
 
+    override fun getItemViewType(position: Int): Int = if (grid) TYPE_CARD else TYPE_ROW
+
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): TabViewHolder =
-        TabViewHolder.inflate(parent)
+        if (viewType == TYPE_CARD) TabViewHolder.card(parent) else TabViewHolder.row(parent)
 
     override fun getItemCount(): Int = tabs.size
 
@@ -185,8 +247,14 @@ private class TabsAdapter(
             isSelected = tab.id == selectedId,
             icons = icons,
             scope = scope,
+            thumbnails = thumbnails,
             onClick = onClick,
             onClose = onClose,
         )
+    }
+
+    private companion object {
+        const val TYPE_ROW = 0
+        const val TYPE_CARD = 1
     }
 }

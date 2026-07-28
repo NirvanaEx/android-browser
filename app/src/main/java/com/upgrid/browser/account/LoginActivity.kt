@@ -83,21 +83,20 @@ class LoginActivity : AppCompatActivity() {
             binding.btnSignIn.isEnabled = true
 
             when (result) {
-                is AccountController.Result.Provisioned -> {
-                    Toast.makeText(
-                        this@LoginActivity,
-                        getString(R.string.account_welcome, result.account.name),
-                        Toast.LENGTH_SHORT,
-                    ).show()
-                    finish()
-                }
-                is AccountController.Result.Offline -> {
-                    binding.loginStatus.text = if (result.cached) {
-                        getString(R.string.account_offline_cached)
+                // Signing in closes the screen, always. It used to stay open
+                // with "server unreachable" written under the button when the
+                // device carried the sign-in — which is a true sentence about
+                // our plumbing and, to the person reading it, indistinguishable
+                // from having been refused. Where the profile is or isn't
+                // belongs on the VPN screen, which says so in its own words.
+                is AccountController.Result.Success -> {
+                    val message = if (result.provisioned) {
+                        getString(R.string.account_welcome, result.account.name)
                     } else {
-                        getString(R.string.account_offline_bare)
+                        getString(R.string.account_signed_in_no_profile, result.account.name)
                     }
-                    binding.btnSignIn.setText(R.string.account_sign_in_again)
+                    Toast.makeText(this@LoginActivity, message, Toast.LENGTH_SHORT).show()
+                    finish()
                 }
                 AccountController.Result.WrongCredentials ->
                     binding.loginStatus.setText(R.string.account_wrong)
