@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Русские количественные формы. Android выбирает ветку сам по правилам CLDR:
+    one  — 1, 21, 31…  (кроме 11)
+    few  — 2–4, 22–24… (кроме 12–14)
+    many — 0, 5–20, 25–30…
+  Ветка "other" в русском срабатывает только для дробных чисел, но требуется
+  как фолбэк — без неё сборка падает.
+-->
+<resources>
+    <plurals name="settings_history_count">
+        <item quantity="one">%d сохранённый запрос</item>
+        <item quantity="few">%d сохранённых запроса</item>
+        <item quantity="many">%d сохранённых запросов</item>
+        <item quantity="other">%d сохранённых запроса</item>
+    </plurals>
+
+    <plurals name="settings_pages_count">
+        <item quantity="one">%d страница в истории</item>
+        <item quantity="few">%d страницы в истории</item>
+        <item quantity="many">%d страниц в истории</item>
+        <item quantity="other">%d страницы в истории</item>
+    </plurals>
+
+    <plurals name="settings_bookmarks_count">
+        <item quantity="one">%d закладка</item>
+        <item quantity="few">%d закладки</item>
+        <item quantity="many">%d закладок</item>
+        <item quantity="other">%d закладки</item>
+    </plurals>
+</resources>

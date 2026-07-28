@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  One saved page. Same anatomy as a history row on purpose — the two sheets sit
+  next to each other in the menu and a user shouldn't have to re-learn the list.
+  IDs are bound in BookmarkAdapter.
+-->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="horizontal"
+    android:gravity="center_vertical"
+    android:background="?attr/selectableItemBackground"
+    android:clickable="true"
+    android:focusable="true"
+    android:paddingStart="12dp"
+    android:paddingEnd="4dp"
+    android:paddingTop="10dp"
+    android:paddingBottom="10dp">
+
+    <TextView
+        android:id="@+id/bookmarkInitial"
+        style="@style/Widget.UpgridBrowser.HostTile"
+        tools:text="G" />
+
+    <LinearLayout
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:layout_marginStart="14dp"
+        android:orientation="vertical">
+
+        <TextView
+            android:id="@+id/bookmarkTitle"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:maxLines="1"
+            android:ellipsize="end"
+            android:textSize="14sp"
+            android:textColor="?attr/colorOnSurface"
+            tools:text="NirvanaEx/android-browser" />
+
+        <TextView
+            android:id="@+id/bookmarkUrl"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="1dp"
+            android:maxLines="1"
+            android:ellipsize="end"
+            android:textSize="12sp"
+            android:textColor="?attr/colorOnSurfaceVariant"
+            tools:text="github.com/NirvanaEx/android-browser" />
+    </LinearLayout>
+
+    <ImageButton
+        android:id="@+id/btnDeleteBookmark"
+        android:layout_width="40dp"
+        android:layout_height="40dp"
+        android:layout_marginStart="4dp"
+        android:padding="0dp"
+        android:scaleType="center"
+        android:background="?attr/selectableItemBackgroundBorderless"
+        android:contentDescription="@string/bookmark_delete"
+        android:src="@drawable/ic_delete"
+        app:tint="?attr/colorOnSurfaceVariant" />
+</LinearLayout>

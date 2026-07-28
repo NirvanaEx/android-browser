@@ -8,11 +8,11 @@ import androidx.core.view.isVisible
 import androidx.core.widget.doAfterTextChanged
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
-import com.google.android.material.bottomsheet.BottomSheetDialogFragment
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.upgrid.browser.BrowserApplication
 import com.upgrid.browser.R
 import com.upgrid.browser.databinding.FragmentHistoryBinding
+import com.upgrid.browser.ui.ExpandedBottomSheetFragment
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -26,7 +26,7 @@ import kotlinx.coroutines.launch
  * Reads go through [HistoryStore]'s suspending API on the fragment's own
  * lifecycle scope, so a slow query can't block the sheet's entry animation.
  */
-class HistoryFragment : BottomSheetDialogFragment() {
+class HistoryFragment : ExpandedBottomSheetFragment() {
 
     private var _binding: FragmentHistoryBinding? = null
     private val binding get() = _binding!!

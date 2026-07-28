@@ -1,14 +1,34 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Day separator in the history list: "Today" / "Yesterday" / "3 June 2026". -->
-<TextView xmlns:android="http://schemas.android.com/apk/res/android"
+<!--
+  Day separator in the history list: "Today" / "Yesterday" / "3 June 2026".
+
+  A tonal chip rather than a bare coloured line of text. Scrolling a long
+  history is a search for a day, and a chip is a landmark the eye catches
+  without reading; plain text at the same size disappears into the rows.
+
+  The wrapper exists only so the chip can be wrap_content while still getting a
+  full-width row from the RecyclerView.
+-->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools"
-    android:id="@+id/headerLabel"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:paddingStart="12dp"
     android:paddingEnd="12dp"
     android:paddingTop="16dp"
-    android:paddingBottom="6dp"
-    android:textAppearance="?attr/textAppearanceLabelLarge"
-    android:textColor="?attr/colorPrimary"
-    tools:text="Today" />
+    android:paddingBottom="6dp">
+
+    <TextView
+        android:id="@+id/headerLabel"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:paddingStart="12dp"
+        android:paddingEnd="12dp"
+        android:paddingTop="4dp"
+        android:paddingBottom="4dp"
+        android:background="@drawable/bg_day_chip"
+        android:textSize="12sp"
+        android:textStyle="bold"
+        android:textColor="?attr/colorOnSecondaryContainer"
+        tools:text="Today" />
+</FrameLayout>

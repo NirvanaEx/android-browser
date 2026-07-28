@@ -1,16 +1,22 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  AppMenuPopup contents. Banana-style narrow column anchored to the menu
-  button: groups of rows separated by hairline dividers, each row is icon +
-  label + optional state pill / "Soon" tag.
+  App menu. A 236dp drop-down anchored to the ⋮ button (width is set in
+  AppMenuPopup.kt; height wraps).
 
-  Width is set in code (300dp via PopupWindow ctor); height wraps. The outer
-  ScrollView keeps the menu usable on shorter devices.
+  It used to be 300dp of 48dp rows including two that only produced a "coming
+  soon" toast. Now: a strip of four one-tap page actions on top, then three
+  short groups. Anything the user sets once and forgets — ad-blocking defaults,
+  the search engine, data management — lives in Settings, not here.
 
-  IDs are referenced by AppMenuPopup.kt via ViewBinding.
+  The quick strip is also where the bottom bar's navigation went. Back is the
+  system gesture *and* a button here, because a page that hijacks the gesture
+  (galleries, maps) otherwise leaves no way out.
+
+  Row sizing comes from styles.xml; see the note there.
+  IDs are bound in AppMenuPopup.kt via ViewBinding.
 -->
 <androidx.core.widget.NestedScrollView xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:fillViewport="false">
@@ -19,375 +25,173 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="vertical"
-        android:paddingVertical="6dp">
+        android:paddingTop="4dp"
+        android:paddingBottom="4dp">
 
-        <!-- ============== Group 1: tabs ============== -->
+        <!-- ============== Quick actions ============== -->
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:paddingStart="4dp"
+            android:paddingEnd="4dp"
+            android:paddingBottom="2dp">
+
+            <ImageButton
+                android:id="@+id/quickBack"
+                style="@style/Widget.UpgridBrowser.MenuQuickAction"
+                android:contentDescription="@string/nav_back"
+                android:src="@drawable/ic_arrow_back" />
+
+            <ImageButton
+                android:id="@+id/quickForward"
+                style="@style/Widget.UpgridBrowser.MenuQuickAction"
+                android:contentDescription="@string/nav_forward"
+                android:src="@drawable/ic_arrow_forward" />
+
+            <ImageButton
+                android:id="@+id/quickReload"
+                style="@style/Widget.UpgridBrowser.MenuQuickAction"
+                android:contentDescription="@string/menu_refresh"
+                android:src="@drawable/ic_refresh" />
+
+            <!-- Star: saves / unsaves the page open right now. Icon flips
+                 between outline and filled; tint goes primary when saved. -->
+            <ImageButton
+                android:id="@+id/quickBookmark"
+                style="@style/Widget.UpgridBrowser.MenuQuickAction"
+                android:contentDescription="@string/menu_bookmark_add"
+                android:src="@drawable/ic_bookmark" />
+        </LinearLayout>
+
+        <View style="@style/Widget.UpgridBrowser.MenuDivider" />
+
+        <!-- ============== Group 1: places ============== -->
 
         <LinearLayout
             android:id="@+id/rowNewTab"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:minHeight="48dp"
-            android:orientation="horizontal"
-            android:gravity="center_vertical"
-            android:paddingHorizontal="16dp"
-            android:background="?attr/selectableItemBackground"
-            android:clickable="true"
-            android:focusable="true">
+            style="@style/Widget.UpgridBrowser.MenuRow">
             <ImageView
-                android:layout_width="22dp"
-                android:layout_height="22dp"
+                style="@style/Widget.UpgridBrowser.MenuRowIcon"
                 android:contentDescription="@null"
-                android:src="@drawable/ic_add"
-                android:tint="?attr/colorOnSurface" />
+                android:src="@drawable/ic_add" />
             <TextView
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:layout_marginStart="16dp"
-                android:textSize="14sp"
-                android:textColor="?attr/colorOnSurface"
+                style="@style/Widget.UpgridBrowser.MenuRowLabel"
                 android:text="@string/menu_new_tab" />
         </LinearLayout>
 
-        <View
-            android:layout_width="match_parent"
-            android:layout_height="1dp"
-            android:layout_marginVertical="4dp"
-            android:layout_marginHorizontal="14dp"
-            android:background="?attr/colorOutlineVariant"
-            android:alpha="0.5" />
+        <LinearLayout
+            android:id="@+id/rowBookmarks"
+            style="@style/Widget.UpgridBrowser.MenuRow">
+            <ImageView
+                style="@style/Widget.UpgridBrowser.MenuRowIcon"
+                android:contentDescription="@null"
+                android:src="@drawable/ic_bookmark" />
+            <TextView
+                style="@style/Widget.UpgridBrowser.MenuRowLabel"
+                android:text="@string/menu_bookmarks" />
+        </LinearLayout>
 
-        <!-- ============== Group 2: page actions ============== -->
+        <LinearLayout
+            android:id="@+id/rowHistory"
+            style="@style/Widget.UpgridBrowser.MenuRow">
+            <ImageView
+                style="@style/Widget.UpgridBrowser.MenuRowIcon"
+                android:contentDescription="@null"
+                android:src="@drawable/ic_history" />
+            <TextView
+                style="@style/Widget.UpgridBrowser.MenuRowLabel"
+                android:text="@string/menu_history" />
+        </LinearLayout>
+
+        <View style="@style/Widget.UpgridBrowser.MenuDivider" />
+
+        <!-- ============== Group 2: this page ============== -->
 
         <LinearLayout
             android:id="@+id/rowShare"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:minHeight="48dp"
-            android:orientation="horizontal"
-            android:gravity="center_vertical"
-            android:paddingHorizontal="16dp"
-            android:background="?attr/selectableItemBackground"
-            android:clickable="true"
-            android:focusable="true">
+            style="@style/Widget.UpgridBrowser.MenuRow">
             <ImageView
-                android:layout_width="22dp"
-                android:layout_height="22dp"
+                style="@style/Widget.UpgridBrowser.MenuRowIcon"
                 android:contentDescription="@null"
-                android:src="@drawable/ic_share"
-                android:tint="?attr/colorOnSurface" />
+                android:src="@drawable/ic_share" />
             <TextView
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:layout_marginStart="16dp"
-                android:textSize="14sp"
-                android:textColor="?attr/colorOnSurface"
+                style="@style/Widget.UpgridBrowser.MenuRowLabel"
                 android:text="@string/menu_share" />
         </LinearLayout>
 
         <LinearLayout
             android:id="@+id/rowFindInPage"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:minHeight="48dp"
-            android:orientation="horizontal"
-            android:gravity="center_vertical"
-            android:paddingHorizontal="16dp"
-            android:background="?attr/selectableItemBackground"
-            android:clickable="true"
-            android:focusable="true">
+            style="@style/Widget.UpgridBrowser.MenuRow">
             <ImageView
-                android:layout_width="22dp"
-                android:layout_height="22dp"
+                style="@style/Widget.UpgridBrowser.MenuRowIcon"
                 android:contentDescription="@null"
-                android:src="@drawable/ic_find"
-                android:tint="?attr/colorOnSurface" />
+                android:src="@drawable/ic_find" />
             <TextView
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:layout_marginStart="16dp"
-                android:textSize="14sp"
-                android:textColor="?attr/colorOnSurface"
+                style="@style/Widget.UpgridBrowser.MenuRowLabel"
                 android:text="@string/menu_find_in_page" />
         </LinearLayout>
 
-        <LinearLayout
-            android:id="@+id/rowRefresh"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:minHeight="48dp"
-            android:orientation="horizontal"
-            android:gravity="center_vertical"
-            android:paddingHorizontal="16dp"
-            android:background="?attr/selectableItemBackground"
-            android:clickable="true"
-            android:focusable="true">
-            <ImageView
-                android:layout_width="22dp"
-                android:layout_height="22dp"
-                android:contentDescription="@null"
-                android:src="@drawable/ic_refresh"
-                android:tint="?attr/colorOnSurface" />
-            <TextView
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:layout_marginStart="16dp"
-                android:textSize="14sp"
-                android:textColor="?attr/colorOnSurface"
-                android:text="@string/menu_refresh" />
-        </LinearLayout>
-
+        <!-- Desktop site is per-tab, so it stays here rather than moving to
+             Settings with the other toggles. -->
         <LinearLayout
             android:id="@+id/rowDesktopSite"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:minHeight="48dp"
-            android:orientation="horizontal"
-            android:gravity="center_vertical"
-            android:paddingHorizontal="16dp"
-            android:background="?attr/selectableItemBackground"
-            android:clickable="true"
-            android:focusable="true">
+            style="@style/Widget.UpgridBrowser.MenuRow">
             <ImageView
-                android:layout_width="22dp"
-                android:layout_height="22dp"
+                style="@style/Widget.UpgridBrowser.MenuRowIcon"
                 android:contentDescription="@null"
-                android:src="@drawable/ic_desktop"
-                android:tint="?attr/colorOnSurface" />
+                android:src="@drawable/ic_desktop" />
             <TextView
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:layout_marginStart="16dp"
-                android:textSize="14sp"
-                android:textColor="?attr/colorOnSurface"
+                style="@style/Widget.UpgridBrowser.MenuRowLabel"
                 android:text="@string/menu_desktop_site" />
             <TextView
                 android:id="@+id/desktopSiteState"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:paddingHorizontal="10dp"
-                android:paddingVertical="3dp"
-                android:textSize="11sp"
-                android:textStyle="bold"
-                android:background="@drawable/bg_quick_action"
-                android:textColor="?attr/colorOnSecondaryContainer"
+                style="@style/Widget.UpgridBrowser.MenuPill"
                 android:text="@string/menu_adblock_state_off" />
         </LinearLayout>
 
+        <!-- AdBlock is also in Settings. Duplicated on purpose: it's the one
+             switch this browser exists for, and burying the only copy three
+             taps deep would be a strange thing to do to it. -->
         <LinearLayout
             android:id="@+id/rowAdblock"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:minHeight="48dp"
-            android:orientation="horizontal"
-            android:gravity="center_vertical"
-            android:paddingHorizontal="16dp"
-            android:background="?attr/selectableItemBackground"
-            android:clickable="true"
-            android:focusable="true">
+            style="@style/Widget.UpgridBrowser.MenuRow">
             <ImageView
                 android:id="@+id/adblockIcon"
-                android:layout_width="22dp"
-                android:layout_height="22dp"
+                style="@style/Widget.UpgridBrowser.MenuRowIcon"
                 android:contentDescription="@null"
                 android:src="@drawable/ic_shield"
                 android:tint="?attr/colorPrimary" />
             <TextView
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:layout_marginStart="16dp"
-                android:textSize="14sp"
-                android:textColor="?attr/colorOnSurface"
+                style="@style/Widget.UpgridBrowser.MenuRowLabel"
                 android:text="@string/menu_adblock" />
             <TextView
                 android:id="@+id/adblockState"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:paddingHorizontal="10dp"
-                android:paddingVertical="3dp"
-                android:textSize="11sp"
-                android:textStyle="bold"
-                android:background="@drawable/bg_quick_action"
-                android:textColor="?attr/colorOnSecondaryContainer"
+                style="@style/Widget.UpgridBrowser.MenuPill"
                 android:text="@string/menu_adblock_state_on" />
         </LinearLayout>
 
-        <LinearLayout
-            android:id="@+id/rowCloseTab"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:minHeight="48dp"
-            android:orientation="horizontal"
-            android:gravity="center_vertical"
-            android:paddingHorizontal="16dp"
-            android:background="?attr/selectableItemBackground"
-            android:clickable="true"
-            android:focusable="true">
-            <ImageView
-                android:layout_width="22dp"
-                android:layout_height="22dp"
-                android:contentDescription="@null"
-                android:src="@drawable/ic_close"
-                android:tint="?attr/colorOnSurface" />
-            <TextView
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:layout_marginStart="16dp"
-                android:textSize="14sp"
-                android:textColor="?attr/colorOnSurface"
-                android:text="@string/menu_close_tab" />
-        </LinearLayout>
+        <View style="@style/Widget.UpgridBrowser.MenuDivider" />
 
-        <View
-            android:layout_width="match_parent"
-            android:layout_height="1dp"
-            android:layout_marginVertical="4dp"
-            android:layout_marginHorizontal="14dp"
-            android:background="?attr/colorOutlineVariant"
-            android:alpha="0.5" />
-
-        <!-- ============== Group 3: Phase-3 stubs ============== -->
-
-        <LinearLayout
-            android:id="@+id/rowBookmarks"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:minHeight="48dp"
-            android:orientation="horizontal"
-            android:gravity="center_vertical"
-            android:paddingHorizontal="16dp"
-            android:background="?attr/selectableItemBackground"
-            android:clickable="true"
-            android:focusable="true">
-            <ImageView
-                android:layout_width="22dp"
-                android:layout_height="22dp"
-                android:contentDescription="@null"
-                android:src="@drawable/ic_bookmark"
-                android:tint="?attr/colorOnSurface" />
-            <TextView
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:layout_marginStart="16dp"
-                android:textSize="14sp"
-                android:textColor="?attr/colorOnSurface"
-                android:text="@string/menu_bookmarks" />
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:paddingHorizontal="8dp"
-                android:paddingVertical="2dp"
-                android:textSize="10sp"
-                android:textColor="?attr/colorOnSurfaceVariant"
-                android:text="@string/menu_pill_soon" />
-        </LinearLayout>
-
-        <LinearLayout
-            android:id="@+id/rowHistory"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:minHeight="48dp"
-            android:orientation="horizontal"
-            android:gravity="center_vertical"
-            android:paddingHorizontal="16dp"
-            android:background="?attr/selectableItemBackground"
-            android:clickable="true"
-            android:focusable="true">
-            <ImageView
-                android:layout_width="22dp"
-                android:layout_height="22dp"
-                android:contentDescription="@null"
-                android:src="@drawable/ic_history"
-                android:tint="?attr/colorOnSurface" />
-            <TextView
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:layout_marginStart="16dp"
-                android:textSize="14sp"
-                android:textColor="?attr/colorOnSurface"
-                android:text="@string/menu_history" />
-            <!-- No "Soon" pill here: history is implemented and this row opens it. -->
-        </LinearLayout>
-
-        <LinearLayout
-            android:id="@+id/rowDownloads"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:minHeight="48dp"
-            android:orientation="horizontal"
-            android:gravity="center_vertical"
-            android:paddingHorizontal="16dp"
-            android:background="?attr/selectableItemBackground"
-            android:clickable="true"
-            android:focusable="true">
-            <ImageView
-                android:layout_width="22dp"
-                android:layout_height="22dp"
-                android:contentDescription="@null"
-                android:src="@drawable/ic_download"
-                android:tint="?attr/colorOnSurface" />
-            <TextView
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:layout_marginStart="16dp"
-                android:textSize="14sp"
-                android:textColor="?attr/colorOnSurface"
-                android:text="@string/menu_downloads" />
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:paddingHorizontal="8dp"
-                android:paddingVertical="2dp"
-                android:textSize="10sp"
-                android:textColor="?attr/colorOnSurfaceVariant"
-                android:text="@string/menu_pill_soon" />
-        </LinearLayout>
-
-        <View
-            android:layout_width="match_parent"
-            android:layout_height="1dp"
-            android:layout_marginVertical="4dp"
-            android:layout_marginHorizontal="14dp"
-            android:background="?attr/colorOutlineVariant"
-            android:alpha="0.5" />
-
-        <!-- ============== Group 4: Settings ============== -->
+        <!-- ============== Group 3: settings ============== -->
 
         <LinearLayout
             android:id="@+id/rowSettings"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:minHeight="48dp"
-            android:orientation="horizontal"
-            android:gravity="center_vertical"
-            android:paddingHorizontal="16dp"
-            android:background="?attr/selectableItemBackground"
-            android:clickable="true"
-            android:focusable="true">
+            style="@style/Widget.UpgridBrowser.MenuRow">
             <ImageView
-                android:layout_width="22dp"
-                android:layout_height="22dp"
+                style="@style/Widget.UpgridBrowser.MenuRowIcon"
                 android:contentDescription="@null"
-                android:src="@drawable/ic_settings"
-                android:tint="?attr/colorOnSurface" />
+                android:src="@drawable/ic_settings" />
             <TextView
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:layout_marginStart="16dp"
-                android:textSize="14sp"
-                android:textColor="?attr/colorOnSurface"
+                style="@style/Widget.UpgridBrowser.MenuRowLabel"
                 android:text="@string/menu_settings" />
+            <TextView
+                android:id="@+id/syncBadge"
+                style="@style/Widget.UpgridBrowser.MenuPill"
+                android:visibility="gone"
+                android:text="@string/menu_sync_badge"
+                tools:visibility="visible" />
         </LinearLayout>
     </LinearLayout>
 </androidx.core.widget.NestedScrollView>

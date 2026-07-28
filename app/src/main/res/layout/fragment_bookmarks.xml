@@ -1,14 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  Tabs tray. Full-height sheet with a two-column grid of cards.
+  Bookmarks. Same skeleton as the history sheet: drag handle, header, search
+  pill, list, empty state. Deliberately identical — they're sibling entries in
+  the menu and there's nothing about a saved page that warrants a different
+  layout from a visited one.
 
-  Height is match_parent rather than wrap_content: a grid that resizes the sheet
-  as tabs are closed makes the remaining cards jump under the finger, and
-  closing several in a row turns into whack-a-mole. Fixed height, list shrinks.
-
-  When tabs.isEmpty() the grid is swapped for an illustration. The sheet stays
-  open in that state — TabsTrayFragment drops a fresh HOME tab on dismiss so
-  MainActivity isn't left with nothing to render.
+  IDs are referenced by BookmarksFragment.kt via ViewBinding.
 -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
@@ -30,33 +27,63 @@
         android:paddingStart="20dp"
         android:paddingEnd="12dp"
         android:paddingTop="2dp"
-        android:paddingBottom="10dp">
+        android:paddingBottom="8dp">
 
         <TextView
-            android:id="@+id/tabsTitle"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
             android:textAppearance="?attr/textAppearanceTitleLarge"
             android:textColor="?attr/colorOnSurface"
-            android:text="@string/tabs_tray_title" />
+            android:text="@string/bookmarks_title" />
 
+        <!-- Saves whatever page is open behind the sheet. Being able to add
+             from inside the list is what makes this screen a destination
+             rather than a read-only report. -->
         <com.google.android.material.button.MaterialButton
-            android:id="@+id/btnCloseAll"
-            style="@style/Widget.Material3.Button.TextButton"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:minWidth="0dp"
-            android:text="@string/tabs_tray_close_all" />
-
-        <com.google.android.material.button.MaterialButton
-            android:id="@+id/btnNewTab"
+            android:id="@+id/btnAddCurrent"
             style="@style/Widget.Material3.Button.TonalButton.Icon"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginStart="4dp"
             app:icon="@drawable/ic_add"
-            android:text="@string/tabs_tray_new" />
+            android:text="@string/bookmarks_add_current" />
+    </LinearLayout>
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="44dp"
+        android:layout_marginStart="16dp"
+        android:layout_marginEnd="16dp"
+        android:layout_marginBottom="10dp"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:paddingStart="14dp"
+        android:paddingEnd="8dp"
+        android:background="@drawable/bg_sheet_search">
+
+        <ImageView
+            android:layout_width="18dp"
+            android:layout_height="18dp"
+            android:contentDescription="@null"
+            android:src="@drawable/ic_find"
+            app:tint="?attr/colorOnSurfaceVariant" />
+
+        <EditText
+            android:id="@+id/searchInput"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:layout_marginStart="10dp"
+            android:background="@null"
+            android:hint="@string/bookmarks_search_hint"
+            android:textColorHint="?attr/colorOnSurfaceVariant"
+            android:textColor="?attr/colorOnSurface"
+            android:textSize="14sp"
+            android:inputType="text"
+            android:imeOptions="actionSearch"
+            android:maxLines="1"
+            android:singleLine="true"
+            android:importantForAutofill="no" />
     </LinearLayout>
 
     <FrameLayout
@@ -65,11 +92,11 @@
         android:layout_weight="1">
 
         <androidx.recyclerview.widget.RecyclerView
-            android:id="@+id/tabsList"
+            android:id="@+id/bookmarksList"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
-            android:paddingStart="9dp"
-            android:paddingEnd="9dp"
+            android:paddingStart="8dp"
+            android:paddingEnd="8dp"
             android:paddingBottom="16dp"
             android:clipToPadding="false"
             android:overScrollMode="never" />
@@ -86,21 +113,22 @@
             tools:visibility="visible">
 
             <ImageView
-                android:layout_width="110dp"
-                android:layout_height="110dp"
-                android:alpha="0.5"
+                android:layout_width="92dp"
+                android:layout_height="92dp"
                 android:contentDescription="@null"
-                android:src="@drawable/ic_empty_tabs"
+                android:alpha="0.35"
+                android:src="@drawable/ic_bookmark"
                 app:tint="?attr/colorOnSurface" />
 
             <TextView
+                android:id="@+id/emptyTitle"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="20dp"
                 android:textAppearance="?attr/textAppearanceTitleMedium"
                 android:textColor="?attr/colorOnSurface"
                 android:gravity="center"
-                android:text="@string/tabs_tray_empty_title" />
+                android:text="@string/bookmarks_empty_title" />
 
             <TextView
                 android:layout_width="wrap_content"
@@ -109,7 +137,7 @@
                 android:textAppearance="?attr/textAppearanceBodyMedium"
                 android:textColor="?attr/colorOnSurfaceVariant"
                 android:gravity="center"
-                android:text="@string/tabs_tray_empty_subtitle" />
+                android:text="@string/bookmarks_empty_subtitle" />
         </LinearLayout>
     </FrameLayout>
 </LinearLayout>

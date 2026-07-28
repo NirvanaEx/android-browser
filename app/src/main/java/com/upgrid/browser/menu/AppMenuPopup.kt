@@ -8,32 +8,36 @@ import android.view.ViewGroup
 import android.widget.PopupWindow
 import android.widget.Toast
 import androidx.core.content.ContextCompat
+import androidx.core.view.isVisible
 import androidx.lifecycle.lifecycleScope
+import com.google.android.material.color.MaterialColors
 import com.upgrid.browser.AdblockController
 import com.upgrid.browser.BrowserApplication
 import com.upgrid.browser.MainActivity
 import com.upgrid.browser.R
+import com.upgrid.browser.bookmarks.BookmarkStore
 import com.upgrid.browser.databinding.AppMenuPopupBinding
 import com.upgrid.browser.settings.SettingsBottomSheet
+import com.upgrid.browser.sync.GoogleAccounts
 import kotlinx.coroutines.launch
 import mozilla.components.browser.state.selector.selectedTab
 
 /**
- * Banana-style app menu drop-down. Replaces the old MenuBottomSheet — same
- * actions, but rendered as a 300dp-wide PopupWindow anchored to the menu
- * button so it reads as a proper "branded" menu rather than a system-style
- * bottom sheet.
+ * The app menu: a 236dp drop-down anchored to the ⋮ button.
  *
- * Lifecycle: instantiate, call [showFrom] with the anchor view, that's it.
- * The popup is focusable so the system back button and outside-tap dismiss it
- * for free. Toggle rows (AdBlock, Desktop site) intentionally don't dismiss
- * the popup so the user can see the pill flip in place; everything else
- * dismisses on tap to keep the UX snappy.
+ * Lifecycle: instantiate, call [showFrom] with the anchor, done. The popup is
+ * focusable so system back and outside-tap dismiss it for free. Toggle rows
+ * (AdBlock, Desktop site, the bookmark star) deliberately do NOT dismiss — the
+ * point of a toggle is watching it flip.
+ *
+ * A fresh instance per tap. Cheap, and it means no stale toggle state to
+ * invalidate: everything is read at construction and again in [showFrom].
  */
 class AppMenuPopup(private val activity: MainActivity) {
 
     private val components get() = (activity.application as BrowserApplication).components
     private val adblock by lazy { AdblockController(components) }
+    private val bookmarks by lazy { BookmarkStore(activity) }
     private val binding =
         AppMenuPopupBinding.inflate(LayoutInflater.from(activity))
 
@@ -43,7 +47,7 @@ class AppMenuPopup(private val activity: MainActivity) {
         val density = activity.resources.displayMetrics.density
         popup = PopupWindow(
             binding.root,
-            (300 * density).toInt(),
+            (MENU_WIDTH_DP * density).toInt(),
             ViewGroup.LayoutParams.WRAP_CONTENT,
             true, // focusable: back / outside tap → dismiss
         ).apply {
@@ -51,37 +55,73 @@ class AppMenuPopup(private val activity: MainActivity) {
                 ContextCompat.getDrawable(activity, R.drawable.bg_popup_menu)
             )
             elevation = 12f * density
-            // Tighter dismiss: tapping outside the popup closes it without
-            // delivering the touch to the underlying view (avoids accidentally
-            // re-opening the menu via the menu button).
             isOutsideTouchable = true
         }
 
+        wireQuickActions()
         wireRows()
-        renderToggleStates()
     }
 
     /**
-     * Show the menu anchored to [anchor] (typically `btnMenu` in the bottom
-     * bar). showAsDropDown auto-flips above the anchor when there's no room
-     * below, which is exactly what we want for a bottom-bar trigger.
-     *
-     * Gravity.END right-aligns the popup with the anchor's right edge so the
-     * 300dp menu floats at the right side of the screen, matching Banana.
+     * Show the menu anchored to [anchor]. Gravity.END right-aligns it with the
+     * anchor's right edge; showAsDropDown flips it above the anchor when
+     * there's no room below.
      */
     fun showFrom(anchor: View) {
-        // PopupWindow doesn't auto-update its content the next time it's
-        // shown if state changed in the meantime — refresh toggles each show.
-        renderToggleStates()
+        // PopupWindow keeps its content view between shows, so anything derived
+        // from browser state has to be re-read here rather than at construction.
+        renderState()
         popup.showAsDropDown(anchor, 0, 0, Gravity.END)
     }
 
     // --- Wiring ------------------------------------------------------------
 
+    private fun wireQuickActions() = with(binding) {
+        quickBack.setOnClickListener {
+            components.sessionUseCases.goBack()
+            popup.dismiss()
+        }
+        quickForward.setOnClickListener {
+            components.sessionUseCases.goForward()
+            popup.dismiss()
+        }
+        quickReload.setOnClickListener {
+            components.sessionUseCases.reload()
+            popup.dismiss()
+        }
+        quickBookmark.setOnClickListener {
+            val tab = components.store.state.selectedTab ?: return@setOnClickListener
+            val url = tab.content.url
+            if (!BookmarkStore.isBookmarkable(url)) {
+                Toast.makeText(activity, R.string.bookmark_not_saveable, Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+            activity.lifecycleScope.launch {
+                val saved = bookmarks.toggle(url, tab.content.title)
+                renderBookmarkState(saved)
+                Toast.makeText(
+                    activity,
+                    if (saved) R.string.bookmark_added else R.string.bookmark_removed,
+                    Toast.LENGTH_SHORT,
+                ).show()
+                // The speed dial is backed by bookmarks, so it has to be told.
+                activity.refreshStartPage()
+            }
+        }
+    }
+
     private fun wireRows() = with(binding) {
         rowNewTab.setOnClickListener {
             components.tabsUseCases.addTab(url = MainActivity.HOME_URL, selectTab = true)
             popup.dismiss()
+        }
+        rowBookmarks.setOnClickListener {
+            popup.dismiss()
+            activity.showBookmarks()
+        }
+        rowHistory.setOnClickListener {
+            popup.dismiss()
+            activity.showHistory()
         }
         rowShare.setOnClickListener {
             shareCurrentUrl()
@@ -89,10 +129,6 @@ class AppMenuPopup(private val activity: MainActivity) {
         }
         rowFindInPage.setOnClickListener {
             activity.showFindInPage()
-            popup.dismiss()
-        }
-        rowRefresh.setOnClickListener {
-            components.sessionUseCases.reload()
             popup.dismiss()
         }
         rowDesktopSite.setOnClickListener {
@@ -103,58 +139,54 @@ class AppMenuPopup(private val activity: MainActivity) {
             renderDesktopSiteState(newValue)
         }
         rowAdblock.setOnClickListener {
-            // Same: toggle in place. Also propagates state back to the
-            // bottom-bar shield since the activity no longer polls per tick.
             activity.lifecycleScope.launch {
                 runCatching { adblock.toggle() }
                 renderAdblockState()
-                activity.renderAdblockShield()
             }
         }
-        rowCloseTab.setOnClickListener {
-            components.store.state.selectedTabId?.let {
-                components.tabsUseCases.removeTab(it)
-            }
-            popup.dismiss()
-        }
-
-        rowHistory.setOnClickListener {
-            popup.dismiss()
-            activity.showHistory()
-        }
-
-        // Phase-3 stubs — toast for now, dismissed so the toast isn't trapped
-        // behind the popup.
-        rowBookmarks.setOnClickListener { stubToast(); popup.dismiss() }
-        rowDownloads.setOnClickListener { stubToast(); popup.dismiss() }
-
-        // Settings now leads somewhere real: search-engine picker + history.
         rowSettings.setOnClickListener {
             popup.dismiss()
-            SettingsBottomSheet().show(activity.supportFragmentManager, "settings")
+            SettingsBottomSheet().show(activity.supportFragmentManager, SettingsBottomSheet.TAG)
         }
     }
 
-    private fun stubToast() {
-        Toast.makeText(activity, R.string.coming_soon, Toast.LENGTH_SHORT).show()
-    }
+    // --- State render ------------------------------------------------------
 
-    // --- Toggle render -----------------------------------------------------
+    private fun renderState() {
+        val tab = components.store.state.selectedTab
+        binding.quickBack.setEnabledLook(tab?.content?.canGoBack == true)
+        binding.quickForward.setEnabledLook(tab?.content?.canGoForward == true)
 
-    private fun renderToggleStates() {
+        // Signed-in state is a cheap local lookup (Play services caches it), so
+        // it's safe on the main thread here.
+        binding.syncBadge.isVisible = GoogleAccounts.current(activity) != null
+
         renderAdblockState()
         renderDesktopSiteState()
+        renderBookmarkStateFromDb(tab?.content?.url)
+    }
+
+    private fun View.setEnabledLook(enabled: Boolean) {
+        isEnabled = enabled
+        alpha = if (enabled) 1f else 0.3f
     }
 
     /**
-     * uBO state lookup is suspending (see AdblockController) — fire it on the
-     * activity's lifecycle scope so we don't race with engine callbacks.
+     * uBO state is a suspending lookup (see [AdblockController]) — run it on the
+     * activity's scope so we don't race the engine's extension callbacks.
      */
     private fun renderAdblockState() {
         activity.lifecycleScope.launch {
             val on = adblock.isEnabled()
             binding.adblockIcon.setImageResource(
                 if (on) R.drawable.ic_shield else R.drawable.ic_shield_off
+            )
+            binding.adblockIcon.setColorFilter(
+                MaterialColors.getColor(
+                    binding.adblockIcon,
+                    if (on) androidx.appcompat.R.attr.colorPrimary
+                    else com.google.android.material.R.attr.colorOnSurfaceVariant,
+                )
             )
             binding.adblockState.setText(
                 if (on) R.string.menu_adblock_state_on else R.string.menu_adblock_state_off
@@ -166,6 +198,32 @@ class AppMenuPopup(private val activity: MainActivity) {
         val on = value ?: (components.store.state.selectedTab?.content?.desktopMode == true)
         binding.desktopSiteState.setText(
             if (on) R.string.menu_adblock_state_on else R.string.menu_adblock_state_off
+        )
+    }
+
+    private fun renderBookmarkStateFromDb(url: String?) {
+        if (url == null || !BookmarkStore.isBookmarkable(url)) {
+            binding.quickBookmark.setEnabledLook(false)
+            renderBookmarkState(false)
+            return
+        }
+        binding.quickBookmark.setEnabledLook(true)
+        activity.lifecycleScope.launch { renderBookmarkState(bookmarks.isBookmarked(url)) }
+    }
+
+    private fun renderBookmarkState(saved: Boolean) {
+        binding.quickBookmark.setImageResource(
+            if (saved) R.drawable.ic_bookmark_filled else R.drawable.ic_bookmark
+        )
+        binding.quickBookmark.setColorFilter(
+            MaterialColors.getColor(
+                binding.quickBookmark,
+                if (saved) androidx.appcompat.R.attr.colorPrimary
+                else com.google.android.material.R.attr.colorOnSurface,
+            )
+        )
+        binding.quickBookmark.contentDescription = activity.getString(
+            if (saved) R.string.menu_bookmark_remove else R.string.menu_bookmark_add
         )
     }
 
@@ -183,5 +241,13 @@ class AppMenuPopup(private val activity: MainActivity) {
         activity.startActivity(
             Intent.createChooser(intent, activity.getString(R.string.menu_share))
         )
+    }
+
+    private companion object {
+        /**
+         * Down from 300dp. The menu is a list of short labels; the extra width
+         * bought nothing but a wall of dropdown covering most of the page.
+         */
+        const val MENU_WIDTH_DP = 236
     }
 }

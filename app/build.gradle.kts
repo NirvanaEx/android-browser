@@ -75,6 +75,32 @@ android {
         }
     }
 
+    signingConfigs {
+        // A CHECKED-IN debug key, replacing the one Gradle generates per
+        // machine. This is not paranoia about reproducibility — Google Sign-In
+        // identifies an app by (package name, signing certificate SHA-1), and
+        // the OAuth client registered in Cloud Console pins exactly one of
+        // those pairs. An auto-generated key differs on every developer box and
+        // on each CI runner that misses the cache, so sign-in would fail with
+        // DEVELOPER_ERROR on most builds and work on none reliably.
+        //
+        // Safe to commit: it signs debug builds only, its password is the
+        // conventional "android", and it grants nothing — Play Store uploads
+        // need the release key, which is NOT in this repo. See CLAUDE.md
+        // ("Google account & sync") for how to re-register a replacement.
+        getByName("debug") {
+            storeFile = rootProject.file("keystore/upgrid-debug.p12")
+            // Explicit rather than inherited from KeyStore.getDefaultType():
+            // that default is JDK-version-dependent (PKCS12 only since JDK 9),
+            // and a toolchain change shouldn't be able to make the key
+            // unreadable.
+            storeType = "PKCS12"
+            storePassword = "android"
+            keyAlias = "upgrid"
+            keyPassword = "android"
+        }
+    }
+
     buildTypes {
         debug {
             isMinifyEnabled = false
@@ -193,6 +219,14 @@ dependencies {
     implementation("org.mozilla.components:support-base:$androidComponentsVersion")
     implementation("org.mozilla.components:support-ktx:$androidComponentsVersion")
     implementation("org.mozilla.components:support-utils:$androidComponentsVersion")
+
+    // --- Google account (bookmark/history sync via Drive appDataFolder) ---
+    // Only the sign-in half of Play services. The Drive REST calls are made by
+    // hand over HttpURLConnection in sync/DriveAppData.kt rather than through
+    // google-api-services-drive, which drags in the whole Google API client
+    // stack (~3 MB of jars, its own HTTP layer and a Guava slice) to send the
+    // four requests we actually make.
+    implementation("com.google.android.gms:play-services-auth:21.2.0")
 
     // Coroutines for async work.
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
