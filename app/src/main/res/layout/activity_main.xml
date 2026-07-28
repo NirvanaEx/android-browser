@@ -12,16 +12,9 @@
     4. btnTopTabs   — tab counter badge, opens the tabs screen
     5. btnTopMenu   — opens AppMenuPopup
 
-  Alignment is load-bearing here and was previously off. Three things fix it:
-    - the row is a fixed 56dp with gravity=center_vertical, so nothing depends
-      on the tallest child to define the centre line;
-    - every icon target is the same 44dp square, so they share one baseline
-      instead of each centring inside a different box;
-    - the URL chip is the full 56dp, and its pill is drawn by an inset
-      drawable rather than by shrinking the view. android-components lays the
-      toolbar out for exactly 56dp and top-anchors its children with fixed
-      margins, so a shorter container drags the URL text below centre — see
-      the comment in res/drawable/bg_toolbar.xml.
+  Under the row, in order: the load progress bar, a hairline, and the two
+  page bars (find / translate) that are part of *typing*, so they have to sit
+  above the keyboard rather than under it — the window is adjustNothing.
 -->
 <androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
@@ -58,12 +51,19 @@
             android:tint="?attr/colorOnSurface" />
 
         <!--
-          Full row height on purpose: the toolbar inside needs its 56dp, and
-          the visible pill comes from the drawable's 8dp top/bottom inset.
-          Only the trailing padding is ours — it keeps the bookmark star off
-          the pill's rounded end. The leading edge needs none: the library's
-          own layouts already inset the URL by 8dp (edit mode) or by the 40dp
-          security indicator (display mode).
+          paddingTop/paddingBottom="0dp" are load-bearing, not tidiness.
+
+          bg_toolbar is an <inset> drawable, and InsetDrawable.getPadding()
+          reports its insets as padding. A View adopts its background's padding
+          for every edge the layout doesn't name, so this container silently
+          gained 8dp top and bottom — which left BrowserToolbar 40dp tall inside
+          a 56dp row. android-components lays its toolbar out for exactly 56dp
+          and top-anchors the site-info icon and the page actions with fixed
+          margins, so both landed 8dp below the centre line while the URL text
+          (constrained top AND bottom) stayed centred. That is the entire reason
+          the icons looked crooked next to level text. Naming the padding
+          overrides the drawable's; the pill still draws inset, because insets
+          affect where the drawable paints, not how tall the view is.
         -->
         <FrameLayout
             android:id="@+id/toolbarPill"
@@ -72,6 +72,8 @@
             android:layout_height="match_parent"
             android:layout_marginStart="2dp"
             android:layout_marginEnd="2dp"
+            android:paddingTop="0dp"
+            android:paddingBottom="0dp"
             android:paddingEnd="4dp"
             android:background="@drawable/bg_toolbar">
 
@@ -168,20 +170,33 @@
         app:layout_constraintEnd_toEndOf="parent" />
 
     <!--
-      Mozilla's find-in-page bar, directly under the toolbar. It used to be
-      pinned to the bottom of the window, where the keyboard covered it
-      completely — the window is adjustNothing, so nothing moves out of the
-      IME's way and the bar you were meant to type into was behind it. Up here
-      it sits next to the field it searches. Height collapses when GONE, so the
-      page takes the full screen in the normal case.
+      Find in page. Ours rather than mozilla's FindInPageBar, because the two
+      things the user asked for are both outside what that bar exposes: a
+      Chrome-coloured highlight (orange for the current match, yellow for the
+      rest) and a guarantee that the page scrolls to the match. Both are decided
+      in the page, so the search itself now happens there too — see
+      assets/extensions/upgrid_fullscreen/find.js.
+
+      Height collapses when GONE, so the page keeps the full screen normally.
     -->
-    <mozilla.components.feature.findinpage.view.FindInPageBar
-        android:id="@+id/findInPageBar"
+    <include
+        android:id="@+id/findBar"
+        layout="@layout/view_find_bar"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
         android:visibility="gone"
-        android:background="?attr/colorSurfaceContainer"
         app:layout_constraintTop_toBottomOf="@id/toolbarDivider"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent" />
+
+    <!-- Translation state + language switch. Same slot, same reasoning. -->
+    <include
+        android:id="@+id/translateBar"
+        layout="@layout/view_translate_bar"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:visibility="gone"
+        app:layout_constraintTop_toBottomOf="@id/findBar"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent" />
 
@@ -189,15 +204,26 @@
       Engine view + overlays share the same constraint slot. Z-order (later
       sibling on top) puts the start page above the engine, the suggestions
       above that, and the player overlay above everything.
+
+      The engine view is the SwipeRefreshLayout's only child on purpose:
+      SwipeRefreshFeature identifies it with `child is EngineView` to ask
+      whether the page is already scrolled, and answers "yes, it can scroll"
+      for anything else — which would disable the gesture outright.
     -->
-    <mozilla.components.browser.engine.gecko.GeckoEngineView
-        android:id="@+id/engineView"
+    <androidx.swiperefreshlayout.widget.SwipeRefreshLayout
+        android:id="@+id/swipeRefresh"
         android:layout_width="0dp"
         android:layout_height="0dp"
-        app:layout_constraintTop_toBottomOf="@id/findInPageBar"
+        app:layout_constraintTop_toBottomOf="@id/translateBar"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent" />
+        app:layout_constraintEnd_toEndOf="parent">
+
+        <mozilla.components.browser.engine.gecko.GeckoEngineView
+            android:id="@+id/engineView"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent" />
+    </androidx.swiperefreshlayout.widget.SwipeRefreshLayout>
 
     <!-- Start page (speed dial). Inflated as <include> so view binding picks up the inner ids. -->
     <include
@@ -206,7 +232,7 @@
         android:layout_width="0dp"
         android:layout_height="0dp"
         android:visibility="gone"
-        app:layout_constraintTop_toBottomOf="@id/findInPageBar"
+        app:layout_constraintTop_toBottomOf="@id/translateBar"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent" />
@@ -222,9 +248,10 @@
           down the screen, floating above the keyboard instead of hanging off
           the address bar. The bottom constraint has to stay (it's what caps
           the height), so the bias is what pins it up.
-        - its own surface colour. On colorSurface the panel was the same shade
-          as the page behind it and read as loose text scattered over the start
-          page rather than as a drop-down.
+        - its own surface colour, inset from both edges and elevated. On
+          colorSurface, full width, the panel was the same shade as the page
+          behind it and read as loose text scattered over the start page rather
+          than as a drop-down.
 
       The max height is because the window is adjustNothing (GeckoView does its
       own keyboard handling and reflowing the page under it is worse). Nothing
@@ -236,12 +263,16 @@
         android:layout_width="0dp"
         android:layout_height="wrap_content"
         android:visibility="gone"
+        android:layout_marginStart="8dp"
+        android:layout_marginEnd="8dp"
+        android:layout_marginTop="6dp"
         android:background="@drawable/bg_suggestions"
-        android:elevation="8dp"
+        android:elevation="10dp"
         android:paddingTop="6dp"
         android:paddingBottom="6dp"
         android:clipToPadding="false"
         android:overScrollMode="never"
+        android:scrollbars="none"
         app:layout_constraintTop_toBottomOf="@id/toolbarDivider"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintStart_toStartOf="parent"
@@ -249,7 +280,7 @@
         app:layout_constraintVertical_bias="0"
         app:layout_constraintHeight_default="wrap"
         app:layout_constrainedHeight="true"
-        app:layout_constraintHeight_max="300dp"
+        app:layout_constraintHeight_max="336dp"
         tools:visibility="visible" />
 
     <!--

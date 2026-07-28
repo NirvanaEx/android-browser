@@ -74,8 +74,28 @@ class VideoPlayerBridge(private val components: BrowserComponents) {
     /** Called on the main thread whenever [hasMedia]/[isMediaPlaying] change. */
     var onMediaStateChanged: () -> Unit = {}
 
+    /**
+     * Reports from the page features that share this channel — find in page
+     * (`t:"find"`) and translation (`t:"translate"`). Delivered on the main
+     * thread. They have nothing to do with the player; the port is simply the
+     * one pipe we have into the content scripts.
+     */
+    var onPageEvent: (JSONObject) -> Unit = {}
+
     /** Native-messaging port; connected lazily by background.js on first tap. */
     private var port: Port? = null
+
+    /**
+     * Commands issued before the port came up.
+     *
+     * background.js connects on its first outbound message, which for a normal
+     * page is observer.js's opening media report — a second or so after load.
+     * A user who opens find-in-page faster than that used to get silence.
+     * Bounded because a queue that outlives its usefulness is just a delayed
+     * surprise; the cap is far above the two or three commands a real burst
+     * produces.
+     */
+    private val queued = ArrayDeque<JSONObject>()
 
     private val mainHandler = Handler(Looper.getMainLooper())
 
@@ -111,6 +131,7 @@ class VideoPlayerBridge(private val components: BrowserComponents) {
                     override fun onPortConnected(port: Port) {
                         Log.i(TAG, "player port connected")
                         this@VideoPlayerBridge.port = port
+                        mainHandler.post { flushQueue() }
                     }
 
                     override fun onPortDisconnected(port: Port) {
@@ -127,6 +148,11 @@ class VideoPlayerBridge(private val components: BrowserComponents) {
                         // than pushed at an overlay that may not exist.
                         if (json.optString("t") == "media") {
                             mainHandler.post { updateMediaState(json) }
+                            return
+                        }
+                        val type = json.optString("t")
+                        if (type == "find" || type == "translate") {
+                            mainHandler.post { runCatching { onPageEvent(json) } }
                             return
                         }
                         if (json.optString("t") != "state") Log.i(TAG, "event: $json")
@@ -221,13 +247,33 @@ class VideoPlayerBridge(private val components: BrowserComponents) {
      * can only happen before the first successful takeover anyway.
      */
     fun sendCommand(cmd: String, configure: JSONObject.() -> Unit = {}) {
+        val message = JSONObject().put("cmd", cmd).apply(configure)
         val p = port
         if (p == null) {
-            Log.w(TAG, "sendCommand($cmd): port not connected")
+            Log.w(TAG, "sendCommand($cmd): port not connected, queued")
+            if (queued.size >= MAX_QUEUED) queued.removeFirst()
+            queued.addLast(message)
             return
         }
-        runCatching { p.postMessage(JSONObject().put("cmd", cmd).apply(configure)) }
+        runCatching { p.postMessage(message) }
             .onFailure { Log.w(TAG, "sendCommand($cmd) failed", it) }
+    }
+
+    /**
+     * Send to the page rather than to the controlled video: find in page and
+     * translation. Same pipe, different destination — background.js routes on
+     * the verb (see PAGE_COMMANDS there).
+     */
+    fun sendPageCommand(cmd: String, configure: JSONObject.() -> Unit = {}) =
+        sendCommand(cmd, configure)
+
+    private fun flushQueue() {
+        val p = port ?: return
+        while (queued.isNotEmpty()) {
+            val message = queued.removeFirst()
+            runCatching { p.postMessage(message) }
+                .onFailure { Log.w(TAG, "queued command failed", it) }
+        }
     }
 
     companion object {
@@ -238,5 +284,8 @@ class VideoPlayerBridge(private val components: BrowserComponents) {
 
         /** Must match the name background.js passes to connectNative(). */
         private const val PORT_NAME = "upgridPlayer"
+
+        /** Commands held while the port is down. See [queued]. */
+        private const val MAX_QUEUED = 8
     }
 }

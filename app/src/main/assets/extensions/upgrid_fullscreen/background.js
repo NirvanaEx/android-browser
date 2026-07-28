@@ -37,6 +37,12 @@ function ensurePort() {
                 }).catch(function () {});
                 return;
             }
+            // Find and translate act on the page you are looking at, whichever
+            // frame the player happens to be locked to.
+            if (msg && PAGE_COMMANDS[msg.cmd]) {
+                sendToPage(msg);
+                return;
+            }
             // Everything else is a player command → controlled frame only.
             if (playerTabId === null || playerFrameId === null) return;
             browser.tabs.sendMessage(playerTabId, msg, { frameId: playerFrameId })
@@ -55,6 +61,66 @@ function postToNative(msg) {
     if (p) { try { p.postMessage(msg); } catch (e) {} }
 }
 
+// Commands aimed at the page rather than at the player: find.js and
+// translate.js both live in the top frame of whatever tab is on screen.
+var PAGE_COMMANDS = {
+    find: 1, findNext: 1, findPrev: 1, findClear: 1,
+    translate: 1, untranslate: 1, translateState: 1,
+};
+
+/**
+ * Deliver to the foreground tab's main frame.
+ *
+ * The active-tab filter needs the embedder to mark sessions active
+ * (EngineSession.markActiveForWebExtensions, which MainActivity now does on
+ * every selection change). If that hasn't happened yet — first paint, a tab
+ * restored but never selected — the query comes back empty, and falling back
+ * to every tab is right: the command is idempotent, the user is looking at one
+ * of them, and the alternative is a button that silently does nothing.
+ */
+function sendToPage(msg) {
+    browser.tabs.query({ active: true })
+        // A rejected filter is the same situation as an empty answer: we don't
+        // know which tab, so tell them all.
+        .catch(function () { return []; })
+        .then(function (tabs) {
+            if (tabs && tabs.length) return tabs;
+            return browser.tabs.query({});
+        })
+        .then(function (tabs) {
+            (tabs || []).forEach(function (t) {
+                browser.tabs.sendMessage(t.id, msg, { frameId: 0 })
+                    .catch(function () {});
+            });
+        })
+        .catch(function () {});
+}
+
+/**
+ * Translate a batch of strings.
+ *
+ * Made here rather than in the content script because a content script's fetch
+ * carries the page's origin and is refused by CORS; the background page holds
+ * the extension's host permissions and isn't.
+ *
+ * The endpoint is the one Chrome's own translation uses. It answers with one
+ * [translation, detectedLanguage] pair per `q`, in order, and needs no key.
+ * POST rather than GET so a long paragraph can't overflow the URL.
+ */
+function translateTexts(texts, to) {
+    var url = "https://translate.googleapis.com/translate_a/t?client=dict-chrome-ex&sl=auto&tl=" +
+        encodeURIComponent(to || "en");
+    var body = texts.map(function (t) { return "q=" + encodeURIComponent(t); }).join("&");
+    return fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8" },
+        body: body,
+    }).then(function (response) {
+        if (!response.ok) throw new Error("http " + response.status);
+        return response.json();
+    });
+}
+
 // Media presence, per frame, per tab. observer.js reports every frame
 // separately (videos live in iframes as often as not), so a tab has media if
 // ANY of its frames does. Only the foreground tab is reported onward: the
@@ -64,10 +130,11 @@ var mediaByTab = {};
 
 function publishMedia() {
     // GeckoView only marks a tab "active" for the extension APIs if the
-    // embedder tells it to, which needs WebExtensionSupport — we don't run it.
-    // So "active" may be false everywhere, and filtering on it would report
-    // silence forever. Fall back to counting every tab: we pause playback on
-    // tab switch, so at most one tab is making noise anyway.
+    // embedder tells it to; MainActivity.markSelectedTabActive does, but not
+    // before the tab has an engine session. Until then "active" is false
+    // everywhere and filtering on it would report silence forever, so fall
+    // back to counting every tab — we pause playback on tab switch, so at most
+    // one of them is making noise anyway.
     var anyActive = Object.keys(mediaByTab).some(function (id) {
         return mediaByTab[id].active;
     });
@@ -97,6 +164,21 @@ browser.runtime.onMessage.addListener(function (msg, sender) {
     if (!msg || !msg.t || !sender || !sender.tab) return;
     var tabId = sender.tab.id;
     var frameId = (sender.frameId !== undefined) ? sender.frameId : 0;
+
+    // Network on behalf of translate.js. Returning the promise is what makes
+    // the content script's sendMessage(...).then() resolve with the answer.
+    if (msg.t === "translateFetch") {
+        return translateTexts(msg.texts || [], msg.to)
+            .then(function (data) { return { ok: true, data: data }; })
+            .catch(function (e) { return { ok: false, error: String(e && e.message) }; });
+    }
+
+    // Page-feature reports travel straight through: unlike player events they
+    // carry no frame lock and mean nothing to the relay itself.
+    if (msg.t === "find" || msg.t === "translate") {
+        postToNative(msg);
+        return;
+    }
 
     if (msg.t === "media") {
         var entry = mediaByTab[tabId] || (mediaByTab[tabId] = { active: false, frames: {} });

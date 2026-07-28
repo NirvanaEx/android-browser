@@ -1,38 +1,49 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  One omnibar suggestion: kind icon, title, and the URL underneath.
+  One omnibar suggestion: kind icon in a round holder, title, URL underneath,
+  and a trailing arrow that puts the text into the address bar instead of
+  loading it.
 
-  Rows are 52dp rather than the 60dp used in the history list — this list
-  appears under a raised keyboard, so every row past the fourth is off screen.
-  IDs are bound in SuggestionAdapter.
+  56dp rows with 8dp side padding inside a panel that is itself inset — the
+  previous 52dp row with 18dp padding was sized for a full-width list and left
+  the text almost touching the panel edge.
+
+  Ids are bound in SuggestionAdapter.
 -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:minHeight="52dp"
+    android:minHeight="56dp"
     android:orientation="horizontal"
     android:gravity="center_vertical"
     android:background="?attr/selectableItemBackground"
     android:clickable="true"
     android:focusable="true"
-    android:paddingStart="18dp"
-    android:paddingEnd="18dp"
-    android:paddingTop="7dp"
-    android:paddingBottom="7dp">
+    android:paddingStart="10dp"
+    android:paddingEnd="4dp"
+    android:paddingTop="6dp"
+    android:paddingBottom="6dp">
 
-    <ImageView
-        android:id="@+id/suggestionIcon"
-        android:layout_width="20dp"
-        android:layout_height="20dp"
-        android:contentDescription="@null"
-        tools:src="@drawable/ic_history" />
+    <FrameLayout
+        android:layout_width="34dp"
+        android:layout_height="34dp"
+        android:background="@drawable/bg_suggestion_icon">
+
+        <ImageView
+            android:id="@+id/suggestionIcon"
+            android:layout_width="18dp"
+            android:layout_height="18dp"
+            android:layout_gravity="center"
+            android:contentDescription="@null"
+            tools:src="@drawable/ic_history" />
+    </FrameLayout>
 
     <LinearLayout
         android:layout_width="0dp"
         android:layout_height="wrap_content"
         android:layout_weight="1"
-        android:layout_marginStart="16dp"
+        android:layout_marginStart="12dp"
         android:orientation="vertical">
 
         <TextView
@@ -41,7 +52,7 @@
             android:layout_height="wrap_content"
             android:maxLines="1"
             android:ellipsize="end"
-            android:textSize="14sp"
+            android:textSize="15sp"
             android:textColor="?attr/colorOnSurface"
             tools:text="Upgrid Browser — GitHub" />
 
@@ -49,10 +60,22 @@
             android:id="@+id/suggestionUrl"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            android:layout_marginTop="1dp"
             android:maxLines="1"
             android:ellipsize="end"
             android:textSize="12sp"
             android:textColor="?attr/colorOnSurfaceVariant"
             tools:text="github.com/NirvanaEx/android-browser" />
     </LinearLayout>
+
+    <ImageButton
+        android:id="@+id/suggestionFill"
+        android:layout_width="40dp"
+        android:layout_height="40dp"
+        android:padding="0dp"
+        android:scaleType="center"
+        android:background="?attr/selectableItemBackgroundBorderless"
+        android:contentDescription="@string/suggestion_fill"
+        android:src="@drawable/ic_arrow_upleft"
+        android:tint="?attr/colorOnSurfaceVariant" />
 </LinearLayout>

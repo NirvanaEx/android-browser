@@ -22,6 +22,7 @@ import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
 import android.view.inputmethod.InputMethodManager
+import android.widget.EditText
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
@@ -49,10 +50,12 @@ import com.upgrid.browser.sync.GoogleAccounts
 import com.upgrid.browser.sync.SignInDiagnostics
 import com.upgrid.browser.sync.SyncEngine
 import com.upgrid.browser.tabs.TabsActivity
-import com.upgrid.browser.translate.PageTranslator
+import com.upgrid.browser.find.FindInPageController
+import com.upgrid.browser.translate.TranslateController
 import com.upgrid.browser.history.HistoryStore
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.recyclerview.widget.LinearLayoutManager
+import com.google.android.material.color.MaterialColors
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -65,9 +68,9 @@ import androidx.lifecycle.repeatOnLifecycle
 import kotlinx.coroutines.launch
 import mozilla.components.browser.state.selector.selectedTab
 import mozilla.components.browser.toolbar.display.DisplayToolbar
-import mozilla.components.feature.findinpage.FindInPageFeature
 import mozilla.components.feature.session.FullScreenFeature
 import mozilla.components.feature.session.SessionFeature
+import mozilla.components.feature.session.SwipeRefreshFeature
 import mozilla.components.feature.toolbar.ToolbarFeature
 import mozilla.components.lib.state.ext.flow
 import mozilla.components.support.base.feature.UserInteractionHandler
@@ -82,7 +85,7 @@ import mozilla.components.support.base.feature.ViewBoundFeatureWrapper
  *
  *  - [SessionFeature]      — renders the selected tab's EngineSession into the EngineView
  *  - [ToolbarFeature]      — keeps the toolbar URL/title/progress bound to the selected tab
- *  - [FindInPageFeature]   — wires the find-in-page bar to the engine session
+ *  - [SwipeRefreshFeature] — pull down on the page to reload it
  *
  * One observer on the store flow drives the rest of the chrome: the tab
  * counter, the start-page-vs-engine swap, the player button's visibility, and
@@ -113,7 +116,9 @@ class MainActivity : AppCompatActivity() {
 
     /** Omnibar drop-down: bookmarks, then visited pages, then past searches. */
     private val suggestionSource by lazy { SuggestionSource(components) }
-    private val suggestionAdapter by lazy { SuggestionAdapter(::onSuggestionPicked) }
+    private val suggestionAdapter by lazy {
+        SuggestionAdapter(onPick = ::onSuggestionPicked, onFill = ::onSuggestionFilled)
+    }
     private var suggestionJob: Job? = null
 
     /**
@@ -219,8 +224,17 @@ class MainActivity : AppCompatActivity() {
 
     private val sessionFeature = ViewBoundFeatureWrapper<SessionFeature>()
     private val toolbarFeature = ViewBoundFeatureWrapper<ToolbarFeature>()
-    private val findInPageFeature = ViewBoundFeatureWrapper<FindInPageFeature>()
+    private val swipeRefreshFeature = ViewBoundFeatureWrapper<SwipeRefreshFeature>()
     private val fullScreenFeature = ViewBoundFeatureWrapper<FullScreenFeature>()
+
+    /** Find in page — our bar, and a search that runs inside the page. */
+    private lateinit var findController: FindInPageController
+
+    /** Page translation — our bar, and a translation that stays on the page. */
+    private lateinit var translateController: TranslateController
+
+    /** URL the page-feature controllers were last told about. */
+    private var lastPageUrl: String? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -239,6 +253,7 @@ class MainActivity : AppCompatActivity() {
         )
         wireToolbar()
         wireSuggestions()
+        wirePageFeatures()
         wireFeatures()
         wireDismissKeyboardOnEngineTap()
         wirePlayerOverlay()
@@ -265,6 +280,7 @@ class MainActivity : AppCompatActivity() {
         // dark mode rebuilds the activity.
         components.videoPlayerBridge.onPlayerEvent = {}
         components.videoPlayerBridge.onMediaStateChanged = {}
+        components.videoPlayerBridge.onPageEvent = {}
     }
 
     override fun onStart() {
@@ -539,30 +555,46 @@ class MainActivity : AppCompatActivity() {
 
             override fun onInputCleared() = hideSuggestions()
 
-            override fun onTextChanged(text: String) {
-                suggestionJob?.cancel()
-                suggestionJob = lifecycleScope.launch {
-                    // Same 250 ms as the history filter: one query per word
-                    // typed rather than one per letter, still reads as live.
-                    delay(SUGGESTION_DEBOUNCE_MS)
-
-                    // Two passes on purpose. What we already know — bookmarks,
-                    // history, past searches — is three local reads and can be
-                    // on screen straight away; the engine's completions take a
-                    // network round-trip and land a moment later. Rendering
-                    // both at once would mean the whole drop-down waits on the
-                    // slowest half, which on a bad connection is "never".
-                    val local = suggestionSource.local(text)
-                    showSuggestions(local)
-                    showSuggestions(suggestionSource.withRemote(text, local))
-                }
-            }
+            override fun onTextChanged(text: String) = queueSuggestions(text)
         })
     }
 
-    private fun showSuggestions(items: List<Suggestion>) {
-        suggestionAdapter.submit(items)
+    private fun queueSuggestions(text: String) {
+        suggestionJob?.cancel()
+        suggestionJob = lifecycleScope.launch {
+            // Same 250 ms as the history filter: one query per word typed
+            // rather than one per letter, still reads as live.
+            delay(SUGGESTION_DEBOUNCE_MS)
+
+            // Two passes on purpose. What we already know — bookmarks, history,
+            // past searches — is three local reads and can be on screen
+            // straight away; the engine's completions take a network round-trip
+            // and land a moment later. Rendering both at once would mean the
+            // whole drop-down waits on the slowest half, which on a bad
+            // connection is "never".
+            val local = suggestionSource.local(text)
+            showSuggestions(local, text)
+            showSuggestions(suggestionSource.withRemote(text, local), text)
+        }
+    }
+
+    private fun showSuggestions(items: List<Suggestion>, typed: String) {
+        suggestionAdapter.submit(items, typed)
         binding.suggestionsList.isVisible = items.isNotEmpty()
+    }
+
+    /**
+     * The arrow at the end of a row: put its text in the address bar and stay
+     * in edit mode, rather than loading it. That's how you take a suggestion
+     * that's nearly right and add a word to it.
+     */
+    private fun onSuggestionFilled(suggestion: Suggestion) {
+        val text = suggestion.target
+        binding.toolbar.edit.updateUrl(text)
+        binding.toolbar.findViewById<EditText>(
+            mozilla.components.browser.toolbar.R.id.mozac_browser_toolbar_edit_url_view,
+        )?.let { field -> field.setSelection(field.text?.length ?: 0) }
+        queueSuggestions(text)
     }
 
     private fun hideSuggestions() {
@@ -607,14 +639,21 @@ class MainActivity : AppCompatActivity() {
      * into a click.
      */
     override fun dispatchTouchEvent(event: MotionEvent): Boolean {
-        if (event.action == MotionEvent.ACTION_DOWN &&
-            ::binding.isInitialized &&
-            binding.toolbar.hasFocus() &&
-            !isInside(binding.toolbarWrapper, event) &&
-            !(binding.suggestionsList.isVisible && isInside(binding.suggestionsList, event))
-        ) {
-            binding.toolbar.displayMode()
-            hideKeyboard()
+        if (event.action == MotionEvent.ACTION_DOWN && ::binding.isInitialized) {
+            if (binding.toolbar.hasFocus() &&
+                !isInside(binding.toolbarWrapper, event) &&
+                !(binding.suggestionsList.isVisible && isInside(binding.suggestionsList, event))
+            ) {
+                binding.toolbar.displayMode()
+                hideKeyboard()
+            }
+            // Same rule for the find bar: tapping the page means you're reading
+            // the result, not still typing the query. The bar stays open —
+            // it's the keyboard that's in the way, not the bar.
+            if (binding.findBar.findInput.hasFocus() && !isInside(binding.findBar.root, event)) {
+                binding.findBar.findInput.clearFocus()
+                hideKeyboard()
+            }
         }
         return super.dispatchTouchEvent(event)
     }
@@ -626,6 +665,38 @@ class MainActivity : AppCompatActivity() {
         return x >= bounds[0] && x <= bounds[0] + view.width &&
             y >= bounds[1] && y <= bounds[1] + view.height
     }
+
+    /**
+     * Find in page and translation.
+     *
+     * Both are implemented in the page (see find.js / translate.js) and both
+     * report back over the same native-messaging port the player uses — it is
+     * the one pipe into the content scripts, and giving each feature its own
+     * would mean three extension connections to say three sentences.
+     */
+    private fun wirePageFeatures() {
+        findController = FindInPageController(
+            binding = binding.findBar,
+            bridge = components.videoPlayerBridge,
+        )
+        // No state callback: the menu row that reads "Translate" or "Show
+        // original" is rebuilt from scratch every time the menu opens, so it
+        // asks (isPageTranslated) rather than being told.
+        translateController = TranslateController(
+            binding = binding.translateBar,
+            bridge = components.videoPlayerBridge,
+        )
+        components.videoPlayerBridge.onPageEvent = { event ->
+            when (event.optString("t")) {
+                "find" -> findController.render(event)
+                "translate" -> translateController.render(event)
+            }
+        }
+    }
+
+    /** True if the page is currently showing translated text. */
+    fun isPageTranslated(): Boolean =
+        ::translateController.isInitialized && translateController.isTranslated
 
     /**
      * Redraw the ▶ button when the page starts or stops playing something.
@@ -683,19 +754,25 @@ class MainActivity : AppCompatActivity() {
             view = binding.root,
         )
 
-        findInPageFeature.set(
-            feature = FindInPageFeature(
+        // Pull down to reload. The gesture only arms itself when the page is
+        // already scrolled to the top AND the page didn't consume the scroll
+        // itself — SwipeRefreshFeature asks the engine view, which is why the
+        // engine view has to be the refresh layout's direct child.
+        binding.swipeRefresh.setColorSchemeColors(
+            MaterialColors.getColor(binding.root, com.google.android.material.R.attr.colorPrimary),
+        )
+        binding.swipeRefresh.setProgressBackgroundColorSchemeColor(
+            MaterialColors.getColor(
+                binding.root,
+                com.google.android.material.R.attr.colorSurfaceContainerHigh,
+            ),
+        )
+        swipeRefreshFeature.set(
+            feature = SwipeRefreshFeature(
                 store = components.store,
-                view = binding.findInPageBar,
-                engineView = binding.engineView,
-                // The bar's "X" → unbind() → we hide the bar in the dismiss
-                // callback below. The keyboard has to go with it: the bar had
-                // focus, and leaving the IME up over a page with no visible
-                // input is the kind of thing that reads as a freeze.
-            ) {
-                binding.findInPageBar.visibility = View.GONE
-                hideKeyboard()
-            },
+                reloadUrlUseCase = components.sessionUseCases.reload,
+                swipeRefreshLayout = binding.swipeRefresh,
+            ),
             owner = this,
             view = binding.root,
         )
@@ -746,9 +823,10 @@ class MainActivity : AppCompatActivity() {
                     return
                 }
 
-                // Order matters: find-in-page first (it captures the X / soft-back),
+                // Order matters: the page bars first (they own the keyboard),
                 // then toolbar edit-mode → page goBack, finally tab close → finish().
-                val handled = (findInPageFeature.get() as? UserInteractionHandler)?.onBackPressed() == true
+                val handled = findController.onBackPressed()
+                    || translateController.onBackPressed()
                     || (toolbarFeature.get() as? UserInteractionHandler)?.onBackPressed() == true
                     || (sessionFeature.get() as? UserInteractionHandler)?.onBackPressed() == true
                 if (handled) return
@@ -790,6 +868,12 @@ class MainActivity : AppCompatActivity() {
         val v = if (focused) View.GONE else View.VISIBLE
         binding.toolbarWrapper.visibility = v
         binding.toolbarDivider.visibility = v
+        // The page bars are chrome too: a find bar sitting over a fullscreen
+        // video is exactly the kind of leftover that makes the mode look broken.
+        if (focused) {
+            binding.findBar.root.visibility = View.GONE
+            binding.translateBar.root.visibility = View.GONE
+        }
 
         val controller = WindowInsetsControllerCompat(window, window.decorView)
         if (focused) {
@@ -976,6 +1060,10 @@ class MainActivity : AppCompatActivity() {
 
         renderPlayerButton(isHome)
 
+        // Pull-to-refresh belongs to the page. On the start page the gesture
+        // would spin a wheel over a speed dial and reload about:blank.
+        binding.swipeRefresh.isEnabled = !isHome
+
         // Leaving a tab stops its video. Detected here because the store is the
         // only thing that knows a switch happened — it can come from the tab
         // grid, from a link opening in a new tab, or from closing one.
@@ -983,6 +1071,19 @@ class MainActivity : AppCompatActivity() {
             val hadPrevious = lastSelectedTabId != null
             lastSelectedTabId = state.selectedTabId
             if (hadPrevious) pauseMediaUnlessBackgroundAllowed()
+            markSelectedTabActive()
+        }
+
+        // A new document invalidates everything the page features knew: the
+        // content scripts were torn down with the old one.
+        if (state.url != lastPageUrl) {
+            lastPageUrl = state.url
+            findController.onPageChanged()
+            translateController.onPageChanged()
+            // Also here, not only on selection: a tab's engine session is
+            // created lazily, so at the moment it was selected there may have
+            // been nothing yet to mark.
+            markSelectedTabActive()
         }
 
         renderBookmarkAction(state.url)
@@ -1022,6 +1123,23 @@ class MainActivity : AppCompatActivity() {
     private fun pauseMediaUnlessBackgroundAllowed() {
         if (preferences.backgroundPlayback) return
         components.videoPlayerBridge.pauseAllMedia()
+    }
+
+    /**
+     * Tell the extension machinery which tab is on screen.
+     *
+     * `tabs.query({active: true})` is how background.js aims find-in-page and
+     * translation at the page the user is looking at, and it answers with
+     * nothing at all unless the embedder marks sessions active. GeckoView
+     * doesn't do that by itself — WebExtensionSupport would, but it brings a
+     * whole tab-synchronisation layer we don't otherwise need.
+     */
+    private fun markSelectedTabActive() {
+        val selected = components.store.state.selectedTabId
+        components.store.state.tabs.forEach { tab ->
+            val session = tab.engineState.engineSession ?: return@forEach
+            runCatching { session.markActiveForWebExtensions(tab.id == selected) }
+        }
     }
 
     /**
@@ -1167,13 +1285,16 @@ class MainActivity : AppCompatActivity() {
         // setView() gets none of the dialog's own margins, so its underline ran
         // edge to edge and struck through the hint.
         val body = DialogTextInputBinding.inflate(layoutInflater)
-        body.inputLayout.hint = getString(R.string.start_page_add_hint)
         // Pre-fill with the page they're on, which is the common case.
         currentUrl().takeIf { BookmarkStore.isBookmarkable(it) }
             ?.let { body.inputField.setText(it) }
 
+        // Title names the thing being made, not the verb — with "Добавить" as
+        // the title, the hint AND the confirm button, the dialog said the same
+        // word three times and explained nothing.
         MaterialAlertDialogBuilder(this)
-            .setTitle(R.string.start_page_add)
+            .setTitle(R.string.start_page_add_title)
+            .setIcon(R.drawable.ic_add)
             .setView(body.root)
             .setNegativeButton(android.R.string.cancel, null)
             .setPositiveButton(R.string.start_page_add_confirm) { _, _ ->
@@ -1264,45 +1385,50 @@ class MainActivity : AppCompatActivity() {
     /**
      * Open the find-in-page bar and put the cursor in it.
      *
-     * The bar was already wired but effectively unreachable: it used to sit at
-     * the bottom of the window, and since the window is adjustNothing the
-     * keyboard covered it completely the moment it took focus. It now lives
-     * under the toolbar (see activity_main.xml). Focus is requested here
-     * because `bind` doesn't do it, and a search bar you have to tap before
-     * you can type into isn't finished.
+     * It lives under the address bar rather than at the bottom of the window:
+     * the window is adjustNothing, so nothing moves out of the keyboard's way,
+     * and down there the bar you were meant to type into was behind the IME.
+     *
+     * Only one page bar at a time — the find bar and the translate bar share
+     * the same slot, and stacking them would push the page down twice.
      */
     fun showFindInPage() {
-        val tab = components.store.state.selectedTab ?: return
+        if (!isPageContent()) {
+            Toast.makeText(this, R.string.find_unavailable, Toast.LENGTH_SHORT).show()
+            return
+        }
         binding.toolbar.displayMode()
         hideSuggestions()
-        binding.findInPageBar.visibility = View.VISIBLE
-        findInPageFeature.get()?.bind(tab)
-        // FindInPageBar.focus() is the view's own "put the cursor here and
-        // raise the keyboard". stateAlwaysHidden on the window only governs
-        // the *initial* IME state, so an explicit request still works.
-        binding.findInPageBar.focus()
+        translateController.close()
+        findController.open()
     }
 
     /**
-     * Translate the current page, or go back to the original if it's already
+     * Translate the current page, or put the original back if it's already
      * translated.
      *
-     * A plain navigation, so back/forward and the toggle agree with each other
-     * without any extra state to keep: the untranslated page is still sitting
-     * in session history where the user left it.
+     * No navigation: the text is swapped in place by translate.js and the
+     * originals stay in that script, which is what makes "show original"
+     * instant and what keeps the address, the session and the scroll position
+     * exactly where they were.
      */
     fun toggleTranslation() {
-        val url = currentUrl()
-        val target = if (PageTranslator.isTranslated(url)) {
-            PageTranslator.toOriginal(url)
-        } else {
-            PageTranslator.toTranslated(url)
-        }
-        if (target == null) {
+        if (!isPageContent()) {
             Toast.makeText(this, R.string.translate_unavailable, Toast.LENGTH_SHORT).show()
             return
         }
-        components.sessionUseCases.loadUrl(target)
+        findController.close()
+        translateController.toggle()
+    }
+
+    /**
+     * True when there's a real web page loaded — the two page features need a
+     * document with a content script in it, and neither the start page nor a
+     * `about:`/`data:` URL has one.
+     */
+    private fun isPageContent(): Boolean {
+        val url = currentUrl()
+        return url.startsWith("http://") || url.startsWith("https://")
     }
 
     // --- Picture-in-Picture ------------------------------------------------

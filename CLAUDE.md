@@ -247,9 +247,13 @@ TOP.** GeckoView does its own keyboard handling and reflowing the page under the
 IME is worse than covering it — but that means nothing moves out of the
 keyboard's way, ever. Find-in-page spent a release pinned to the bottom of the
 window where the IME covered it completely, which read as "not implemented".
-The omnibar drop-down is capped at 300dp for the same reason: rows below the
+The omnibar drop-down is capped (336dp) for the same reason: rows below the
 keyboard line can't be tapped. New chrome that takes focus goes under the
 toolbar, not above the nav bar.
+
+**`findBar` and `translateBar` share one slot** under the divider, and both push
+the page down when visible. Opening either closes the other — stacking them
+would take 100dp off the page and neither is a mode you're in twice.
 
 **A `wrap_content` view constrained top *and* bottom is centred.** That's
 ConstraintLayout doing what it's told, and it parked the whole suggestion list
@@ -259,19 +263,31 @@ halfway down the screen. The bottom constraint has to stay — it's what
 
 Two consequences worth knowing before you "restore" something:
 
-- **`applyVideoFocus` only hides `toolbarWrapper` + `toolbarDivider` now.** Any
-  new chrome that should vanish in video focus has to be added there explicitly.
+- **`applyVideoFocus` hides `toolbarWrapper`, `toolbarDivider` and both page
+  bars (`findBar`, `translateBar`).** Any new chrome that should vanish in video
+  focus has to be added there explicitly.
 - **`BrowserToolbar` must be given 56dp. Never shrink it.** Its layouts are
   built for exactly that height and nothing in them re-centres:
   `mozac_browser_toolbar_displaytoolbar.xml` top-anchors every child with a
   hard-coded margin (8dp for the 40dp indicators, 4dp for the 48dp action
   containers — both land on the 28dp centre line of a 56dp bar and nowhere
   else), and the edit layout is a flat `layout_height="56dp"`. `onMeasure`
-  honours an EXACTLY spec, so a 44dp container silently drags the URL text 6dp
-  below the middle of the chip and clips the bottom of the star. That is what
-  the "text sits low in the search field" bug was. The visible pill is 40dp
-  because `bg_toolbar.xml` is an `<inset>`, not because the view is short —
-  same 40dp slot the library reserves for its own `..._background` ImageView.
+  honours an EXACTLY spec, so a short container silently drags the URL text
+  below the middle of the chip and clips the bottom of the star. The visible
+  pill is 40dp because `bg_toolbar.xml` is an `<inset>`, not because the view is
+  short — same 40dp slot the library reserves for its own `..._background`
+  ImageView.
+- **An `<inset>` drawable used as a background silently pads the view.**
+  `InsetDrawable.getPadding()` reports its insets as padding, and `View`'s
+  constructor adopts the background's padding for every edge the layout doesn't
+  name (`internalSetPadding(..., topPadding >= 0 ? topPadding : mPaddingTop, ...)`).
+  So `toolbarPill` — a 56dp box with `bg_toolbar` behind it — was handing
+  `BrowserToolbar` only 40dp, positioned 8dp down. The URL text stayed centred
+  (its `OriginView` is constrained top *and* bottom) while the site-info icon
+  and the bookmark star, both anchored to the parent's top, sat exactly 8dp low.
+  That is what "иконки кривые" was, twice. `toolbarPill` now names
+  `paddingTop="0dp"` and `paddingBottom="0dp"`; do not remove them. Insets still
+  control where the drawable *paints*, so the pill still looks 40dp.
 - **Nothing on a store tick may read uBO's state.** That lookup is async through
   the engine and firing one per tick ANRs the UI (see the AdblockController
   section above). The switch renders when the menu or Settings opens — that's
@@ -284,6 +300,62 @@ the previous copy-paste version had drifted out of alignment with itself.
 **The division of labour is: menu = acts on the page in front of you; Settings =
 things you set once.** New per-page action → menu. New preference → Settings.
 Desktop-site stayed in the menu despite being a toggle because it's per-tab.
+
+## Page features live in the page (find, translate)
+
+Find-in-page and translation are **content scripts**, not engine calls. Both
+ship in the player extension (`assets/extensions/upgrid_fullscreen/`) and both
+talk over the same native-messaging port the player uses — one pipe, three
+streams, separated by the `t`/`cmd` verb.
+
+| file | runs in | verbs it answers |
+|---|---|---|
+| `observer.js` | every frame | `pauseAll` |
+| `find.js` | top frame | `find`, `findNext`, `findPrev`, `findClear` |
+| `translate.js` | top frame | `translate`, `untranslate`, `translateState` |
+
+Why not the engine's own finder: it paints matches with an internal selection
+colour **no CSS can reach** (so "orange like Chrome" is not a setting), and it
+skips subtrees the page never laid out — feeds that mark off-screen items
+`content-visibility: auto` (Reddit, Habr) returned "not found" for words plainly
+visible further down. A DOM walk sees them; `checkVisibility()`'s defaults
+deliberately do *not* treat `content-visibility: auto` as hidden.
+
+The highlight CSS is declared in the manifest's `content_scripts.css`, not
+injected as a `<style>` element: extension stylesheets bypass the page's CSP,
+and appended `<style>` tags don't — GitHub and Reddit block them, and those are
+exactly the sites people search in.
+
+Why not `*.translate.goog` for translation: the proxy rate-limits by IP (a phone
+on mobile data gets a captcha) and pins Google's own banner over the page. The
+text now goes to `translate.googleapis.com/translate_a/t?client=dict-chrome-ex`
+— the endpoint Chrome's own translation uses, no key, one
+`[translation, detectedLang]` pair per `q` in order — and is written back into
+the nodes it came from. The **background page** makes that call: a content
+script's `fetch` carries the page's origin and CORS refuses it.
+
+**Routing needs `markActiveForWebExtensions`.** `browser.tabs.query({active:true})`
+is how background.js aims these at the foreground tab, and GeckoView answers
+"none" unless the embedder marks sessions active — `WebExtensionSupport` would,
+but it brings a whole tab-sync layer we don't run.
+`MainActivity.markSelectedTabActive()` does it directly on selection and on
+navigation (the engine session is created lazily, so at selection time there may
+be nothing to mark yet). background.js falls back to broadcasting when the query
+comes back empty.
+
+**`VideoPlayerBridge.sendCommand` queues while the port is down.** background.js
+connects on its first outbound message, which is observer.js's opening media
+report — about a second after load. Opening find-in-page faster than that used
+to be silence.
+
+## Pull to refresh
+
+`SwipeRefreshFeature` (feature-session) + `androidx.swiperefreshlayout`. The
+**`GeckoEngineView` has to be the `SwipeRefreshLayout`'s direct child**: the
+feature identifies it with `child is EngineView` to ask whether the page is
+already at the top, and answers "it can still scroll" for anything else, which
+disables the gesture outright. The start page is a sibling *over* the refresh
+layout and `swipeRefresh.isEnabled` is false while it's showing.
 
 ## Bookmarks
 

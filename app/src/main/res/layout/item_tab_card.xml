@@ -1,8 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  One tab, as a card in the two-column grid: page preview on top, favicon +
-  title + close underneath — the shape Chrome uses, because a screenshot is
-  recognisable in a way a truncated title isn't.
+  One tab, as a card in the two-column grid: favicon + title + close on top,
+  page preview underneath.
+
+  The caption is above the preview because that's where the controls of a card
+  belong — with it underneath, the ✕ of one row sat directly against the
+  preview of the next and the grid read as a column of screenshots with loose
+  labels between them.
 
   The preview is a fixed 2:3 box rather than a fixed 112dp: at 112dp a phone
   screenshot was a letterbox slice out of the middle of the page and read as
@@ -33,54 +37,22 @@
     android:clickable="true"
     android:focusable="true">
 
-    <FrameLayout
-        android:id="@+id/tabPreview"
-        android:layout_width="0dp"
-        android:layout_height="0dp"
-        android:background="@drawable/bg_tab_thumb"
-        android:clipToOutline="true"
-        app:layout_constraintTop_toTopOf="parent"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintDimensionRatio="H,2:3">
-
-        <TextView
-            android:id="@+id/tabInitial"
-            android:layout_width="46dp"
-            android:layout_height="46dp"
-            android:layout_gravity="center"
-            android:gravity="center"
-            android:background="@drawable/bg_host_tile"
-            android:textStyle="bold"
-            android:textSize="20sp"
-            android:textColor="#FFFFFFFF"
-            tools:text="G" />
-
-        <com.upgrid.browser.ui.TopCropImageView
-            android:id="@+id/tabThumb"
-            android:layout_width="match_parent"
-            android:layout_height="match_parent"
-            android:visibility="gone"
-            android:contentDescription="@null"
-            tools:visibility="visible" />
-    </FrameLayout>
-
     <LinearLayout
         android:id="@+id/tabCaption"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
-        android:layout_marginTop="8dp"
+        android:layout_marginBottom="7dp"
         android:orientation="horizontal"
         android:gravity="center_vertical"
-        app:layout_constraintTop_toBottomOf="@id/tabPreview"
+        app:layout_constraintTop_toTopOf="parent"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintBottom_toBottomOf="parent">
+        app:layout_constraintEnd_toEndOf="parent">
 
         <ImageView
             android:id="@+id/tabFavicon"
             android:layout_width="16dp"
             android:layout_height="16dp"
+            android:layout_marginStart="2dp"
             android:contentDescription="@null"
             android:src="@drawable/ic_globe"
             app:tint="?attr/colorOnSurfaceVariant" />
@@ -109,4 +81,37 @@
             android:src="@drawable/ic_close"
             app:tint="?attr/colorOnSurfaceVariant" />
     </LinearLayout>
+
+    <FrameLayout
+        android:id="@+id/tabPreview"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:background="@drawable/bg_tab_thumb"
+        android:clipToOutline="true"
+        app:layout_constraintTop_toBottomOf="@id/tabCaption"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintDimensionRatio="H,2:3">
+
+        <TextView
+            android:id="@+id/tabInitial"
+            android:layout_width="46dp"
+            android:layout_height="46dp"
+            android:layout_gravity="center"
+            android:gravity="center"
+            android:background="@drawable/bg_host_tile"
+            android:textStyle="bold"
+            android:textSize="20sp"
+            android:textColor="#FFFFFFFF"
+            tools:text="G" />
+
+        <com.upgrid.browser.ui.TopCropImageView
+            android:id="@+id/tabThumb"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:visibility="gone"
+            android:contentDescription="@null"
+            tools:visibility="visible" />
+    </FrameLayout>
 </androidx.constraintlayout.widget.ConstraintLayout>

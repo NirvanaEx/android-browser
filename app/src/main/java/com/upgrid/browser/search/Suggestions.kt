@@ -1,6 +1,10 @@
 package com.upgrid.browser.search
 
 import android.content.res.ColorStateList
+import android.graphics.Typeface
+import android.text.Spannable
+import android.text.SpannableString
+import android.text.style.StyleSpan
 import android.view.LayoutInflater
 import android.view.ViewGroup
 import androidx.recyclerview.widget.RecyclerView
@@ -171,15 +175,26 @@ class SuggestionSource(private val components: BrowserComponents) {
     }
 }
 
-/** Flat list of [Suggestion]s under the omnibar. */
+/**
+ * Flat list of [Suggestion]s under the omnibar.
+ *
+ * [onFill] is the trailing arrow: it puts the row's text into the address bar
+ * instead of loading it, which is how you take a suggestion and then add a word
+ * to it. Without it, a suggestion that's *almost* right has to be retyped.
+ */
 class SuggestionAdapter(
     private val onPick: (Suggestion) -> Unit,
+    private val onFill: (Suggestion) -> Unit,
 ) : RecyclerView.Adapter<SuggestionAdapter.Holder>() {
 
     private var items: List<Suggestion> = emptyList()
 
-    fun submit(suggestions: List<Suggestion>) {
+    /** What the user has typed so far, so the matching part can be emphasised. */
+    private var query: String = ""
+
+    fun submit(suggestions: List<Suggestion>, typed: String = query) {
         items = suggestions
+        query = typed
         notifyDataSetChanged()
     }
 
@@ -194,7 +209,7 @@ class SuggestionAdapter(
         RecyclerView.ViewHolder(binding.root) {
 
         fun bind(item: Suggestion) = with(binding) {
-            suggestionTitle.text = item.title
+            suggestionTitle.text = emphasise(item.title, query)
             suggestionUrl.text = item.subtitle
             suggestionUrl.visibility =
                 if (item.subtitle.isEmpty()) android.view.View.GONE else android.view.View.VISIBLE
@@ -219,6 +234,28 @@ class SuggestionAdapter(
             )
 
             root.setOnClickListener { onPick(item) }
+            suggestionFill.setOnClickListener { onFill(item) }
+        }
+
+        /**
+         * Bold the part of the row that matches what's been typed.
+         *
+         * Which is the useful half of a drop-down: nine rows of identical-
+         * looking text force you to read all of them, and the eye is looking
+         * for its own words.
+         */
+        private fun emphasise(text: String, typed: String): CharSequence {
+            if (typed.isBlank()) return text
+            val at = text.indexOf(typed, ignoreCase = true)
+            if (at < 0) return text
+            return SpannableString(text).apply {
+                setSpan(
+                    StyleSpan(Typeface.BOLD),
+                    at,
+                    at + typed.length,
+                    Spannable.SPAN_EXCLUSIVE_EXCLUSIVE,
+                )
+            }
         }
     }
 }

@@ -55,6 +55,28 @@
 
         <!-- BottomSheet → rounded top corners + brand surface -->
         <item name="bottomSheetDialogTheme">@style/Theme.UpgridBrowser.BottomSheet</item>
+
+        <!-- Every MaterialAlertDialog in the app, not one at a time. -->
+        <item name="materialAlertDialogTheme">@style/ThemeOverlay.UpgridBrowser.Dialog</item>
+    </style>
+
+    <!--
+      Dialogs. Bound on the theme rather than passed to each builder so that
+      "add a shortcut", "remove a shortcut" and the sign-in explainer can't
+      drift apart — which is how the app ended up with one dialog that looked
+      hand-made and two that didn't.
+
+      The positive button is tonal: in a two-button dialog the confirming
+      action should be the one your eye lands on, and two identical text
+      buttons make the user read both before choosing.
+    -->
+    <style name="ThemeOverlay.UpgridBrowser.Dialog" parent="ThemeOverlay.Material3.MaterialAlertDialog">
+        <item name="android:dialogCornerRadius">28dp</item>
+        <item name="buttonBarPositiveButtonStyle">@style/Widget.UpgridBrowser.DialogButton.Confirm</item>
+    </style>
+
+    <style name="Widget.UpgridBrowser.DialogButton.Confirm" parent="Widget.Material3.Button.TonalButton">
+        <item name="android:layout_marginStart">8dp</item>
     </style>
 
     <style name="Theme.UpgridBrowser.BottomSheet" parent="ThemeOverlay.Material3.BottomSheetDialog">
