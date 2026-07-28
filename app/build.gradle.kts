@@ -48,6 +48,17 @@ android {
     namespace = "com.upgrid.browser"
     compileSdk = 36
 
+    // Stripping GeckoView's native libraries needs an NDK — AGP shells out to
+    // llvm-strip. With none installed it gives up with "Unable to strip the
+    // following libraries, packaging them as they are", and unstripped
+    // libxul.so alone takes the debug APK from ~90 MB to 225 MB.
+    //
+    // CI exports the runner's preinstalled NDK version (see the workflow);
+    // locally this stays unset and Android Studio uses whatever it has.
+    System.getenv("UPGRID_NDK_VERSION")?.takeIf { it.isNotBlank() }?.let {
+        ndkVersion = it
+    }
+
     defaultConfig {
         applicationId = "com.upgrid.browser"
         minSdk = 26          // Android 8.0+ — GeckoView's floor.

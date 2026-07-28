@@ -56,6 +56,13 @@ jobs:
       - name: Set up Gradle (with build cache)
         uses: gradle/actions/setup-gradle@v4
 
+      # Without an NDK, AGP can't strip GeckoView's .so files and the debug
+      # APK balloons to ~225 MB. The runner image ships one; tell AGP which.
+      - name: Point AGP at the runner's NDK
+        run: |
+          set -euo pipefail
+          echo "UPGRID_NDK_VERSION=$(basename "$ANDROID_NDK_LATEST_HOME")" >> "$GITHUB_ENV"
+
       - name: Resolve build identity
         id: ver
         run: |
