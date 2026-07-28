@@ -99,31 +99,63 @@ The topbar ▶ button hands the page's `<video>` to OUR overlay player. Key fact
 - **Exit is multi-path and must stay idempotent.** System back / fsExit button / page exiting fullscreen all converge: content script's `fullscreenchange` listener auto-releases → `"released"` event → MainActivity hides overlay + restores chrome. `exitPlayer()` also restores chrome optimistically without waiting for the round-trip.
 - Seek step for double-tap/skip buttons is `BrowserPreferences.playerSeekSeconds` (5/10/15/30 s, settings sheet).
 
-### Two invariants that cost real debugging time
+### The stage, and why there is no DOM fullscreen
 
-**Never let a fullscreen transition we caused reach the auto-release watcher.**
-`player.js` releases the video whenever `fullscreenchange` reports no
-fullscreen element — that's how system back and page-driven exits are caught.
-But a re-entrant takeover exits the old fullscreen before requesting a new one,
-and PiP exits it on purpose. Both used to trip the watcher, which handed the
-video back mid-transition and left the overlay on a page that no longer had it.
-Every deliberate transition arms `ignoreFsFor(ms)` first; `exitFullscreenQuietly()`
-does it for you. The internal `release({keepFullscreen: true})` at takeover
-entry exists for the same reason.
+**Takeover works by moving the `<video>`, not by restyling it in place.**
+`player.js` builds a "stage": an opaque, viewport-filling `<div>` appended to
+`documentElement`, and relocates the video into it.
 
-**Android PiP and DOM fullscreen cannot coexist.** The system resizes the
-activity, Gecko drops fullscreen, and (before `pipMode`) the watcher fired.
-`MainActivity.enterPipMode()` therefore sends `{cmd:"pip", on:true}` *before*
-calling `enterPictureInPictureMode`, so the content script leaves fullscreen on
-its own terms and keeps the takeover. The video still fills the PiP window
-because the window is the viewport. Coming back from PiP we do **not** try to
-re-enter DOM fullscreen — there's no gesture to do it with, and the nuke style
-plus hidden chrome already looks identical.
+Three details are load-bearing, each of them a bug that actually shipped:
 
-Related: `MainActivity` distinguishes `playerActive` (took over, not yet
-released) from `playerOverlay.isVisible` (false in PiP while the player runs).
-`setVideoFocus` owns the `inVideoFocus` state; `applyVideoFocus` re-pushes it
-onto the window without touching the state, which is what PiP transitions need.
+- **Sizing lives in a `<style>` rule with `!important`, never inline.** YouTube
+  rewrites the video element's inline `style` on every relayout, so a one-shot
+  `video.style.cssText = …` is wiped within milliseconds and the page shows
+  through — the site skin, the ambient-mode glow, the DOM subtitles, all of it.
+  An author rule marked `!important` outranks the page's inline declarations.
+- **The stage attaches to `<html>`, not `<body>`.** A `transform`/`filter` on an
+  ancestor re-anchors `position: fixed` to that ancestor instead of the
+  viewport, and pages do transform `<body>`. Nothing transforms `<html>`.
+- **`appendChild` relocates atomically**, so the media element is still in a
+  document when the spec's "await a stable state" check runs and playback isn't
+  paused. MSE/blob sources survive untouched — which is the whole reason this
+  works on YouTube, where the stream cannot be extracted at all (see below).
+
+`reassert()` re-applies all of it on every 500 ms state tick and from a narrow
+MutationObserver, because scripted players also re-parent their video back into
+their own container. Don't widen that observer to a `subtree` watch on
+`documentElement` — it fires thousands of times a second on YouTube.
+
+**There is deliberately no `requestFullscreen`.** The stage already covers the
+content area and the native side hides the chrome and system bars, so DOM
+fullscreen bought nothing but races: entering it fought Android PiP, exiting it
+was indistinguishable from the user leaving, and YouTube re-grabbed fullscreen
+onto its own container anyway. The one remnant is that `reassert()` kicks any
+*other* element out of fullscreen, since the top layer paints above every
+z-index. `exitFullscreen()` needs no gesture and re-requesting one does, so
+that can't ping-pong.
+
+**Videos in iframes** are handled by promoting the frame chain: a frame that
+takes over `postMessage`s its parent, which gives the containing `<iframe>` the
+same stage treatment and asks *its* parent, up to the top document.
+`event.source` identifies the child window even cross-origin, which is the only
+reliable way to know which iframe spoke.
+
+Related native state: `MainActivity` distinguishes `playerActive` (took over,
+not yet released) from `playerOverlay.isVisible` (false in PiP while the player
+runs). `setVideoFocus` owns `inVideoFocus`; `applyVideoFocus` re-pushes it onto
+the window without touching the state, which is what a PiP resize needs.
+
+### Why not a native player on the real stream
+
+Asked often, so: extracting the media and handing it to ExoPlayer works only
+where `video.currentSrc` is a fetchable http(s) URL. YouTube, VK and most large
+sites deliver through Media Source Extensions — page JS pulls DASH segments and
+appends them to a `SourceBuffer`, and `currentSrc` is a `blob:` handle that
+exists only inside that page's JS context. It cannot be fetched, forwarded, or
+handed to a native player. Real stream URLs would mean a NewPipe-class
+extractor (InnerTube + signature deciphering): large, broken by Google on a
+regular schedule, and against YouTube's ToS. The stage above is what actually
+delivers "only the video" everywhere.
 
 ## API gotchas (these break between a-c versions)
 
