@@ -43,10 +43,22 @@
           why every piece of chrome that has to stay reachable while typing —
           find in page, the suggestion list — lives at the TOP of the screen.
         -->
+        <!--
+          alwaysRetainTaskState: come back to what was on screen, however long
+          it's been.
+
+          Android trims a task's state after roughly half an hour away — it
+          drops everything above the root activity and clears the intent that
+          started it, on the theory that after a break you want to start over.
+          That theory is wrong for a browser: what was open is precisely what
+          you came back for, and the browser has its own restore
+          (SessionStorage) that this flag stops the system second-guessing.
+        -->
         <activity
             android:name=".MainActivity"
             android:exported="true"
             android:launchMode="singleTask"
+            android:alwaysRetainTaskState="true"
             android:windowSoftInputMode="stateAlwaysHidden|adjustNothing"
             android:supportsPictureInPicture="true"
             android:configChanges="screenSize|smallestScreenSize|screenLayout|orientation|keyboard|keyboardHidden|navigation"

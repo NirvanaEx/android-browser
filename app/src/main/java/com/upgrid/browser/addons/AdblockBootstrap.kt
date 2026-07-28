@@ -3,6 +3,7 @@ package com.upgrid.browser.addons
 import android.content.Context
 import android.util.Log
 import com.upgrid.browser.BrowserComponents
+import com.upgrid.browser.prefs.BrowserPreferences
 import kotlinx.coroutines.suspendCancellableCoroutine
 import mozilla.components.concept.engine.webextension.PermissionPromptResponse
 import mozilla.components.concept.engine.webextension.WebExtension
@@ -28,25 +29,41 @@ import kotlin.coroutines.resumeWithException
  *    settings page at `chrome://ublock0` which we can link to from a settings
  *    screen later. For now, the toggle in the app menu calls enable/disable.
  *
+ * **On by default, not on regardless.** The safety net above used to run
+ * unconditionally, which meant it also undid the user's own decision: turn
+ * AdBlock off in the menu, restart the browser, and it was back on with no
+ * explanation. [BrowserPreferences.adblockEnabled] records what the user chose
+ * — it starts true, so a fresh install still blocks ads without being asked —
+ * and the re-enable only fires when the answer is still yes.
+ *
  * The XPI URL is the AMO direct download. Mozilla rotates the file id for each
  * uBO release; if AMO returns 404, bump the URL via [UBO_AMO_PAGE].
  */
 class AdblockBootstrap(
     private val components: BrowserComponents,
-    @Suppress("unused") private val context: Context
+    private val context: Context,
 ) {
+    private val preferences by lazy { BrowserPreferences(context) }
+
     suspend fun ensureInstalled() {
         registerAutoGrantDelegate()
 
+        val wanted = preferences.adblockEnabled
         val existing = listInstalled().firstOrNull { it.id == UBO_ID }
         if (existing != null) {
             Log.i(TAG, "uBO already installed: enabled=${existing.isEnabled()} version=${existing.getMetadata()?.version}")
-            // Re-enable defensively in case a previous run left it disabled
-            // (permission-prompt abort, user-toggled-off, etc.).
-            if (!existing.isEnabled()) {
+            // Bring the engine back in line with the user's choice — in either
+            // direction. A permission-prompt abort can leave it disabled when
+            // it should be on; a reinstall can leave it on when it was turned
+            // off.
+            if (!existing.isEnabled() && wanted) {
                 runCatching { enable(existing) }
                     .onSuccess { Log.i(TAG, "Re-enabled previously-disabled uBO.") }
                     .onFailure { Log.w(TAG, "Failed to re-enable uBO.", it) }
+            } else if (existing.isEnabled() && !wanted) {
+                runCatching { disable(existing) }
+                    .onSuccess { Log.i(TAG, "uBO left off, as chosen.") }
+                    .onFailure { Log.w(TAG, "Failed to disable uBO.", it) }
             }
             return
         }
@@ -55,7 +72,7 @@ class AdblockBootstrap(
             val ext = installFromUrl(UBO_XPI_URL)
             Log.i(TAG, "Installed uBO: id=${ext.id} version=${ext.getMetadata()?.version} enabled=${ext.isEnabled()}")
             // Belt-and-braces: if install left it disabled, flip it on now.
-            if (!ext.isEnabled()) {
+            if (!ext.isEnabled() && wanted) {
                 runCatching { enable(ext) }
                     .onSuccess { Log.i(TAG, "Enabled freshly-installed uBO.") }
                     .onFailure { Log.w(TAG, "Failed to enable uBO post-install.", it) }
@@ -123,6 +140,14 @@ class AdblockBootstrap(
 
     private suspend fun enable(ext: WebExtension): WebExtension = suspendCancellableCoroutine { cont ->
         components.engine.enableWebExtension(
+            extension = ext,
+            onSuccess = { cont.resume(it) },
+            onError = { t -> cont.resumeWithException(t) }
+        )
+    }
+
+    private suspend fun disable(ext: WebExtension): WebExtension = suspendCancellableCoroutine { cont ->
+        components.engine.disableWebExtension(
             extension = ext,
             onSuccess = { cont.resume(it) },
             onError = { t -> cont.resumeWithException(t) }

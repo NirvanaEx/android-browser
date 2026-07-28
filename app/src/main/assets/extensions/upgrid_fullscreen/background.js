@@ -175,8 +175,10 @@ browser.runtime.onMessage.addListener(function (msg, sender) {
     }
 
     // Page-feature reports travel straight through: unlike player events they
-    // carry no frame lock and mean nothing to the relay itself.
-    if (msg.t === "find" || msg.t === "translate" || msg.t === "login") {
+    // carry no frame lock and mean nothing to the relay itself. "tap" is the
+    // most straight-through of all — a single bit meaning "a link was
+    // followed", from any frame of any tab.
+    if (msg.t === "find" || msg.t === "translate" || msg.t === "login" || msg.t === "tap") {
         postToNative(msg);
         return;
     }

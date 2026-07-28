@@ -80,17 +80,19 @@ class AccountController(private val components: BrowserComponents) {
     }
 
     /**
-     * A profile arrived: fill the VPN in and arm it.
+     * A profile arrived: fill the VPN in, and stop there.
      *
-     * Auto-connect goes on with it. The point of signing in was "it should just
-     * work", and a tunnel that has to be switched on by hand after every
-     * restart isn't that. It stays visible and switchable on the VPN screen.
+     * Signing in used to switch auto-connect on as well, on the theory that
+     * "it should just work". It doesn't read that way from the other side:
+     * signing in to a browser account is not asking for every byte to be
+     * routed through somebody's server, and a tunnel that turns itself on
+     * after every restart — silently, because the notification is the only
+     * sign of it — is a thing being done to the user rather than for them.
+     * The profile is filled in and one tap away; that is the whole benefit,
+     * and it survives.
      */
     private fun applyVpn(config: String) {
-        val settings = components.vpnSettings
-        if (settings.importFrom(config)) {
-            settings.autoConnect = true
-        }
+        components.vpnSettings.importFrom(config)
     }
 
     /** Sign out: forget the account, its profile, and drop the tunnel. */

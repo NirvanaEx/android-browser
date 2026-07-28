@@ -10,6 +10,14 @@
     <string name="omnibar_hint">Поиск или адрес сайта</string>
     <string name="omnibar_hint_engine">Поиск в %1$s или адрес сайта</string>
     <string name="omnibar_engine_pick">Поисковик: %1$s. Нажмите, чтобы сменить.</string>
+
+    <!-- Назад на последней вкладке и полоса «страница загружена давно» -->
+    <string name="exit_confirm_title">Выйти из браузера?</string>
+    <string name="exit_confirm_message">Вкладки останутся открытыми и будут на месте в следующий раз.</string>
+    <string name="exit_confirm_leave">Выйти</string>
+    <string name="exit_confirm_stay">Остаться</string>
+    <string name="stale_loaded">Страница загружена %1$s</string>
+    <string name="stale_reload">Обновить</string>
     <string name="action_undo">Вернуть</string>
 
     <!-- Стартовая страница -->
@@ -91,8 +99,12 @@
     <string name="context_no_app">На телефоне нет приложения, которое это откроет</string>
 
     <string name="settings_section_search">Поисковая система</string>
-    <string name="settings_links_new_tab">Открывать ссылки в новой вкладке</string>
-    <string name="settings_links_new_tab_hint">Когда страница просит новое окно — ссылка с пометкой «открыть в новой вкладке» — открывать его. Если выключить, ссылка откроется на текущей вкладке.</string>
+    <string name="settings_links_new_tab">Ссылки, которые просят новую вкладку</string>
+    <string name="settings_links_new_tab_hint">У некоторых ссылок стоит пометка «открыть в новой вкладке». Здесь решается, что с ней делать.</string>
+    <string name="settings_links_auto">Авто — как решит сайт</string>
+    <string name="settings_links_same_tab">Выключено — открывать в текущей вкладке</string>
+    <string name="settings_haptics">Вибрация при переходе по ссылке</string>
+    <string name="settings_haptics_hint">Короткий отклик: нажатие попало по ссылке. Раньше, чем страница начнёт меняться.</string>
 
     <string name="settings_section_player">Видеоплеер</string>
     <string name="settings_seek_step">Перемотка по двойному тапу</string>
