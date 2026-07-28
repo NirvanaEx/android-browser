@@ -1,9 +1,9 @@
 package com.upgrid.browser.history
 
+import android.content.Context
+import android.content.Intent
 import android.os.Bundle
-import android.view.LayoutInflater
-import android.view.View
-import android.view.ViewGroup
+import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.isVisible
 import androidx.core.widget.doAfterTextChanged
 import androidx.lifecycle.lifecycleScope
@@ -11,28 +11,27 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.upgrid.browser.BrowserApplication
 import com.upgrid.browser.R
-import com.upgrid.browser.databinding.FragmentHistoryBinding
-import com.upgrid.browser.ui.ExpandedBottomSheetFragment
+import com.upgrid.browser.databinding.ActivityHistoryBinding
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 /**
- * Browsing history as a bottom sheet, matching the tabs tray's shape.
+ * Browsing history: day-grouped list with a filter field.
  *
- * Tapping a row loads that URL in the selected tab and dismisses; the trash
- * icon drops a single entry; "Clear all" wipes the table behind a confirm.
+ * A screen rather than the bottom sheet it used to be. A sheet gave the list
+ * whatever height was left over and put a drag handle where a back arrow
+ * belongs — history is somewhere you go and search through, not something you
+ * peek at.
  *
- * Reads go through [HistoryStore]'s suspending API on the fragment's own
- * lifecycle scope, so a slow query can't block the sheet's entry animation.
+ * Tapping a row loads it in the selected tab and returns; the trash icon drops
+ * one entry; the header action wipes the table behind a confirm.
  */
-class HistoryFragment : ExpandedBottomSheetFragment() {
+class HistoryActivity : AppCompatActivity() {
 
-    private var _binding: FragmentHistoryBinding? = null
-    private val binding get() = _binding!!
-
-    private val components get() = (requireActivity().application as BrowserApplication).components
-    private val store by lazy { HistoryStore(requireContext()) }
+    private lateinit var binding: ActivityHistoryBinding
+    private val components get() = (application as BrowserApplication).components
+    private val store get() = components.browsingHistory
 
     /** In-flight reload; cancelled on each keystroke so searches don't stack. */
     private var reloadJob: Job? = null
@@ -43,10 +42,10 @@ class HistoryFragment : ExpandedBottomSheetFragment() {
             yesterdayLabel = getString(R.string.history_yesterday),
             onOpen = { entry ->
                 components.sessionUseCases.loadUrl(entry.url)
-                dismiss()
+                finish()
             },
             onDelete = { entry ->
-                viewLifecycleOwner.lifecycleScope.launch {
+                lifecycleScope.launch {
                     store.delete(entry.id)
                     reload()
                 }
@@ -54,43 +53,41 @@ class HistoryFragment : ExpandedBottomSheetFragment() {
         )
     }
 
-    override fun onCreateView(
-        inflater: LayoutInflater,
-        container: ViewGroup?,
-        savedInstanceState: Bundle?,
-    ): View {
-        _binding = FragmentHistoryBinding.inflate(inflater, container, false)
-        return binding.root
-    }
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        binding = ActivityHistoryBinding.inflate(layoutInflater)
+        setContentView(binding.root)
 
-    override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
-        super.onViewCreated(view, savedInstanceState)
+        binding.header.pageTitle.setText(R.string.history_title)
+        binding.header.btnBack.setOnClickListener { finish() }
+        binding.header.btnHeaderAction.setText(R.string.history_clear_all)
+        binding.header.btnHeaderAction.setOnClickListener { confirmClearAll() }
 
-        binding.historyList.layoutManager = LinearLayoutManager(requireContext())
-        binding.historyList.adapter = adapter
-
-        // 250 ms after the last keystroke — long enough that typing a word
-        // costs one query instead of one per letter, short enough to feel live.
-        binding.searchInput.doAfterTextChanged {
+        binding.search.searchInput.setHint(R.string.history_search_hint)
+        // 250 ms after the last keystroke — long enough that typing a word costs
+        // one query instead of one per letter, short enough to feel live.
+        binding.search.searchInput.doAfterTextChanged {
             reloadJob?.cancel()
-            reloadJob = viewLifecycleOwner.lifecycleScope.launch {
+            reloadJob = lifecycleScope.launch {
                 delay(SEARCH_DEBOUNCE_MS)
                 render()
             }
         }
 
-        binding.btnClearAll.setOnClickListener { confirmClearAll() }
+        binding.historyList.layoutManager = LinearLayoutManager(this)
+        binding.historyList.adapter = adapter
+        binding.historyList.setHasFixedSize(true)
 
         reload()
     }
 
     private fun confirmClearAll() {
-        MaterialAlertDialogBuilder(requireContext())
+        MaterialAlertDialogBuilder(this)
             .setTitle(R.string.history_clear_all_title)
             .setMessage(R.string.history_clear_all_message)
             .setNegativeButton(android.R.string.cancel, null)
             .setPositiveButton(R.string.history_clear_all_confirm) { _, _ ->
-                viewLifecycleOwner.lifecycleScope.launch {
+                lifecycleScope.launch {
                     store.clearAll()
                     reload()
                 }
@@ -101,7 +98,7 @@ class HistoryFragment : ExpandedBottomSheetFragment() {
     /** Cancel any pending search and redraw now. Safe from click handlers. */
     private fun reload() {
         reloadJob?.cancel()
-        reloadJob = viewLifecycleOwner.lifecycleScope.launch { render() }
+        reloadJob = lifecycleScope.launch { render() }
     }
 
     /**
@@ -110,7 +107,7 @@ class HistoryFragment : ExpandedBottomSheetFragment() {
      * coroutine cancel its own job on the way in.
      */
     private suspend fun render() {
-        val query = binding.searchInput.text?.toString().orEmpty()
+        val query = binding.search.searchInput.text?.toString().orEmpty()
         val entries = store.entries(query)
         adapter.submit(entries)
 
@@ -123,17 +120,12 @@ class HistoryFragment : ExpandedBottomSheetFragment() {
         // A filtered-to-empty view still has rows behind it, so key the button
         // off the table rather than the visible list — but hide it once the
         // table is genuinely empty, including right after a clear-all.
-        binding.btnClearAll.isVisible = store.count() > 0
-    }
-
-    override fun onDestroyView() {
-        super.onDestroyView()
-        reloadJob?.cancel()
-        _binding = null
+        binding.header.btnHeaderAction.isVisible = store.count() > 0
     }
 
     companion object {
         private const val SEARCH_DEBOUNCE_MS = 250L
-        const val TAG = "history"
+
+        fun intent(context: Context): Intent = Intent(context, HistoryActivity::class.java)
     }
 }

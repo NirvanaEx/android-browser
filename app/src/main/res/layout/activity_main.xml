@@ -1,30 +1,26 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
   Top-level browser layout. Everything the browser offers lives in ONE bar at
-  the top; the page gets the entire rest of the screen.
+  the top; the page gets the entire rest of the screen. (The old five-slot
+  bottom bar and where each of its buttons went is documented in CLAUDE.md.)
 
-  There used to be a second, five-slot bar pinned to the bottom. It cost ~60dp
-  of page height permanently, sat exactly where the system gesture bar and most
-  sites' own sticky footers are, and held two buttons that were never
-  implemented. Its contents didn't vanish with it:
-
-    forward / reload / back  → quick-action row at the top of the app menu
-    adblock shield           → app menu row (with its ON/OFF pill) + Settings
-    bookmarks                → app menu, and the star in that same quick row
-    reader view              → dropped; it was a "coming soon" toast
-    tabs                     → moved up here, counter and all
-
-  Row layout, left to right:
+  Row, left to right:
     1. btnTopHome   — always visible
-    2. BrowserToolbar (URL chip) — flex, takes the leftover width
+    2. toolbarPill  — the URL chip; flex, takes the leftover width
     3. btnTopVideo  — hidden on the start page; hands the page's <video> to the
                       built-in player
-    4. btnTopTabs   — tab counter badge, opens the tabs tray
+    4. btnTopTabs   — tab counter badge, opens the tabs screen
     5. btnTopMenu   — opens AppMenuPopup
 
-  Four 40dp buttons leave ~180dp for the URL on a 360dp-wide phone. The URL is
-  elided anyway, and the alternative — a second row — is the thing being
-  removed here.
+  Alignment is load-bearing here and was previously off. Three things fix it:
+    - the row is a fixed 56dp with gravity=center_vertical, so nothing depends
+      on the tallest child to define the centre line;
+    - every touch target is the same 44dp square, so the icons share one
+      baseline instead of each centring inside a different box;
+    - the pill background moved OFF the BrowserToolbar onto a wrapper with its
+      own horizontal padding. Painted on the toolbar itself, the URL text
+      started hard against the rounded edge and the bookmark page-action had
+      nowhere to sit.
 -->
 <androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
@@ -37,12 +33,11 @@
     <LinearLayout
         android:id="@+id/toolbarWrapper"
         android:layout_width="0dp"
-        android:layout_height="wrap_content"
+        android:layout_height="56dp"
         android:orientation="horizontal"
         android:gravity="center_vertical"
         android:paddingStart="2dp"
         android:paddingEnd="2dp"
-        android:paddingVertical="3dp"
         android:background="?attr/colorSurface"
         app:layout_constraintTop_toTopOf="parent"
         app:layout_constraintStart_toStartOf="parent"
@@ -50,8 +45,8 @@
 
         <ImageButton
             android:id="@+id/btnTopHome"
-            android:layout_width="40dp"
-            android:layout_height="40dp"
+            android:layout_width="44dp"
+            android:layout_height="44dp"
             android:padding="0dp"
             android:scaleType="center"
             android:background="?attr/selectableItemBackgroundBorderless"
@@ -59,19 +54,27 @@
             android:src="@drawable/ic_home"
             android:tint="?attr/colorOnSurface" />
 
-        <mozilla.components.browser.toolbar.BrowserToolbar
-            android:id="@+id/toolbar"
+        <FrameLayout
+            android:id="@+id/toolbarPill"
             android:layout_width="0dp"
             android:layout_weight="1"
-            android:layout_height="46dp"
+            android:layout_height="44dp"
             android:layout_marginStart="2dp"
             android:layout_marginEnd="2dp"
-            android:background="@drawable/bg_toolbar" />
+            android:paddingStart="6dp"
+            android:paddingEnd="6dp"
+            android:background="@drawable/bg_toolbar">
+
+            <mozilla.components.browser.toolbar.BrowserToolbar
+                android:id="@+id/toolbar"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent" />
+        </FrameLayout>
 
         <ImageButton
             android:id="@+id/btnTopVideo"
-            android:layout_width="40dp"
-            android:layout_height="40dp"
+            android:layout_width="44dp"
+            android:layout_height="44dp"
             android:padding="0dp"
             android:scaleType="center"
             android:visibility="gone"
@@ -84,13 +87,12 @@
         <!--
           Tab counter. A FrameLayout rather than an ImageButton because the
           badge IS the icon — the number inside the rounded-square frame is how
-          every mobile browser draws this, and it doubles as the tab count
-          readout that used to live in the bottom bar.
+          every mobile browser draws this.
         -->
         <FrameLayout
             android:id="@+id/btnTopTabs"
-            android:layout_width="40dp"
-            android:layout_height="40dp"
+            android:layout_width="44dp"
+            android:layout_height="44dp"
             android:background="?attr/selectableItemBackgroundBorderless"
             android:contentDescription="@string/nav_tabs"
             android:focusable="true"
@@ -102,6 +104,7 @@
                 android:layout_height="24dp"
                 android:layout_gravity="center"
                 android:gravity="center"
+                android:includeFontPadding="false"
                 android:background="@drawable/tab_counter_bg"
                 android:textSize="12sp"
                 android:textStyle="bold"
@@ -111,8 +114,8 @@
 
         <ImageButton
             android:id="@+id/btnTopMenu"
-            android:layout_width="40dp"
-            android:layout_height="40dp"
+            android:layout_width="44dp"
+            android:layout_height="44dp"
             android:padding="0dp"
             android:scaleType="center"
             android:background="?attr/selectableItemBackgroundBorderless"
@@ -133,8 +136,8 @@
 
     <!--
       Engine view + overlays share the same constraint slot. Z-order (later
-      sibling on top) puts the start page above the engine and the player
-      overlay above both.
+      sibling on top) puts the start page above the engine, the suggestions
+      above that, and the player overlay above everything.
     -->
     <mozilla.components.browser.engine.gecko.GeckoEngineView
         android:id="@+id/engineView"
@@ -158,9 +161,34 @@
         app:layout_constraintEnd_toEndOf="parent" />
 
     <!--
-      Mozilla's built-in find-in-page bar, now pinned straight to the bottom of
-      the window. Height collapses when GONE, so the engine view takes the full
-      screen in the normal case.
+      Omnibar suggestions: bookmarks, then visited pages, then past searches.
+      Sits over the page while the URL bar is being edited and collapses to
+      nothing otherwise. Opaque on purpose — it is read against whatever the
+      page happens to be showing underneath.
+    -->
+    <androidx.recyclerview.widget.RecyclerView
+        android:id="@+id/suggestionsList"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:visibility="gone"
+        android:background="?attr/colorSurface"
+        android:elevation="6dp"
+        android:paddingTop="4dp"
+        android:paddingBottom="4dp"
+        android:clipToPadding="false"
+        android:overScrollMode="never"
+        app:layout_constraintTop_toBottomOf="@id/toolbarDivider"
+        app:layout_constraintBottom_toTopOf="@id/findInPageBar"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintHeight_default="wrap"
+        app:layout_constrainedHeight="true"
+        tools:visibility="visible" />
+
+    <!--
+      Mozilla's built-in find-in-page bar, pinned to the bottom of the window.
+      Height collapses when GONE, so the engine view takes the full screen in
+      the normal case.
     -->
     <mozilla.components.feature.findinpage.view.FindInPageBar
         android:id="@+id/findInPageBar"

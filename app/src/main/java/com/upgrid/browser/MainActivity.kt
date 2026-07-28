@@ -28,19 +28,30 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.core.view.isVisible
 import com.upgrid.browser.bookmarks.BookmarkStore
-import com.upgrid.browser.bookmarks.BookmarksFragment
+import com.upgrid.browser.bookmarks.BookmarksActivity
 import com.upgrid.browser.databinding.ActivityMainBinding
 import com.upgrid.browser.fullscreen.PlayerOverlayController
-import com.upgrid.browser.history.HistoryFragment
-import com.upgrid.browser.history.HistoryStore
+import com.upgrid.browser.history.HistoryActivity
 import com.upgrid.browser.home.QuickLink
 import com.upgrid.browser.home.StartPagePresenter
 import com.upgrid.browser.menu.AppMenuPopup
 import com.upgrid.browser.prefs.BrowserPreferences
-import com.upgrid.browser.search.SearchHistory
+import com.upgrid.browser.search.Suggestion
+import com.upgrid.browser.search.SuggestionAdapter
+import com.upgrid.browser.search.SuggestionSource
 import com.upgrid.browser.sync.GoogleAccounts
 import com.upgrid.browser.sync.SyncEngine
-import com.upgrid.browser.tabs.TabsTrayFragment
+import com.upgrid.browser.tabs.TabsActivity
+import com.upgrid.browser.history.HistoryStore
+import android.widget.EditText
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.recyclerview.widget.LinearLayoutManager
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
+import mozilla.components.concept.toolbar.Toolbar
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
@@ -85,14 +96,48 @@ class MainActivity : AppCompatActivity() {
     /** App-wide preferences (search engine, etc.). */
     private val preferences by lazy { BrowserPreferences(this) }
 
-    /** Recent omnibar queries. Recorded in the URL-commit listener. */
-    private val searchHistory by lazy { SearchHistory(this) }
+    // The three data stores live in BrowserComponents, one instance per
+    // process. Constructing them per screen meant a separate SQLite connection
+    // to the same file from every activity that showed a list.
+    private val searchHistory get() = components.searchHistory
+    private val browsingHistory get() = components.browsingHistory
+    private val bookmarks get() = components.bookmarks
 
-    /** Visited pages. Written from the store observer once a load settles. */
-    private val browsingHistory by lazy { HistoryStore(this) }
+    /** Omnibar drop-down: bookmarks, then visited pages, then past searches. */
+    private val suggestionSource by lazy { SuggestionSource(components) }
+    private val suggestionAdapter by lazy { SuggestionAdapter(::onSuggestionPicked) }
+    private var suggestionJob: Job? = null
 
-    /** Saved pages. Backs the speed dial and the menu's star. */
-    private val bookmarks by lazy { BookmarkStore(this) }
+    /**
+     * The bookmark star inside the URL chip. Held so the store observer can
+     * flip it as the page changes; [Toolbar.ActionToggleButton] renders from
+     * its own state and only redraws on `invalidateActions`.
+     */
+    private var bookmarkAction: Toolbar.ActionToggleButton? = null
+
+    /** URL whose bookmarked state [bookmarkAction] currently reflects. */
+    private var bookmarkedUrl: String? = null
+
+    /**
+     * Google sign-in, launched from the app menu as well as from Settings.
+     * Registered here because a PopupWindow has nowhere to register one, and
+     * activity-result contracts must be registered before STARTED.
+     */
+    private val signInLauncher =
+        registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+            GoogleAccounts.accountFromResult(result.data)
+                .onSuccess {
+                    Toast.makeText(this, R.string.settings_account_connected, Toast.LENGTH_SHORT)
+                        .show()
+                    lifecycleScope.launch {
+                        runCatching { SyncEngine(applicationContext).sync() }
+                        refreshStartPage()
+                    }
+                }
+                .onFailure {
+                    Toast.makeText(this, R.string.settings_account_failed, Toast.LENGTH_LONG).show()
+                }
+        }
 
     /**
      * Last (url, title) written to history, per tab id. The store ticks many
@@ -175,8 +220,16 @@ class MainActivity : AppCompatActivity() {
 
         ensureAtLeastOneTab(initialUrl = intent.dataStringIfView() ?: HOME_URL)
 
-        startPage = StartPagePresenter(binding.startPage) { link -> onQuickLinkClick(link) }
+        startPage = StartPagePresenter(
+            binding = binding.startPage,
+            icons = components.icons,
+            scope = lifecycleScope,
+            onLinkClick = { link -> components.sessionUseCases.loadUrl(link.url) },
+            onLinkLongClick = { link -> confirmRemoveQuickLink(link) },
+            onAddClick = { promptAddQuickLink() },
+        )
         wireToolbar()
+        wireSuggestions()
         wireFeatures()
         wireDismissKeyboardOnEngineTap()
         wirePlayerOverlay()
@@ -210,6 +263,7 @@ class MainActivity : AppCompatActivity() {
         // if we set it in onCreate. Re-set after super.onStart() so we win the
         // single-listener slot.
         wireUrlCommit()
+        wireEditListener()
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -228,6 +282,14 @@ class MainActivity : AppCompatActivity() {
         // from them.
         refreshStartPage()
         maybeAutoSync()
+    }
+
+    override fun onPause() {
+        super.onPause()
+        // Last unambiguous moment to photograph the current tab: it is still
+        // the rendered one, and whatever comes next (another activity, the
+        // launcher) will cover it.
+        if (::binding.isInitialized) captureCurrentThumbnail()
     }
 
     // --- View wiring -------------------------------------------------------
@@ -250,12 +312,14 @@ class MainActivity : AppCompatActivity() {
             AppMenuPopup(this@MainActivity).showFrom(it)
         }
 
-        // Tabs moved up from the removed bottom bar. The counter inside the
-        // button is the same TextView the bottom bar carried, so observeStore's
-        // update needs no change.
+        // The tab grid needs a preview of the page we're leaving; capture is
+        // only possible while it's still the rendered one.
         binding.btnTopTabs.setOnClickListener {
-            TabsTrayFragment().show(supportFragmentManager, "tabs")
+            captureCurrentThumbnail()
+            startActivity(TabsActivity.intent(this))
         }
+
+        addBookmarkAction()
 
         // Topbar video button → take over the page's video with the built-in
         // player. Fires the bundled extension's browser_action; Mozilla
@@ -302,6 +366,142 @@ class MainActivity : AppCompatActivity() {
             binding.toolbar.displayMode()
             hideKeyboard()
             true
+        }
+    }
+
+    /**
+     * The bookmark star, as a page action inside the URL chip.
+     *
+     * A page action rather than a sixth button in the bar: it belongs to the
+     * address it acts on, and the bar has no room left — four 44dp targets plus
+     * the video button already leave the URL under half the screen on a phone.
+     *
+     * [Toolbar.ActionToggleButton] owns its own selected state and only redraws
+     * on `invalidateActions`, so the store observer drives it through
+     * [renderBookmarkAction] rather than by rebuilding the action.
+     */
+    private fun addBookmarkAction() {
+        val outline = ContextCompat.getDrawable(this, R.drawable.ic_bookmark) ?: return
+        val filled = ContextCompat.getDrawable(this, R.drawable.ic_bookmark_filled) ?: return
+
+        val action = Toolbar.ActionToggleButton(
+            imageDrawable = outline,
+            imageSelectedDrawable = filled,
+            contentDescription = getString(R.string.menu_bookmark_add),
+            contentDescriptionSelected = getString(R.string.menu_bookmark_remove),
+            // Chrome URLs and the start page can't be saved; showing a star
+            // that answers with an error toast is worse than showing none.
+            visible = { BookmarkStore.isBookmarkable(currentUrl()) },
+            background = R.drawable.bg_toolbar_action,
+        ) { toggleBookmarkForCurrentPage() }
+
+        bookmarkAction = action
+        binding.toolbar.addPageAction(action)
+    }
+
+    private fun currentUrl(): String =
+        components.store.state.selectedTab?.content?.url.orEmpty()
+
+    private fun toggleBookmarkForCurrentPage() {
+        val tab = components.store.state.selectedTab ?: return
+        lifecycleScope.launch {
+            val saved = bookmarks.toggle(tab.content.url, tab.content.title)
+            // ActionToggleButton already flipped itself on tap; only correct it
+            // if the store disagreed (an unbookmarkable URL slipping through).
+            bookmarkAction?.setSelected(saved, notifyListener = false)
+            bookmarkedUrl = tab.content.url
+            Toast.makeText(
+                this@MainActivity,
+                if (saved) R.string.bookmark_added else R.string.bookmark_removed,
+                Toast.LENGTH_SHORT,
+            ).show()
+            refreshStartPage()
+        }
+    }
+
+    /**
+     * Sync the star with the page on screen.
+     *
+     * Called from the store observer, so it has to be cheap: [bookmarkedUrl]
+     * memoises the last URL looked up, because the observer fires many times
+     * per page load and each miss is a database round-trip.
+     */
+    private fun renderBookmarkAction(url: String) {
+        if (url == bookmarkedUrl) return
+        bookmarkedUrl = url
+        val action = bookmarkAction ?: return
+        if (!BookmarkStore.isBookmarkable(url)) {
+            action.setSelected(false, notifyListener = false)
+            binding.toolbar.invalidateActions()
+            return
+        }
+        lifecycleScope.launch {
+            val saved = bookmarks.isBookmarked(url)
+            // The page may have moved on while the query was in flight.
+            if (bookmarkedUrl != url) return@launch
+            action.setSelected(saved, notifyListener = false)
+            binding.toolbar.invalidateActions()
+        }
+    }
+
+    // --- Omnibar suggestions ------------------------------------------------
+
+    private fun wireSuggestions() {
+        binding.suggestionsList.layoutManager = LinearLayoutManager(this)
+        binding.suggestionsList.adapter = suggestionAdapter
+    }
+
+    /**
+     * Feed the drop-down while the URL bar is being edited.
+     *
+     * Set from [onStart] alongside the commit listener: `ToolbarFeature.start()`
+     * runs on ON_START and installs its own listeners, and both of these are
+     * single-slot.
+     */
+    private fun wireEditListener() {
+        binding.toolbar.setOnEditListener(object : Toolbar.OnEditListener {
+            override fun onStartEditing() {
+                // Nothing to suggest for an empty field; wait for a keystroke.
+            }
+
+            override fun onStopEditing() = hideSuggestions()
+
+            override fun onCancelEditing(): Boolean {
+                hideSuggestions()
+                return true
+            }
+
+            override fun onInputCleared() = hideSuggestions()
+
+            override fun onTextChanged(text: String) {
+                suggestionJob?.cancel()
+                suggestionJob = lifecycleScope.launch {
+                    // Same 250 ms as the history filter: one query per word
+                    // typed rather than one per letter, still reads as live.
+                    delay(SUGGESTION_DEBOUNCE_MS)
+                    val results = suggestionSource.forQuery(text)
+                    suggestionAdapter.submit(results)
+                    binding.suggestionsList.isVisible = results.isNotEmpty()
+                }
+            }
+        })
+    }
+
+    private fun hideSuggestions() {
+        suggestionJob?.cancel()
+        binding.suggestionsList.isVisible = false
+    }
+
+    private fun onSuggestionPicked(suggestion: Suggestion) {
+        hideSuggestions()
+        binding.toolbar.displayMode()
+        hideKeyboard()
+        when (suggestion.kind) {
+            // A past query is text, not a destination: run it through the
+            // user's engine rather than trying to load it as a URL.
+            Suggestion.Kind.SEARCH ->
+                components.sessionUseCases.loadUrl(normalizeToUrl(suggestion.target))
+            else -> components.sessionUseCases.loadUrl(suggestion.target)
         }
     }
 
@@ -581,35 +781,74 @@ class MainActivity : AppCompatActivity() {
     private fun observeStore() {
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
-                components.store.flow().collect { state ->
-                    val tab = state.selectedTab
-                    binding.tabCount.text = state.tabs.size.toString()
+                // Two collectors over one flow, on purpose.
+                //
+                // The store ticks dozens of times during a single page load —
+                // every progress update is a new state. Almost none of those
+                // change the chrome, so mapping to just the fields the chrome
+                // renders and running them through distinctUntilChanged turns
+                // a hundred redundant view writes per load into three or four.
+                //
+                // History can't share that filter: it needs the title, which
+                // arrives on a tick where nothing else changed.
+                launch {
+                    components.store.flow()
+                        .map { state ->
+                            val tab = state.selectedTab
+                            ChromeState(
+                                tabCount = state.tabs.size,
+                                selectedTabId = state.selectedTabId,
+                                url = tab?.content?.url.orEmpty(),
+                            )
+                        }
+                        .distinctUntilChanged()
+                        .collect(::renderChrome)
+                }
 
-                    // NOTE: nothing here may read uBO's state. That lookup is
-                    // async through the engine, and firing one per store tick
-                    // (dozens during a page load) backs the engine queue up and
-                    // ANRs the main thread. The AdBlock switch is rendered when
-                    // the menu or the settings sheet opens — never on a tick.
-
-                    // Speed-dial overlay vs engine view. Empty/blank URL == start page.
-                    val url = tab?.content?.url.orEmpty()
-                    val isHome = url.isBlank() || url == HOME_URL
-                    startPage.setVisible(isHome)
-
-                    // Topbar player button. This used to be gated on
-                    // tab.mediaSessionState, but that's only populated for
-                    // pages that opt into the MediaSession API — plenty of
-                    // sites with a plain <video> never set it, so the button
-                    // silently never appeared and the whole feature read as
-                    // broken. Show it on any real page instead; tapping with
-                    // nothing to grab answers with the "no video" toast, which
-                    // is far better feedback than an invisible control.
-                    binding.btnTopVideo.isVisible = !isHome && !isInPipMode()
-
-                    recordVisit(tab)
+                launch {
+                    components.store.flow().collect { recordVisit(it.selectedTab) }
                 }
             }
         }
+    }
+
+    /** The slice of store state the top bar and the start page actually render. */
+    private data class ChromeState(
+        val tabCount: Int,
+        val selectedTabId: String?,
+        val url: String,
+    )
+
+    private fun renderChrome(state: ChromeState) {
+        binding.tabCount.text = state.tabCount.toString()
+
+        // NOTE: nothing here may read uBO's state. That lookup is async through
+        // the engine, and firing one per store tick backs the engine queue up
+        // and ANRs the main thread. The AdBlock switch is rendered when the
+        // menu or the settings sheet opens — never on a tick.
+
+        // Speed-dial overlay vs engine view. Empty/blank URL == start page.
+        val isHome = state.url.isBlank() || state.url == HOME_URL
+        startPage.setVisible(isHome)
+
+        // Topbar player button. This used to be gated on tab.mediaSessionState,
+        // but that's only populated for pages that opt into the MediaSession
+        // API — plenty of sites with a plain <video> never set it, so the button
+        // silently never appeared and the whole feature read as broken. Show it
+        // on any real page instead; tapping with nothing to grab answers with
+        // the "no video" toast, which is far better feedback than an invisible
+        // control.
+        binding.btnTopVideo.isVisible = !isHome && !isInPipMode()
+
+        renderBookmarkAction(state.url)
+
+        // selectedTabId is in ChromeState only so this filter can tell two tabs
+        // showing the same URL apart. Capturing a preview here would be wrong:
+        // by the time a selection change reaches us the engine is already
+        // rendering the new tab, so the shot would be the old page's pixels
+        // filed under the new tab's id. Previews are taken at the two moments
+        // where what's on screen is unambiguous — onPause, and the tap that
+        // opens the grid.
     }
 
     /**
@@ -645,42 +884,120 @@ class MainActivity : AppCompatActivity() {
         lifecycleScope.launch { browsingHistory.record(url, title) }
     }
 
-    /** Browsing history sheet. Opened from the app menu and from settings. */
-    fun showHistory() {
-        HistoryFragment().show(supportFragmentManager, HistoryFragment.TAG)
-    }
+    /** Browsing history. Opened from the app menu and from settings. */
+    fun showHistory() = startActivity(HistoryActivity.intent(this))
 
-    /** Bookmarks sheet. Opened from the app menu and from settings. */
-    fun showBookmarks() {
-        BookmarksFragment().show(supportFragmentManager, BookmarksFragment.TAG)
-    }
+    /** Bookmarks. Opened from the app menu and from settings. */
+    fun showBookmarks() = startActivity(BookmarksActivity.intent(this))
+
+    /** Google sign-in, callable from the app menu (which can't own a launcher). */
+    fun connectGoogleAccount() = signInLauncher.launch(GoogleAccounts.signInIntent(this))
 
     // --- Speed-dial --------------------------------------------------------
-
-    private fun onQuickLinkClick(link: QuickLink) {
-        components.sessionUseCases.loadUrl(link.url)
-        // Start page hides automatically when tab.content.url changes.
-    }
 
     /**
      * Redraw the speed dial from the user's bookmarks.
      *
      * Bookmarks come first, then defaults fill whatever slots are left — saving
      * one page shouldn't wipe the other seven tiles off a brand-new install.
-     * `distinctBy(url)` keeps a bookmarked default (say, YouTube) from
-     * appearing twice.
+     * `distinctBy(url)` keeps a bookmarked default (say, YouTube) from appearing
+     * twice, and defaults the user removed stay removed.
      *
-     * Public because the menu star, the bookmarks sheet and a completed sync
+     * Public because the menu star, the bookmarks screen and a completed sync
      * all change the answer.
      */
     fun refreshStartPage() {
         lifecycleScope.launch {
+            val hidden = preferences.hiddenQuickLinks
             val saved = bookmarks.all().map { QuickLink.of(it) }
             startPage.setLinks(
                 (saved + QuickLink.SEED)
+                    .filterNot { it.url in hidden }
                     .distinctBy { it.url }
                     .take(BookmarkStore.SPEED_DIAL_SLOTS)
             )
+        }
+    }
+
+    /**
+     * "+" tile → add a shortcut.
+     *
+     * A shortcut IS a bookmark: the speed dial is drawn from them, so a second
+     * store for "tiles" would be the same rows under a different name, and the
+     * two would drift apart the first time one was edited.
+     */
+    private fun promptAddQuickLink() {
+        val input = EditText(this).apply {
+            setHint(R.string.start_page_add_hint)
+            inputType = android.text.InputType.TYPE_TEXT_VARIATION_URI
+            setSingleLine()
+            val pad = (20 * resources.displayMetrics.density).toInt()
+            setPadding(pad, pad / 2, pad, 0)
+            // Pre-fill with the page they're on, which is the common case.
+            currentUrl().takeIf { BookmarkStore.isBookmarkable(it) }?.let { setText(it) }
+        }
+        MaterialAlertDialogBuilder(this)
+            .setTitle(R.string.start_page_add)
+            .setView(input)
+            .setNegativeButton(android.R.string.cancel, null)
+            .setPositiveButton(R.string.start_page_add_confirm) { _, _ ->
+                val url = normalizeToUrl(input.text?.toString()?.trim().orEmpty())
+                if (!BookmarkStore.isBookmarkable(url)) {
+                    Toast.makeText(this, R.string.bookmark_not_saveable, Toast.LENGTH_SHORT).show()
+                    return@setPositiveButton
+                }
+                lifecycleScope.launch {
+                    if (!bookmarks.isBookmarked(url)) bookmarks.toggle(url, "")
+                    // Adding back a default the user had removed has to clear
+                    // the tombstone, or the tile silently never reappears.
+                    preferences.hiddenQuickLinks = preferences.hiddenQuickLinks - url
+                    refreshStartPage()
+                }
+            }
+            .show()
+    }
+
+    /**
+     * Long-press a tile → remove it.
+     *
+     * Two different removals behind one gesture: a saved tile is a bookmark and
+     * gets deleted, a default has nothing to delete and is instead remembered
+     * as hidden.
+     */
+    private fun confirmRemoveQuickLink(link: QuickLink) {
+        MaterialAlertDialogBuilder(this)
+            .setTitle(R.string.start_page_remove_title)
+            .setMessage(getString(R.string.start_page_remove_message, link.label))
+            .setNegativeButton(android.R.string.cancel, null)
+            .setPositiveButton(R.string.start_page_remove_confirm) { _, _ ->
+                lifecycleScope.launch {
+                    if (link.saved) {
+                        bookmarks.all().firstOrNull { it.url == link.url }
+                            ?.let { bookmarks.delete(it.id) }
+                    }
+                    preferences.hideQuickLink(link.url)
+                    refreshStartPage()
+                }
+            }
+            .show()
+    }
+
+    // --- Tab previews ------------------------------------------------------
+
+    /**
+     * Snapshot the rendered tab for the tabs grid.
+     *
+     * `captureThumbnail` can only ever see the tab currently on screen, so this
+     * runs just before leaving for the grid and whenever the selection changes.
+     * Everything else keeps whatever it had when it was last visible.
+     */
+    private fun captureCurrentThumbnail() {
+        val tabId = components.store.state.selectedTabId ?: return
+        if (startPage.isVisible) return
+        runCatching {
+            binding.engineView.captureThumbnail { bitmap ->
+                if (bitmap != null) components.tabThumbnails.put(tabId, bitmap)
+            }
         }
     }
 
@@ -927,5 +1244,12 @@ class MainActivity : AppCompatActivity() {
 
         /** Widest window the system will hand out for PiP, either orientation. */
         private const val MAX_PIP_ASPECT = 2.39f
+
+        /**
+         * Debounce before querying the omnibar drop-down. Same 250 ms the
+         * history filter uses: one query per word typed rather than one per
+         * letter, still fast enough to read as live.
+         */
+        private const val SUGGESTION_DEBOUNCE_MS = 250L
     }
 }

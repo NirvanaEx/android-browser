@@ -7,22 +7,25 @@ import com.upgrid.browser.ui.HostTile
 /**
  * One tile on the speed-dial start page.
  *
- * [color] is the brand fill drawn behind [letter]. Letters are intentionally
- * a single character (or two for ambiguous brands like VK) to keep the tiles
- * visually clean — favicons would be more accurate but require a previous
- * visit, so the letter-tile placeholder is what new users see on first launch.
+ * [letter] and [color] are the fallback identity, drawn immediately; the real
+ * favicon is fetched afterwards and painted on top, so a tile never starts
+ * blank. See [StartPagePresenter].
+ *
+ * [saved] separates a tile the user added (backed by a bookmark, removing it
+ * deletes the bookmark) from a built-in default (removing it only records the
+ * URL in `BrowserPreferences.hiddenQuickLinks` — there's nothing to delete).
  */
 data class QuickLink(
     val label: String,
     val url: String,
     val letter: String,
     @ColorInt val color: Int,
+    val saved: Boolean = false,
 ) {
     companion object {
         /**
-         * Default seed for first launch — mix of EN + RU resources covering
-         * search / video / dev / reference / social. Order matches a 4×2 grid
-         * read left-to-right, top-to-bottom.
+         * Defaults for a fresh install — mix of EN + RU resources covering
+         * search / video / dev / reference / social.
          */
         val SEED: List<QuickLink> = listOf(
             QuickLink("Google", "https://www.google.com/", "G", 0xFF4285F4.toInt()),
@@ -36,20 +39,21 @@ data class QuickLink(
         )
 
         /**
-         * A saved page as a speed-dial tile. Letter and color come from
-         * [HostTile], so a bookmark's tile is the same block of color the site
-         * gets in history, in the tabs grid and everywhere else.
+         * A saved page as a tile. Letter and colour come from [HostTile], so a
+         * bookmark looks the same here as it does in history and in the tabs
+         * grid — and identical again if its favicon never loads.
          */
         fun of(bookmark: Bookmark): QuickLink {
             val host = bookmark.host.ifBlank { HostTile.hostOf(bookmark.url) }
             return QuickLink(
-                // Page titles are long ("NirvanaEx/android-browser: a GeckoView
-                // browser…"); under a 60dp tile the host is the part that
+                // Page titles run long ("NirvanaEx/android-browser: a GeckoView
+                // browser…"); under a 64dp tile the host is the part that
                 // actually identifies the site.
                 label = host.ifBlank { bookmark.title.ifBlank { bookmark.url } },
                 url = bookmark.url,
                 letter = HostTile.letterFor(host),
                 color = HostTile.colorFor(host),
+                saved = true,
             )
         }
     }

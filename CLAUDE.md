@@ -31,32 +31,34 @@ app/src/main/
 │   ├── bookmarks/
 │   │   ├── BookmarkStore.kt        ← SQLite, one row per URL, no folders
 │   │   ├── BookmarkAdapter.kt
-│   │   └── BookmarksFragment.kt    ← bottom-sheet list, undo on delete
+│   │   └── BookmarksActivity.kt    ← full screen, search, undo on delete
 │   ├── fullscreen/
 │   │   ├── VideoPlayerBridge.kt    ← native ⇆ extension port; takeover trigger
 │   │   └── PlayerOverlayController.kt ← overlay buttons, seek bar, gestures
 │   ├── history/
 │   │   ├── HistoryStore.kt         ← SQLite visits table (one row per URL)
 │   │   ├── HistoryAdapter.kt       ← day chips + rows
-│   │   └── HistoryFragment.kt      ← bottom-sheet history browser
+│   │   └── HistoryActivity.kt      ← full screen, search, clear-all
 │   ├── home/                       ← speed-dial start page (bookmarks, topped up from SEED)
 │   ├── menu/AppMenuPopup.kt        ← 236dp drop-down menu (PopupWindow, not BottomSheet)
 │   ├── prefs/BrowserPreferences.kt ← typed SharedPreferences façade (all settings)
-│   ├── search/                     ← SearchEngine enum + SearchHistory
+│   ├── search/                     ← SearchEngine, SearchHistory, omnibar Suggestions
 │   ├── settings/SettingsBottomSheet.kt ← account, adblock, search, player, data, about
 │   ├── sync/
 │   │   ├── AccountSync.kt          ← GoogleAccounts (sign-in) + SyncEngine (merge loop)
 │   │   ├── DriveAppData.kt         ← the four Drive v3 calls, over HttpURLConnection
 │   │   └── SyncPayload.kt          ← the versioned JSON document
 │   ├── tabs/
-│   │   ├── TabsTrayFragment.kt     ← 2-column card grid, store-driven
+│   │   ├── TabsActivity.kt         ← 2-column preview grid, store-driven
+│   │   ├── TabThumbnails.kt        ← in-memory LRU of page captures
 │   │   └── TabViewHolder.kt
 │   └── ui/
 │       ├── HostTile.kt             ← per-host letter + color, shared by every list
 │       └── ExpandedBottomSheetFragment.kt ← sheets open full height
 └── res/
-    ├── layout/                     ← activity_main + app_menu_popup + fragment_{tabs_tray,
-    │                                 history,bookmarks,settings} + view_fullscreen_controls + …
+    ├── layout/                     ← activity_{main,history,bookmarks,tabs} + app_menu_popup +
+    │                                 fragment_settings + view_page_{header,search} +
+    │                                 view_fullscreen_controls + …
     ├── values/styles.xml           ← row/tile styles for the menu and the sheets
     ├── values-ru/                  ← Russian translation (device-locale driven)
     └── values, drawable, mipmap…
@@ -209,11 +211,15 @@ The AMO file id changes per release; the version in the filename is cosmetic.
 ## Architecture notes (phase 2)
 
 - **`BrowserStore` is the single source of truth.** Tabs, selected tab id, URL, title, progress all live there. UI observes via `store.flow()` and dispatches actions; never mutate engine sessions directly.
+- **Never render chrome straight off `store.flow()`.** The store ticks dozens of times per page load — every progress update is a new state, and almost none of them change anything visible. `MainActivity.observeStore` maps to a `ChromeState` of just the fields the bar renders and passes it through `distinctUntilChanged`, which turns a hundred redundant view writes per load into three or four. History collects separately and unfiltered, because it needs the title, which lands on a tick where nothing else moved.
+- **The data stores live in `BrowserComponents`, one per process.** `BookmarkStore`, `HistoryStore` and `SearchHistory` used to be constructed per screen, so every activity showing a list opened its own `SQLiteOpenHelper` — a second connection and a second page cache against a file the activity already had open. Go through `components`.
 - **Features are the glue.** `SessionFeature` renders the selected tab into `GeckoEngineView`; `ToolbarFeature` keeps `BrowserToolbar` synced. Both are bound through `ViewBoundFeatureWrapper` so they stop/start with the view lifecycle.
 - **`BrowserApplication.restorePreviousSession`** restores tabs *before* the bootstrap installs uBO — this guarantees tabs are visible the moment the user sees the activity even if AMO is unreachable.
-- **Tab close → empty state:** `MainActivity.wireBackPress` finishes the activity when the last tab is closed via the system back button. The tabs tray itself does *not* auto-dismiss when `tabs.isEmpty()` — it shows a Banana-style empty illustration. If the user swipes the tray away with zero tabs, `TabsTrayFragment.onDismiss` opens a fresh HOME tab so MainActivity isn't left empty-handed.
+- **Tab close → empty state:** `MainActivity.wireBackPress` finishes the activity when the last tab is closed via the system back button. The tabs screen does *not* close itself when `tabs.isEmpty()` — it shows an empty illustration. `TabsActivity.finish()` is overridden to open a fresh HOME tab when the list is empty, because leaving with zero tabs would drop MainActivity onto an unrendered engine view. It's on `finish()` rather than in a click handler since three paths reach it: the back arrow, the back gesture, and picking a tab.
 - **App menu is a `PopupWindow`, not a BottomSheet.** [AppMenuPopup](app/src/main/java/com/upgrid/browser/menu/AppMenuPopup.kt) is a 236dp drop-down anchored to `btnTopMenu` via `showAsDropDown(anchor, 0, 0, Gravity.END)`. Construct a new instance per tap (cheap, avoids stale toggle state) — but note `PopupWindow` keeps its content view between shows, so anything derived from browser state is re-read in `showFrom`, not at construction.
-- **Every other panel is an [ExpandedBottomSheetFragment](app/src/main/java/com/upgrid/browser/ui/ExpandedBottomSheetFragment.kt).** Tabs, history, bookmarks and settings all open at full height with `skipCollapsed = true`. They're destinations the user asked for by name; the default half-open state made each of them start with a drag, and without `skipCollapsed` a downward swipe parks at peek height instead of dismissing.
+- **History, bookmarks and tabs are Activities, not sheets.** A sheet gave each list whatever height was left over and put a drag handle where a back arrow belongs. They dispatch to the shared `BrowserStore` and finish — no results to hand back, nothing for MainActivity to keep in sync. They share [view_page_header.xml](app/src/main/res/layout/view_page_header.xml) and [view_page_search.xml](app/src/main/res/layout/view_page_search.xml) via `<include>` so the three can't drift apart. Settings is still a sheet ([ExpandedBottomSheetFragment](app/src/main/java/com/upgrid/browser/ui/ExpandedBottomSheetFragment.kt)) — it's a flat list of switches with no navigation inside it.
+- **Tab previews are memory-only** ([TabThumbnails](app/src/main/java/com/upgrid/browser/tabs/TabThumbnails.kt)), scaled to 360px on the way in, capped at 6 MB. `EngineView.captureThumbnail` can only see the tab currently rendered, so captures happen at the two moments where what's on screen is unambiguous: `onPause`, and the tap that opens the grid. **Don't capture on a selection change** — by the time the store reports one, the engine is already drawing the new tab, so the shot is the old page's pixels filed under the new tab's id.
+- **The bookmark star is a toolbar page action**, not a sixth button. Four 44dp targets plus the video button already leave the URL under half a phone screen. `Toolbar.ActionToggleButton` owns its own selected state and only repaints on `invalidateActions()`, so `renderBookmarkAction` drives it and memoises the last URL it looked up — the store observer fires many times per load and each miss is a database round-trip.
 - **One site looks the same everywhere.** [HostTile](app/src/main/java/com/upgrid/browser/ui/HostTile.kt) derives a letter and a color from the host, and history rows, bookmark rows, tab cards and speed-dial tiles all use it. The hash is computed by hand rather than via `String.hashCode()` so the colors can't reshuffle between releases. Favicons are used *on top of* the tile in the tabs grid, never instead of it — they arrive over the network and popping in mid-scroll reads as flicker.
 
 ## Chrome: one bar, and where the bottom bar went
@@ -260,8 +266,42 @@ flip its icon without a second query.
 The speed dial is backed by bookmarks, topped up from `QuickLink.SEED` to fill
 the grid, deduped by URL. Saving one page must not blank the other seven tiles
 on a fresh install — that's what the top-up is for. Anything that changes
-bookmarks has to call `MainActivity.refreshStartPage()`; the menu star, the
-bookmarks sheet and a completed sync all do.
+bookmarks has to call `MainActivity.refreshStartPage()`; the star, the bookmarks
+screen and a completed sync all do.
+
+**A speed-dial tile IS a bookmark.** The "+" tile saves one; long-press removes
+one. A separate "shortcuts" store would be the same rows under a second name and
+the two would drift the first time either was edited. Removing a *default* tile
+is the one asymmetry: there's no row to delete, so its URL goes into
+`BrowserPreferences.hiddenQuickLinks` instead — and re-adding it has to clear
+that tombstone or the tile silently never comes back.
+
+Tile icons are real favicons through `BrowserIcons` (memory + disk cached, so
+the network is touched once per site). The coloured letter stays underneath
+rather than being swapped out, so a tile is never blank while a fetch is in
+flight and never blank for a site with no icon at all.
+
+## Omnibar suggestions
+
+Typing in the URL bar drops down a list built from what the user has already
+done: **bookmarks first**, then visited pages, then past search queries
+([Suggestions.kt](app/src/main/java/com/upgrid/browser/search/Suggestions.kt)).
+
+The order is fixed rather than scored. A bookmark is a page the user chose to
+keep, so it is always the better guess than one they merely passed through;
+ranking all three sources by a relevance score lets a page that got refreshed
+twenty times outrank something deliberately saved. Duplicates are dropped by URL
+as the list is built, so a bookmarked page that's also in history appears once,
+as a bookmark.
+
+Deliberately **not** `feature-awesomebar`: its suggestion providers are written
+against `concept-storage`'s `HistoryStorage`, which is the Places-backed API this
+project decided against (see below). A `RecyclerView` and two queries need no
+new dependency.
+
+Wired through `Toolbar.OnEditListener`, set in `onStart()` alongside the commit
+listener — `ToolbarFeature.start()` runs on ON_START and installs its own, and
+both are single-slot.
 
 ## Google account & sync
 
@@ -371,9 +411,10 @@ these APKs are ~122 MB.
 **[CHANGELOG.md](CHANGELOG.md)'s top `## ` section is user-facing text.** CI
 copies it into the release body between `<!-- notes:start -->` markers, and the
 relay slices it back out for the Telegram caption — so it's what the user reads
-next to the APK they're about to install. Write it in Russian, describe what
-changed *in the app*, and update it in the same commit as the change. Commit
-subjects don't serve this purpose: they're English and they describe the code.
+next to the APK they're about to install. Russian, 3–5 bullets, **only what is
+visible in the app**: no signing keys, no architecture, no rationale. That
+material belongs in the commit message and here. Commit subjects don't serve the
+user-facing purpose either: they're English and they describe the code.
 The section is matched by "first `## `", never by version number — the version
 is the commit count, so it changes with the very commit that would add a heading
 naming it.

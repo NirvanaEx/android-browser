@@ -48,5 +48,32 @@
             </intent-filter>
         </activity>
 
+        <!--
+          Library screens. Not exported: nothing outside the app has any
+          business opening the user's history or bookmarks by intent, and an
+          exported activity here would be exactly that.
+
+          They talk to the process-wide BrowserStore rather than returning a
+          result, so MainActivity needs no plumbing to receive their outcome —
+          it re-renders from the store like it does for everything else.
+        -->
+        <activity
+            android:name=".history.HistoryActivity"
+            android:exported="false"
+            android:parentActivityName=".MainActivity"
+            android:configChanges="screenSize|smallestScreenSize|screenLayout|orientation|keyboard|keyboardHidden|navigation" />
+
+        <activity
+            android:name=".bookmarks.BookmarksActivity"
+            android:exported="false"
+            android:parentActivityName=".MainActivity"
+            android:configChanges="screenSize|smallestScreenSize|screenLayout|orientation|keyboard|keyboardHidden|navigation" />
+
+        <activity
+            android:name=".tabs.TabsActivity"
+            android:exported="false"
+            android:parentActivityName=".MainActivity"
+            android:configChanges="screenSize|smallestScreenSize|screenLayout|orientation|keyboard|keyboardHidden|navigation" />
+
     </application>
 </manifest>

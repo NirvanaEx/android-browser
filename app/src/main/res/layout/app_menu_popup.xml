@@ -174,7 +174,38 @@
 
         <View style="@style/Widget.UpgridBrowser.MenuDivider" />
 
-        <!-- ============== Group 3: settings ============== -->
+        <!-- ============== Group 3: account & settings ============== -->
+
+        <!--
+          Connecting an account is a one-time setup step, and burying the only
+          entry point three taps deep inside Settings is how it never gets done.
+          The row doubles as the status readout: when connected, the label is
+          the account's own address, so "am I signed in?" is answered by opening
+          the menu rather than by navigating to find out.
+        -->
+        <LinearLayout
+            android:id="@+id/rowAccount"
+            style="@style/Widget.UpgridBrowser.MenuRow">
+            <!-- Never tint: the Google mark is four coloured paths and a tint
+                 flattens all of them into one. -->
+            <ImageView
+                android:layout_width="19dp"
+                android:layout_height="19dp"
+                android:contentDescription="@null"
+                android:src="@drawable/ic_google" />
+            <TextView
+                android:id="@+id/accountLabel"
+                style="@style/Widget.UpgridBrowser.MenuRowLabel"
+                android:maxLines="1"
+                android:ellipsize="middle"
+                android:text="@string/menu_account_connect" />
+            <TextView
+                android:id="@+id/accountState"
+                style="@style/Widget.UpgridBrowser.MenuPill"
+                android:visibility="gone"
+                android:text="@string/menu_sync_badge"
+                tools:visibility="visible" />
+        </LinearLayout>
 
         <LinearLayout
             android:id="@+id/rowSettings"
@@ -186,12 +217,6 @@
             <TextView
                 style="@style/Widget.UpgridBrowser.MenuRowLabel"
                 android:text="@string/menu_settings" />
-            <TextView
-                android:id="@+id/syncBadge"
-                style="@style/Widget.UpgridBrowser.MenuPill"
-                android:visibility="gone"
-                android:text="@string/menu_sync_badge"
-                tools:visibility="visible" />
         </LinearLayout>
     </LinearLayout>
 </androidx.core.widget.NestedScrollView>
