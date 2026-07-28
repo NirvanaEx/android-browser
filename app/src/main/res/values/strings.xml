@@ -114,8 +114,8 @@
     <string name="settings_links_new_tab_hint">Some links are marked “open in a new tab”. This decides what to do about that.</string>
     <string name="settings_links_auto">Automatic — let the page decide</string>
     <string name="settings_links_same_tab">Off — open in the current tab</string>
-    <string name="settings_haptics">Buzz when a link opens</string>
-    <string name="settings_haptics_hint">A short tick confirming the tap landed on a link, before the page starts moving.</string>
+    <string name="settings_haptics">Buzz on a long press</string>
+    <string name="settings_haptics_hint">A short tick the moment the link menu is about to open, so you know you have held it long enough.</string>
 
     <string name="settings_section_player">Video player</string>
     <string name="settings_seek_step">Double-tap seek step</string>
@@ -230,6 +230,11 @@
     <string name="tabs_tray_close_all">Close all</string>
     <string name="tabs_tray_new">New</string>
     <string name="tabs_tray_layout">Grid or list</string>
+    <string name="tabs_tray_view_cards">Show as cards</string>
+    <string name="tabs_tray_view_list">Show as a list</string>
+    <string name="tabs_tray_search_hint">Search tabs</string>
+    <string name="tabs_tray_no_matches_title">Nothing matches that.</string>
+    <string name="tabs_tray_no_matches_subtitle">Try part of a title or an address.</string>
     <string name="tabs_tray_empty_title">Your tabs will appear here.</string>
     <string name="tabs_tray_empty_subtitle">Use tabs to browse multiple pages at once.</string>
 

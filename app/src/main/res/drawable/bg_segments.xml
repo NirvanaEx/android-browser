@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The trough behind the two view segments. One rounded fill holding both, so
+  cards ⇄ list reads as one switch with a current position rather than as two
+  buttons that happen to be adjacent.
+-->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <solid android:color="?attr/colorSurfaceContainerHigh" />
+    <corners android:radius="22dp" />
+</shape>

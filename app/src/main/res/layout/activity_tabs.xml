@@ -1,16 +1,28 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  Tabs, as a full screen — cards with page previews or a plain list, switched
-  by the icon in the header and remembered between visits.
+  Tabs, as a full screen — cards with page previews or a plain list, switched by
+  the control in the header and remembered between visits.
 
   Both are here because both are right some of the time: cards are how you pick
   one tab out of six, and a list is how you get through thirty without cutting
   every title to three words. The RecyclerView is the same one either way; only
   its layout manager and its item view type change (see TabsActivity).
 
-  "New tab" is an icon in the header (see view_page_header). It used to be a
-  floating button at the bottom, which is the far corner of a screen whose every
-  other control is at the top.
+  The header is this screen's own rather than the shared view_page_header used
+  by History and Bookmarks, and the arrangement is Chrome's, on request:
+
+    ⊞ on the left, filled, because "another tab" is the one action here that
+      isn't about a tab you already have;
+    the view switch in the middle, as one trough with two positions — the left
+      one carries the count, which is the number you came to check;
+    ⋮ on the right for the destructive thing (close everything), which does not
+      belong under a thumb resting on the screen;
+    the filter underneath, full width, because it is about the list and not
+      about the row of controls.
+
+  There is no back arrow, also on purpose and also Chrome's: every way out of
+  this screen is a tab, the system back button, or the gesture. An arrow would
+  be a fourth.
 
   IDs are referenced by TabsActivity via ViewBinding.
 -->
@@ -24,9 +36,114 @@
     android:background="?attr/colorSurface"
     android:fitsSystemWindows="true">
 
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="64dp"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:paddingStart="12dp"
+        android:paddingEnd="8dp">
+
+        <FrameLayout
+            android:id="@+id/btnTabsNew"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:background="@drawable/bg_tabs_new"
+            android:foreground="?attr/selectableItemBackground"
+            android:clickable="true"
+            android:focusable="true"
+            android:contentDescription="@string/tabs_tray_new">
+
+            <ImageView
+                android:layout_width="24dp"
+                android:layout_height="24dp"
+                android:layout_gravity="center"
+                android:contentDescription="@null"
+                android:src="@drawable/ic_add"
+                app:tint="?attr/colorOnSecondaryContainer" />
+        </FrameLayout>
+
+        <Space
+            android:layout_width="0dp"
+            android:layout_height="1dp"
+            android:layout_weight="1" />
+
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="44dp"
+            android:orientation="horizontal"
+            android:padding="3dp"
+            android:background="@drawable/bg_segments">
+
+            <FrameLayout
+                android:id="@+id/btnViewGrid"
+                android:layout_width="56dp"
+                android:layout_height="match_parent"
+                android:background="@drawable/bg_segment"
+                android:foreground="?attr/selectableItemBackground"
+                android:clickable="true"
+                android:focusable="true"
+                android:contentDescription="@string/tabs_tray_view_cards">
+
+                <TextView
+                    android:id="@+id/tabsCount"
+                    android:layout_width="24dp"
+                    android:layout_height="24dp"
+                    android:layout_gravity="center"
+                    android:gravity="center"
+                    android:includeFontPadding="false"
+                    android:background="@drawable/tab_counter_bg"
+                    android:textSize="12sp"
+                    android:textStyle="bold"
+                    android:textColor="?attr/colorOnSurface"
+                    tools:text="3" />
+            </FrameLayout>
+
+            <FrameLayout
+                android:id="@+id/btnViewList"
+                android:layout_width="56dp"
+                android:layout_height="match_parent"
+                android:background="@drawable/bg_segment"
+                android:foreground="?attr/selectableItemBackground"
+                android:clickable="true"
+                android:focusable="true"
+                android:contentDescription="@string/tabs_tray_view_list">
+
+                <ImageView
+                    android:layout_width="22dp"
+                    android:layout_height="22dp"
+                    android:layout_gravity="center"
+                    android:contentDescription="@null"
+                    android:src="@drawable/ic_list"
+                    app:tint="?attr/colorOnSurface" />
+            </FrameLayout>
+        </LinearLayout>
+
+        <Space
+            android:layout_width="0dp"
+            android:layout_height="1dp"
+            android:layout_weight="1" />
+
+        <ImageButton
+            android:id="@+id/btnTabsMenu"
+            android:layout_width="44dp"
+            android:layout_height="44dp"
+            android:padding="0dp"
+            android:scaleType="center"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="@string/nav_menu"
+            android:src="@drawable/ic_more_vert"
+            app:tint="?attr/colorOnSurface" />
+    </LinearLayout>
+
     <include
-        android:id="@+id/header"
-        layout="@layout/view_page_header" />
+        android:id="@+id/search"
+        layout="@layout/view_page_search"
+        android:layout_width="match_parent"
+        android:layout_height="44dp"
+        android:layout_marginStart="16dp"
+        android:layout_marginEnd="16dp"
+        android:layout_marginBottom="8dp" />
 
     <FrameLayout
         android:layout_width="match_parent"
@@ -61,6 +178,7 @@
                 app:tint="?attr/colorOnSurface" />
 
             <TextView
+                android:id="@+id/emptyTitle"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="20dp"
@@ -70,6 +188,7 @@
                 android:text="@string/tabs_tray_empty_title" />
 
             <TextView
+                android:id="@+id/emptySubtitle"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="8dp"

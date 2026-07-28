@@ -32,8 +32,7 @@
       ],
       "all_frames": true,
       "js": [
-        "observer.js",
-        "taps.js"
+        "observer.js"
       ],
       "run_at": "document_idle"
     },

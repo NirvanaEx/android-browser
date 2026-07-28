@@ -103,8 +103,8 @@
     <string name="settings_links_new_tab_hint">У некоторых ссылок стоит пометка «открыть в новой вкладке». Здесь решается, что с ней делать.</string>
     <string name="settings_links_auto">Авто — как решит сайт</string>
     <string name="settings_links_same_tab">Выключено — открывать в текущей вкладке</string>
-    <string name="settings_haptics">Вибрация при переходе по ссылке</string>
-    <string name="settings_haptics_hint">Короткий отклик: нажатие попало по ссылке. Раньше, чем страница начнёт меняться.</string>
+    <string name="settings_haptics">Вибрация при долгом нажатии</string>
+    <string name="settings_haptics_hint">Короткий отклик в момент, когда открывается меню ссылки — понятно, что держали достаточно.</string>
 
     <string name="settings_section_player">Видеоплеер</string>
     <string name="settings_seek_step">Перемотка по двойному тапу</string>
@@ -212,6 +212,11 @@
     <string name="tabs_tray_close_all">Закрыть все</string>
     <string name="tabs_tray_new">Новая</string>
     <string name="tabs_tray_layout">Плитки или список</string>
+    <string name="tabs_tray_view_cards">Показать плитками</string>
+    <string name="tabs_tray_view_list">Показать списком</string>
+    <string name="tabs_tray_search_hint">Поиск по вкладкам</string>
+    <string name="tabs_tray_no_matches_title">Ничего не нашлось.</string>
+    <string name="tabs_tray_no_matches_subtitle">Попробуйте часть названия или адреса.</string>
     <string name="tabs_tray_empty_title">Здесь будут ваши вкладки.</string>
     <string name="tabs_tray_empty_subtitle">Вкладки нужны, чтобы держать несколько страниц открытыми сразу.</string>
 

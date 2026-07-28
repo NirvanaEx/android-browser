@@ -3,10 +3,13 @@ package com.upgrid.browser.tabs
 import android.content.Context
 import android.content.Intent
 import android.os.Bundle
+import android.view.View
 import android.view.ViewGroup
+import android.widget.PopupMenu
 import androidx.activity.OnBackPressedCallback
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.isVisible
+import androidx.core.widget.doAfterTextChanged
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
@@ -32,9 +35,13 @@ import mozilla.components.lib.state.ext.flow
  *
  * Cards with page previews and a plain list are both right answers and which
  * one is right depends on how many tabs you keep: previews are how you find one
- * of six, a list is how you get through thirty. The icon in the header switches
- * them and the choice is remembered, so this is a preference the user sets by
- * using it rather than one buried in Settings.
+ * of six, a list is how you get through thirty. The switch in the header moves
+ * between them and the choice is remembered, so this is a preference the user
+ * sets by using it rather than one buried in Settings.
+ *
+ * The header is laid out like Chrome's, on request — ⊞ left, the switch in the
+ * middle carrying the count, ⋮ right, filter underneath. See the note at the
+ * top of activity_tabs.xml for what each position is for.
  *
  * Selecting or closing tabs only dispatches to the shared
  * [mozilla.components.browser.state.store.BrowserStore]; MainActivity renders
@@ -48,32 +55,38 @@ class TabsActivity : AppCompatActivity() {
     private val preferences by lazy { BrowserPreferences(this) }
     private lateinit var adapter: TabsAdapter
 
+    /** Everything open, unfiltered — the count on the switch is drawn from it. */
+    private var allTabs: List<TabSessionState> = emptyList()
+    private var selectedTabId: String? = null
+
+    /** What is in the filter field. Empty means "show everything". */
+    private var query: String = ""
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         binding = ActivityTabsBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
-        binding.header.pageTitle.setText(R.string.tabs_tray_title)
-        binding.header.btnBack.setOnClickListener { finish() }
-
         // The one additive action of this screen, and the only reason to come
         // here that isn't about a tab already in the list.
-        binding.header.btnHeaderIcon.isVisible = true
-        binding.header.btnHeaderIcon.contentDescription = getString(R.string.tabs_tray_new)
-        binding.header.btnHeaderIcon.setOnClickListener {
+        binding.btnTabsNew.setOnClickListener {
             components.tabsUseCases.addTab(url = MainActivity.HOME_URL, selectTab = true)
             finish()
         }
 
-        binding.header.btnHeaderToggle.isVisible = true
-        binding.header.btnHeaderToggle.setOnClickListener {
-            preferences.tabsGrid = !preferences.tabsGrid
-            applyLayout()
-        }
+        // A switch with a position, not two buttons: tapping the half that is
+        // already on does nothing rather than toggling to the other one.
+        binding.btnViewGrid.setOnClickListener { setGrid(true) }
+        binding.btnViewList.setOnClickListener { setGrid(false) }
 
-        binding.header.btnHeaderAction.setText(R.string.tabs_tray_close_all)
-        binding.header.btnHeaderAction.setOnClickListener {
-            components.tabsUseCases.removeAllTabs()
+        // Closing every tab at once is the one irreversible thing here, so it
+        // is behind the ⋮ rather than sitting under a resting thumb.
+        binding.btnTabsMenu.setOnClickListener { showOverflow(it) }
+
+        binding.search.searchInput.setHint(R.string.tabs_tray_search_hint)
+        binding.search.searchInput.doAfterTextChanged {
+            query = it?.toString().orEmpty()
+            renderTabs()
         }
 
         adapter = TabsAdapter(
@@ -101,6 +114,12 @@ class TabsActivity : AppCompatActivity() {
         wireBackPress()
     }
 
+    private fun setGrid(grid: Boolean) {
+        if (preferences.tabsGrid == grid) return
+        preferences.tabsGrid = grid
+        applyLayout()
+    }
+
     /**
      * Put the chosen view on screen.
      *
@@ -118,10 +137,21 @@ class TabsActivity : AppCompatActivity() {
         }
         binding.tabsList.recycledViewPool.clear()
         adapter.notifyDataSetChanged()
-        // The icon shows what the other view is — a switch, not a status.
-        binding.header.btnHeaderToggle.setImageResource(
-            if (grid) R.drawable.ic_list else R.drawable.ic_grid,
-        )
+        // The switch shows where it is, not where it could go.
+        binding.btnViewGrid.isSelected = grid
+        binding.btnViewList.isSelected = !grid
+    }
+
+    /** Close-everything, one step away from the thumb. */
+    private fun showOverflow(anchor: View) {
+        PopupMenu(this, anchor).apply {
+            menu.add(0, 0, 0, R.string.tabs_tray_close_all)
+            setOnMenuItemClickListener {
+                components.tabsUseCases.removeAllTabs()
+                true
+            }
+            show()
+        }
     }
 
     /**
@@ -166,20 +196,60 @@ class TabsActivity : AppCompatActivity() {
                     .map { it.tabs to it.selectedTabId }
                     .distinctUntilChanged()
                     .collect { (tabs, selectedId) ->
-                        adapter.submit(tabs, selectedId)
-                        binding.header.pageTitle.text = if (tabs.isEmpty()) {
-                            getString(R.string.tabs_tray_title)
-                        } else {
-                            getString(R.string.tabs_tray_title_count, tabs.size)
-                        }
-                        binding.header.btnHeaderAction.isVisible = tabs.isNotEmpty()
-                        binding.header.btnHeaderToggle.isVisible = tabs.isNotEmpty()
-                        binding.tabsList.isVisible = tabs.isNotEmpty()
-                        binding.emptyState.isVisible = tabs.isEmpty()
+                        allTabs = tabs
+                        selectedTabId = selectedId
+                        renderTabs()
                         // Previews for tabs that no longer exist are just memory.
                         components.tabThumbnails.retainOnly(tabs.map { it.id }.toSet())
                     }
             }
+        }
+    }
+
+    /**
+     * Draw whatever the filter left, and say the right thing when that is
+     * nothing.
+     *
+     * "You have no tabs" and "no tab matches what you typed" are different
+     * situations with different answers, and one empty state that says the
+     * first while the second is true reads as the browser having lost them.
+     *
+     * The count on the switch stays the real one. It is the number of tabs
+     * open, not the number currently shown; a filter is a way of looking, not a
+     * change to what is there.
+     */
+    private fun renderTabs() {
+        val shown = filtered()
+        adapter.submit(shown, selectedTabId)
+        binding.tabsCount.text = allTabs.size.toString()
+        binding.tabsList.isVisible = shown.isNotEmpty()
+        binding.emptyState.isVisible = shown.isEmpty()
+        binding.search.root.isVisible = allTabs.isNotEmpty()
+
+        val searching = query.isNotBlank() && allTabs.isNotEmpty()
+        binding.emptyTitle.setText(
+            if (searching) R.string.tabs_tray_no_matches_title else R.string.tabs_tray_empty_title,
+        )
+        binding.emptySubtitle.setText(
+            if (searching) {
+                R.string.tabs_tray_no_matches_subtitle
+            } else {
+                R.string.tabs_tray_empty_subtitle
+            },
+        )
+    }
+
+    /**
+     * Title or address, case-insensitively. Both, because half the time you
+     * remember the site and half the time you remember the headline — and a
+     * tab that hasn't loaded yet has an address and nothing else.
+     */
+    private fun filtered(): List<TabSessionState> {
+        val needle = query.trim()
+        if (needle.isBlank()) return allTabs
+        return allTabs.filter { tab ->
+            tab.content.title.contains(needle, ignoreCase = true) ||
+                tab.content.url.contains(needle, ignoreCase = true)
         }
     }
 
