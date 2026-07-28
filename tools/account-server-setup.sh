@@ -139,12 +139,16 @@ echo "    password set"
 # WireGuard's 443 is UDP, a different protocol, so there is no conflict. Same
 # hostname and certificate as the site already on the box, so no new
 # certificate has to be issued.
+#
+# No HTTP/2: the two ways of asking for it are split across nginx versions
+# ("listen ... http2" up to 1.24, a separate "http2 on;" from 1.25) and the
+# wrong one fails `nginx -t` outright. This serves one small JSON file a
+# handful of times a day; HTTP/1.1 costs it nothing.
 cat > "$VHOST" <<EOF
 # Upgrid Browser account API — written by tools/account-server-setup.sh.
 # Re-running that script overwrites this file.
 server {
     listen 443 ssl;
-    http2 on;
     server_name $HOST;
 
     ssl_certificate     $CERT_DIR/fullchain.pem;
@@ -165,7 +169,15 @@ server {
 }
 EOF
 
-nginx -t
+# Take our file back out if it doesn't pass. Leaving a rejected vhost on disk
+# would break the *next* reload too — including one aaPanel does on its own,
+# for a site that has nothing to do with this.
+if ! nginx -t; then
+    rm -f "$VHOST"
+    echo "nginx rejected the new server block; it has been removed and nothing was reloaded." >&2
+    echo "The WireGuard peer and the profile above are already in place." >&2
+    exit 1
+fi
 nginx -s reload
 echo "    nginx reloaded"
 
