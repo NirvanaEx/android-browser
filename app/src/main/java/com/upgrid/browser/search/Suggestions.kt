@@ -344,8 +344,10 @@ class SuggestionAdapter(
                 suggestionBadge.imageTintList = ColorStateList.valueOf(
                     MaterialColors.getColor(
                         suggestionBadge,
+                        // colorPrimary is appcompat's, not material's — the
+                        // rest of this app resolves it from there too.
                         if (item.kind == Suggestion.Kind.BOOKMARK) {
-                            com.google.android.material.R.attr.colorPrimary
+                            androidx.appcompat.R.attr.colorPrimary
                         } else {
                             com.google.android.material.R.attr.colorOnSurfaceVariant
                         },
