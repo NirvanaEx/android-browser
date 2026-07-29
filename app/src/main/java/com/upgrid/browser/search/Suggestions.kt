@@ -30,6 +30,16 @@ data class Suggestion(
     val subtitle: String,
     val target: String,
     val kind: Kind,
+    /**
+     * Whether a long press can make this row go away for good.
+     *
+     * True only for rows that came from this device's own record — a visited
+     * page or a query typed before. The search engine's guesses aren't ours to
+     * delete, the row that runs what you just typed isn't stored anywhere, and
+     * a bookmark disappearing from a long press in the address bar is not
+     * what anybody means by "forget this".
+     */
+    val removable: Boolean = false,
 ) {
     enum class Kind { BOOKMARK, HISTORY, SEARCH }
 }
@@ -112,6 +122,7 @@ class SuggestionSource(private val components: BrowserComponents) {
                     subtitle = strip(entry.url),
                     target = entry.url,
                     kind = Suggestion.Kind.HISTORY,
+                    removable = true,
                 )
             }
             .filter(seen::add)
@@ -126,6 +137,7 @@ class SuggestionSource(private val components: BrowserComponents) {
                     subtitle = "",
                     target = past,
                     kind = Suggestion.Kind.SEARCH,
+                    removable = true,
                 )
             }
             .filter(seen::add)
@@ -273,6 +285,8 @@ class SuggestionAdapter(
     private val scope: CoroutineScope,
     private val onPick: (Suggestion) -> Unit,
     private val onFill: (Suggestion) -> Unit,
+    /** Long press on a row this device put there: offer to forget it. */
+    private val onForget: (Suggestion) -> Unit,
 ) : RecyclerView.Adapter<SuggestionAdapter.Holder>() {
 
     private var items: List<Suggestion> = emptyList()
@@ -315,6 +329,18 @@ class SuggestionAdapter(
 
             root.setOnClickListener { onPick(item) }
             suggestionFill.setOnClickListener { onFill(item) }
+
+            // Long press forgets the row — but only where there is something to
+            // forget. `isLongClickable` has to be cleared by hand on the other
+            // rows: setting a listener turns it on, and setting it back to null
+            // does not turn it off, so a recycled row would keep swallowing
+            // long presses and doing nothing with them.
+            if (item.removable) {
+                root.setOnLongClickListener { onForget(item); true }
+            } else {
+                root.setOnLongClickListener(null)
+                root.isLongClickable = false
+            }
         }
 
         /**

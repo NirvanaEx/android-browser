@@ -32,6 +32,10 @@
     <dimen name="tab_strip_tab_max">220dp</dimen>
     <dimen name="tab_strip_close_min">124dp</dimen>
 
+    <!-- The "+" cell at the end of the strip. Reserved out of the width the
+         tabs divide, so the last tab never ends up underneath it. -->
+    <dimen name="tab_strip_new_width">42dp</dimen>
+
     <!-- The start page's margins. Overridden in values-sw600dp, where the
          content stays a column instead of stretching to the screen's width. -->
     <dimen name="start_page_side">20dp</dimen>

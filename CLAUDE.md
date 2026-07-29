@@ -821,16 +821,13 @@ flight and never blank for a site with no icon at all.
 
 ## The start page
 
-Three parts, in the order the eye reads them: the brand lockup, a search field,
-the shortcuts in a card.
+Two parts, in the order the eye reads them: the brand lockup, then the
+shortcuts in a card.
 
-**The field does not search.** Tapping it calls `toolbar.editMode()` — the
-address bar at the top, the one that already knows what a typed line means, has
-the suggestions and shows which engine will answer. It is on the start page
-because the address bar is at the far end of a six-inch phone from the thumb
-holding it, and because a browser whose start page has nowhere to type is the
-thing everyone notices and nobody can name. A second `EditText` here would be a
-second thing to keep in step with the first.
+There was briefly a third — a search field above the card that handed focus to
+the address bar. The owner asked for it to go: the address bar is directly
+above it, and one of the two had to be the real one. Don't add it back without
+asking.
 
 **`about:blank` is a marker, not an address.** `renderChrome` blanks the
 toolbar's URL on the start page, which is also what makes the toolbar draw its
@@ -913,6 +910,29 @@ new dependency.
 
 Wired through `Toolbar.OnEditListener`, set once in `onCreate` — see below for
 why that used to have to be `onStart`.
+
+**The panel is positioned in code, not in the layout**
+(`MainActivity.positionSuggestions`). It is a child of the root, not of the app
+bar — the bar lives inside a CoordinatorLayout and there is nothing in the root
+to constrain to — so it hung off a constant 62dp, which is a phone's toolbar
+plus its hairline. The moment a tablet put a 40dp strip of tabs above that
+toolbar, the drop-down was drawn *over* the address bar it belongs to. It now
+takes the bar's measured height, re-read whenever the bar's height changes
+(posted, because that fires from inside a layout pass). On a tablet it is also
+narrowed to the address chip's own width and lined up with it: the bar there is
+wide and mostly buttons, and a panel spanning all of it doesn't read as
+belonging to the field the cursor is in.
+
+**A long press forgets a row.** Only rows this device put there —
+`Suggestion.removable` is true for a visited page and for a query typed before,
+and false for the engine's guesses (not ours to delete), for the row that runs
+what you just typed (stored nowhere), and for bookmarks (a bookmark vanishing
+from a long press in the address bar is not what anyone means by "forget
+this"). It confirms first, for the same reason the speed dial does: this is a
+long press on a list that moves under the finger as you type. `HistoryStore.forget`
+deletes by URL — one row per URL, so the address identifies it — and
+`SearchHistory.forget` rewrites the fifty-string list. Afterwards the same query
+is re-asked so the row leaves the list you are looking at.
 
 ## The top bar does not belong to the page
 
@@ -1170,6 +1190,14 @@ dark scheme goes the wrong way). So the current tab reads as joined to the bar
 below it and the rest as sitting behind it. That, not a highlight colour, is
 what makes a strip look like tabs. A hairline separates neighbours; the adapter
 drops it next to the selected tab and after the last one.
+
+**The "+" is the last row of the list**, not a button beside it
+(`item_tab_strip_new.xml`, `TYPE_NEW_TAB`). It belongs immediately after the
+last tab — pinned to the strip's right edge it floated in empty space with two
+or three tabs open, which is what it was asked to stop doing. Its width is
+reserved out of the space the tabs divide, so the last tab never ends up
+underneath it. The trade: with enough tabs to fill the strip it scrolls off with
+them, same as Chrome, and the toolbar's counter still opens a tab from anywhere.
 
 **A tablet's bar also carries back, forward and reload** (`wireTabletChrome`),
 all three `gone` on a phone, where they live in the app menu's quick strip
@@ -1430,7 +1458,7 @@ cache key). The code still compiles and still works, and then:
   looked like it had never been wired up at all.
 
 Write separators as string templates with an explicit escape
-(`"${a} $b"`), never as a bare char literal, and check before committing:
+(`"${a} $b"`), never as a bare char literal, and check before committing:
 
 ```bash
 git ls-files -z -- '*.kt' | xargs -0 grep -lP '\x00'

@@ -104,6 +104,12 @@
             app:layout_scrollFlags="scroll|enterAlways|snap"
             tools:visibility="visible">
 
+            <!--
+              The "+" is the last row of this list (item_tab_strip_new.xml),
+              not a button beside it: it belongs immediately after the last
+              tab, and pinned to the strip's edge it floated in empty space
+              whenever only two or three tabs were open.
+            -->
             <androidx.recyclerview.widget.RecyclerView
                 android:id="@+id/tabStrip"
                 android:layout_width="0dp"
@@ -112,24 +118,6 @@
                 android:clipToPadding="false"
                 android:overScrollMode="never"
                 android:scrollbars="none" />
-
-            <!--
-              New tab, at the end of the strip. Pinned rather than riding along
-              after the last tab, so it is still there when the tabs have
-              filled the strip and started scrolling — which is the moment you
-              are most likely to want it.
-            -->
-            <ImageButton
-                android:id="@+id/btnStripNewTab"
-                android:layout_width="34dp"
-                android:layout_height="34dp"
-                android:layout_gravity="center_vertical"
-                android:padding="0dp"
-                android:scaleType="center"
-                android:background="?attr/selectableItemBackgroundBorderless"
-                android:contentDescription="@string/tabs_tray_new"
-                android:src="@drawable/ic_add"
-                android:tint="?attr/colorOnSurfaceVariant" />
         </LinearLayout>
 
         <LinearLayout
@@ -447,12 +435,13 @@
           down the screen, floating above the keyboard instead of hanging off
           the address bar. The bottom constraint has to stay (it's what caps
           the height), so the bias is what pins it up.
-        - it hangs off the root at a fixed 62dp rather than off the bar: the
-          bar lives inside a CoordinatorLayout now and there is nothing in the
-          root to constrain to. 62 is the bar (56) plus its hairline and a
-          hair of clearance, and a constant is right here because the drop-down
-          only exists while the address bar is being typed into, and editing
-          forces the bar fully open (see MainActivity.onStartEditing).
+        - the top margin here is only a starting value.
+          MainActivity.positionSuggestions replaces it with the bar's real
+          height, because the bar lives inside a CoordinatorLayout and there
+          is nothing in the root to constrain to. A constant was wrong the
+          moment a tablet added a 40dp strip of tabs above the toolbar: the
+          panel was then drawn over the address bar it belongs to. Same method
+          narrows it to the address field's width on a tablet.
         - its own surface colour, inset from both edges and elevated. On
           colorSurface, full width, the panel was the same shade as the page
           behind it and read as loose text scattered over the start page rather

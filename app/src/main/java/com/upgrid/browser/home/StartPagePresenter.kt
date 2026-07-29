@@ -40,8 +40,6 @@ class StartPagePresenter(
     private val onLinkClick: (QuickLink) -> Unit,
     private val onLinkLongClick: (QuickLink) -> Unit,
     private val onAddClick: () -> Unit,
-    /** The search field. It doesn't search — it hands focus to the address bar. */
-    private val onSearchClick: () -> Unit,
 ) {
 
     /**
@@ -62,10 +60,7 @@ class StartPagePresenter(
 
     private val columns = binding.root.resources.getInteger(R.integer.start_page_columns)
 
-    init {
-        binding.startSearch.setOnClickListener { onSearchClick() }
-        setLinks(QuickLink.SEED)
-    }
+    init { setLinks(QuickLink.SEED) }
 
     /** Replace the grid. A no-op when the links haven't actually changed. */
     fun setLinks(links: List<QuickLink>) {

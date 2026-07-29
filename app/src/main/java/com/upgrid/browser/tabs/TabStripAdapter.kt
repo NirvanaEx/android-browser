@@ -11,6 +11,7 @@ import com.google.android.material.color.MaterialColors
 import com.upgrid.browser.MainActivity
 import com.upgrid.browser.R
 import com.upgrid.browser.databinding.ItemTabStripBinding
+import com.upgrid.browser.databinding.ItemTabStripNewBinding
 import com.upgrid.browser.ui.HostTile
 import mozilla.components.browser.state.state.TabSessionState
 
@@ -45,7 +46,9 @@ import mozilla.components.browser.state.state.TabSessionState
 class TabStripAdapter(
     private val onClick: (TabSessionState) -> Unit,
     private val onClose: (TabSessionState) -> Unit,
-) : RecyclerView.Adapter<TabStripAdapter.Holder>() {
+    /** The trailing "+", which is a row of this list rather than a button beside it. */
+    private val onNewTab: () -> Unit,
+) : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
 
     private var tabs: List<TabSessionState> = emptyList()
     private var selectedId: String? = null
@@ -57,6 +60,7 @@ class TabStripAdapter(
     private var minWidth = 0
     private var maxWidth = 0
     private var closeMinWidth = 0
+    private var newTabWidth = 0
 
     /** Index of the selected tab, or -1. The strip scrolls to keep it in view. */
     val selectedPosition: Int get() = tabs.indexOfFirst { it.id == selectedId }
@@ -69,14 +73,29 @@ class TabStripAdapter(
         notifyDataSetChanged()
     }
 
-    override fun getItemCount(): Int = tabs.size
+    /** The tabs, plus one row for the "+" that follows them. */
+    override fun getItemCount(): Int = tabs.size + 1
 
-    override fun onCreateViewHolder(parent: ViewGroup, viewType: Int) = Holder(
-        ItemTabStripBinding.inflate(LayoutInflater.from(parent.context), parent, false),
-    )
+    override fun getItemViewType(position: Int): Int =
+        if (position == tabs.size) TYPE_NEW_TAB else TYPE_TAB
 
-    override fun onBindViewHolder(holder: Holder, position: Int) {
+    override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): RecyclerView.ViewHolder {
+        val inflater = LayoutInflater.from(parent.context)
+        return if (viewType == TYPE_NEW_TAB) {
+            NewTabHolder(ItemTabStripNewBinding.inflate(inflater, parent, false))
+        } else {
+            Holder(ItemTabStripBinding.inflate(inflater, parent, false))
+        }
+    }
+
+    override fun onBindViewHolder(holder: RecyclerView.ViewHolder, position: Int) {
         readDimensions(holder.itemView.resources)
+
+        if (holder is NewTabHolder) {
+            holder.bind(onNewTab)
+            return
+        }
+        if (holder !is Holder) return
 
         val tab = tabs[position]
         val selected = tab.id == selectedId
@@ -107,7 +126,10 @@ class TabStripAdapter(
      */
     private fun widthForOneTab(): Int {
         if (stripWidth <= 0 || tabs.isEmpty()) return maxWidth
-        return (stripWidth / tabs.size).coerceIn(minWidth, maxWidth)
+        // The "+" is reserved out of the width first, or the last tab would sit
+        // underneath it at exactly the moment the strip fills up.
+        val forTabs = (stripWidth - newTabWidth).coerceAtLeast(minWidth)
+        return (forTabs / tabs.size).coerceIn(minWidth, maxWidth)
     }
 
     private fun readDimensions(res: Resources) {
@@ -115,6 +137,15 @@ class TabStripAdapter(
         minWidth = res.getDimensionPixelSize(R.dimen.tab_strip_tab_min)
         maxWidth = res.getDimensionPixelSize(R.dimen.tab_strip_tab_max)
         closeMinWidth = res.getDimensionPixelSize(R.dimen.tab_strip_close_min)
+        newTabWidth = res.getDimensionPixelSize(R.dimen.tab_strip_new_width)
+    }
+
+    /** The trailing "+". Nothing to render — it only needs its listener. */
+    class NewTabHolder(private val binding: ItemTabStripNewBinding) :
+        RecyclerView.ViewHolder(binding.root) {
+        fun bind(onNewTab: () -> Unit) {
+            binding.btnStripNewTab.setOnClickListener { onNewTab() }
+        }
     }
 
     class Holder(private val binding: ItemTabStripBinding) :
@@ -184,5 +215,10 @@ class TabStripAdapter(
             binding.stripChip.setOnClickListener { onClick(tab) }
             binding.btnStripClose.setOnClickListener { onClose(tab) }
         }
+    }
+
+    private companion object {
+        const val TYPE_TAB = 0
+        const val TYPE_NEW_TAB = 1
     }
 }
