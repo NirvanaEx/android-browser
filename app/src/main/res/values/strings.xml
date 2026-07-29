@@ -25,6 +25,11 @@
     <!-- Start page -->
     <string name="start_page_tagline">Search the web. Quietly ad-free.</string>
     <string name="start_page_quick_links">Shortcuts</string>
+
+    <!-- Long press on a drop-down row that came from this device's own record. -->
+    <string name="suggestion_forget_title">Remove from history?</string>
+    <string name="suggestion_forget_message">“%1$s” will stop being suggested here.</string>
+    <string name="suggestion_forget_confirm">Remove</string>
     <string name="start_page_add">Add</string>
     <!-- Dialog title, hint and helper say three different things on purpose;
          all three used to say some version of "add an address". -->

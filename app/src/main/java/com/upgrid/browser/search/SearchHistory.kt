@@ -43,6 +43,20 @@ class SearchHistory(context: Context) {
             .apply()
     }
 
+    /**
+     * Drop one query. The omnibar's long-press: the whole list is fifty
+     * strings, so rewriting it is cheaper than any structure that could
+     * delete in place.
+     */
+    fun forget(query: String) {
+        val trimmed = query.trim()
+        if (trimmed.isEmpty()) return
+        val remaining = recent().filterNot { it.equals(trimmed, ignoreCase = true) }
+        prefs.edit()
+            .putString(KEY, remaining.joinToString(SEP.toString()))
+            .apply()
+    }
+
     fun clear() {
         prefs.edit().remove(KEY).apply()
     }

@@ -21,8 +21,10 @@ import android.os.Bundle
 import android.text.format.DateUtils
 import android.util.Rational
 import android.view.Gravity
+import android.view.HapticFeedbackConstants
 import android.view.MotionEvent
 import android.view.View
+import android.view.ViewGroup
 import android.view.inputmethod.InputMethodManager
 import android.widget.EditText
 import android.widget.TextView
@@ -158,9 +160,16 @@ class MainActivity : AppCompatActivity() {
             scope = lifecycleScope,
             onPick = ::onSuggestionPicked,
             onFill = ::onSuggestionFilled,
+            onForget = ::confirmForgetSuggestion,
         )
     }
     private var suggestionJob: Job? = null
+
+    /**
+     * The text the drop-down is currently answering. Kept so that deleting a
+     * row can ask the same question again and watch it disappear.
+     */
+    private var typedQuery: String = ""
 
     /**
      * The bookmark star inside the URL chip. Held so the store observer can
@@ -354,6 +363,9 @@ class MainActivity : AppCompatActivity() {
     /** How far the suggestion panel travels as it drops out of the bar, in px. */
     private val suggestionsRise by lazy { 12 * resources.displayMetrics.density }
 
+    /** Clearance between the bottom of the bar and the drop-down, in px. */
+    private val suggestionsGap by lazy { (6 * resources.displayMetrics.density).toInt() }
+
     /** Last value handed to the engine, so an unchanged one isn't re-sent. */
     private var dynamicToolbarHeight = -1
 
@@ -386,11 +398,6 @@ class MainActivity : AppCompatActivity() {
             onLinkClick = { link -> components.sessionUseCases.loadUrl(link.url) },
             onLinkLongClick = { link -> confirmRemoveQuickLink(link) },
             onAddClick = { promptAddQuickLink() },
-            // The field on the start page is a button: it puts the cursor in
-            // the real address bar rather than being a second one. Everything
-            // that follows — suggestions, the engine badge, what a typed line
-            // means — then happens in the one place that already knows.
-            onSearchClick = { binding.toolbar.editMode(Toolbar.CursorPlacement.ALL) },
         )
         wireToolbar()
         wireTabStrip()
@@ -818,6 +825,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun queueSuggestions(text: String) {
+        typedQuery = text
         suggestionJob?.cancel()
         suggestionJob = lifecycleScope.launch {
             // One query per pause in typing rather than one per letter.
@@ -843,6 +851,9 @@ class MainActivity : AppCompatActivity() {
 
     private fun showSuggestions(items: List<Suggestion>, typed: String) {
         suggestionAdapter.submit(items, typed)
+        // The bar's height is known by now (editing forces it fully open), and
+        // it decides where this panel starts.
+        positionSuggestions()
         // Drops out of the address bar rather than blinking into existence.
         // Called twice per keystroke (local reads, then the engine's answer),
         // and the second call is a no-op once the panel is already down.
@@ -865,6 +876,47 @@ class MainActivity : AppCompatActivity() {
             mozilla.components.browser.toolbar.R.id.mozac_browser_toolbar_edit_url_view,
         )?.let { field -> field.setSelection(field.text?.length ?: 0) }
         queueSuggestions(text)
+    }
+
+    /**
+     * Long press on a suggestion the browser itself put there.
+     *
+     * A confirmation rather than an immediate delete, and for the same reason
+     * the speed dial asks before removing a tile: this is a long press on a
+     * list that is moving under the finger as you type, and the alternative to
+     * one tap is a deletion nobody can undo.
+     *
+     * The buzz is the one this app already has — the moment a long press has
+     * been recognised is the only gesture with no other feedback.
+     */
+    private fun confirmForgetSuggestion(suggestion: Suggestion) {
+        if (preferences.hapticFeedback) {
+            binding.root.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+        }
+        MaterialAlertDialogBuilder(this)
+            .setTitle(R.string.suggestion_forget_title)
+            .setMessage(getString(R.string.suggestion_forget_message, suggestion.title))
+            .setNegativeButton(android.R.string.cancel, null)
+            .setPositiveButton(R.string.suggestion_forget_confirm) { _, _ ->
+                forgetSuggestion(suggestion)
+            }
+            .show()
+    }
+
+    /**
+     * Take the row out of whichever record produced it, then ask the same
+     * question again so it leaves the list the user is looking at.
+     */
+    private fun forgetSuggestion(suggestion: Suggestion) {
+        lifecycleScope.launch {
+            when (suggestion.kind) {
+                Suggestion.Kind.HISTORY -> components.browsingHistory.forget(suggestion.target)
+                Suggestion.Kind.SEARCH -> components.searchHistory.forget(suggestion.target)
+                // Nothing else is removable — see Suggestion.removable.
+                else -> return@launch
+            }
+            queueSuggestions(typedQuery)
+        }
     }
 
     private fun hideSuggestions() {
@@ -1333,6 +1385,77 @@ class MainActivity : AppCompatActivity() {
         // bar with: there is nothing to read, and the bar would then be missing
         // on the one screen whose entire purpose is going somewhere.
         binding.startPage.startPageScroll.isNestedScrollingEnabled = false
+
+        // The drop-down hangs off the bottom of the bar, and the bar is not
+        // always the same height — a tablet adds the tab strip, a load adds the
+        // progress line. Posted rather than applied inline: this fires from a
+        // layout pass, and changing a view's margins inside one asks for
+        // another pass while the first is still running.
+        binding.chrome.addOnLayoutChangeListener {
+                _, _, top, _, bottom, _, oldTop, _, oldBottom ->
+            if (bottom - top != oldBottom - oldTop) {
+                binding.suggestionsList.post { positionSuggestions() }
+            }
+        }
+    }
+
+    /**
+     * Put the omnibar drop-down under the bar, whatever height the bar is.
+     *
+     * It used to hang off the root at a fixed 62dp — the height of a phone's
+     * toolbar plus its hairline. On a tablet the bar is that plus a 40dp strip
+     * of tabs, so the panel was drawn *over* the address bar it belongs to.
+     *
+     * On a tablet it is also narrowed to the address field's own width. The bar
+     * there is wide and mostly buttons, and a panel spanning all of it doesn't
+     * read as belonging to the field the cursor is in.
+     */
+    private fun positionSuggestions() {
+        val barHeight = binding.chrome.height
+        if (barHeight <= 0) return
+
+        val lp = binding.suggestionsList.layoutParams as ViewGroup.MarginLayoutParams
+        var changed = false
+
+        val top = barHeight + suggestionsGap
+        if (lp.topMargin != top) {
+            lp.topMargin = top
+            changed = true
+        }
+
+        if (tabletUi) {
+            val pill = binding.toolbarPill
+            val content = binding.root.width - binding.root.paddingStart - binding.root.paddingEnd
+            val start = startEdgeInRoot(pill)
+            if (pill.width > 0 && content > 0 && start >= 0) {
+                val end = (content - start - pill.width).coerceAtLeast(0)
+                if (lp.marginStart != start) {
+                    lp.marginStart = start
+                    changed = true
+                }
+                if (lp.marginEnd != end) {
+                    lp.marginEnd = end
+                    changed = true
+                }
+            }
+        }
+
+        if (changed) binding.suggestionsList.layoutParams = lp
+    }
+
+    /**
+     * Where [view] starts, in the root's own content coordinates.
+     *
+     * Measured through the window rather than by adding up parents' offsets:
+     * the address chip is four containers deep (coordinator → app bar → row →
+     * chip) and the drop-down is a child of the root.
+     */
+    private fun startEdgeInRoot(view: View): Int {
+        val here = IntArray(2)
+        view.getLocationInWindow(here)
+        val root = IntArray(2)
+        binding.root.getLocationInWindow(root)
+        return here[0] - root[0] - binding.root.paddingStart
     }
 
     /**
@@ -1356,6 +1479,13 @@ class MainActivity : AppCompatActivity() {
                     components.tabsUseCases.addTab(url = HOME_URL, selectTab = true)
                 }
                 components.tabsUseCases.removeTab(tab.id, selectParentIfExists = true)
+            },
+            // The "+" rides at the end of the list, immediately after the last
+            // tab — it used to be a button pinned to the strip's right edge,
+            // which left it floating in empty space with two tabs open.
+            onNewTab = {
+                leaveEditMode()
+                components.tabsUseCases.addTab(url = HOME_URL, selectTab = true)
             },
         )
         tabStrip = adapter
@@ -1381,11 +1511,6 @@ class MainActivity : AppCompatActivity() {
                     renderTabStrip(state.tabs, state.selectedTabId)
                 }
             }
-        }
-
-        binding.btnStripNewTab.setOnClickListener {
-            leaveEditMode()
-            components.tabsUseCases.addTab(url = HOME_URL, selectTab = true)
         }
     }
 

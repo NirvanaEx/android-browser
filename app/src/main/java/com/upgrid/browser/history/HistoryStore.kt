@@ -217,6 +217,18 @@ class HistoryStore(context: Context) {
         Unit
     }
 
+    /**
+     * Drop one page, by address rather than by row id.
+     *
+     * The omnibar's long-press: a [Suggestion] carries what it needs to load,
+     * not where it came from — and there is one row per URL in this table, so
+     * the address identifies it exactly.
+     */
+    suspend fun forget(url: String) = withContext(dbContext) {
+        helper.writableDatabase.delete(TABLE, "url = ?", arrayOf(url))
+        Unit
+    }
+
     suspend fun clearAll() = withContext(dbContext) {
         helper.writableDatabase.delete(TABLE, null, null)
         Unit
