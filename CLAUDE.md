@@ -380,9 +380,24 @@ translate, stale — has no flags, so it pins to the top once the bar is gone.
 **Order in the AppBarLayout is load-bearing**: it collapses by sliding itself up
 by the summed height of the flagged children, so those must come first.
 
-Three things reopen it by hand: starting to type an address (the drop-down hangs
+Four things reopen it by hand: starting to type an address (the drop-down hangs
 off a fully open bar), a page starting to load — once, on the transition into
-loading, not on every progress tick — and leaving the player.
+loading, not on every progress tick — leaving the player, and **arriving at the
+start page**. That last one is not symmetry: there is nothing on a speed dial to
+scroll, so a bar that arrives retracted stays retracted.
+
+**The bar is not draggable by hand, and that is a fix, not a simplification.**
+`AppBarLayout.Behavior` lets you drag the header itself, and `canDragView`
+answers yes for as long as it has not seen a nested scroll — and again whenever
+the last thing that scrolled is at its own top. On the start page, where nothing
+scrolls at all, one swipe up on the toolbar took the bar away for good: the
+gesture that would bring it back is a swipe down *on the bar*, which is no
+longer on screen. Any page shorter than the window had the same dead end.
+`wireChromeBehaviour` installs a `DragCallback` that always says no. Note it
+resolves the behaviour with `?: AppBarLayout.Behavior().also { params.behavior = it }`
+— a behaviour that comes from the class rather than from `app:layout_behavior`
+is not resolved until the first measure pass, so reading it in `onCreate` can
+hand you null.
 
 `setChromeVisible` hides the bar's **children** rather than the bar, and that is
 not fussiness: a `GONE` dependency keeps the bounds it last had, and the
