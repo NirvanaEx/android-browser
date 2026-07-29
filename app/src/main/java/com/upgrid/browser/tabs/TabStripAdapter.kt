@@ -212,7 +212,19 @@ class TabStripAdapter(
             iconJob?.cancel()
             iconUrl = url
             val favicon = tab.content.icon
-            if (favicon != null) {
+            if (tab.content.private) {
+                // The mask replaces the site's logo rather than sitting next to
+                // it. On a 92dp tab there is room for one glyph, and which mode
+                // a tab is in matters more than which site it is on — that is
+                // written next to it either way.
+                binding.stripFavicon.setImageResource(R.drawable.ic_incognito)
+                binding.stripFavicon.imageTintList = ColorStateList.valueOf(
+                    MaterialColors.getColor(
+                        binding.stripFavicon,
+                        com.google.android.material.R.attr.colorOnSurfaceVariant,
+                    ),
+                )
+            } else if (favicon != null) {
                 binding.stripFavicon.setImageBitmap(favicon)
                 binding.stripFavicon.imageTintList = null
             } else {

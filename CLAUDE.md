@@ -834,6 +834,39 @@ the network is touched once per site). The coloured letter stays underneath
 rather than being swapped out, so a tile is never blank while a fetch is in
 flight and never blank for a site with no icon at all.
 
+## Private tabs
+
+`tabsUseCases.addTab(url, selectTab = true, private = true)`, and then four
+things have to hold — three of which are not ours, which is the useful thing to
+know before touching any of it:
+
+- **The engine** gives a private session its own cookie jar and storage
+  (`EngineMiddleware` passes `tab.content.private` to `createSession`), and
+  Gecko drops that container when the last private session goes.
+- **a-c's session writer** filters `!it.content.private` on the way to disk, so
+  private tabs are not restored after a restart — nothing to switch off.
+- **`MainActivity.recordVisit` returns early** on a private tab. That one line
+  is the whole of "nothing reaches history".
+- **`promptSaveLogin` returns early** too. Offering to remember a password
+  typed in the one mode whose promise is that nothing is remembered would be
+  the app contradicting itself, in a dialog.
+
+`WindowRequests` already passed `private = parent.content.private`, so a link
+that opens a window from a private page stays private.
+
+**It is marked in three places, and each one is where you would look.** The mask
+sits on the toolbar next to the address (the start page that explained the mode
+is long gone by the time you are on a site); private tabs wear it instead of a
+favicon in the tab strip and the tabs screen, because which mode a tab is in is
+what you scan that list for and the site is written beside it in words; and the
+start page of a private tab is replaced entirely by an explanation.
+
+**That explanation says what the mode does *and* what it doesn't** — no history,
+no saved passwords, cookies dropped; and then: the sites and the provider still
+see the traffic, downloads and shortcuts stay on the phone. The second half is
+the one every browser used to leave out and the one people get wrong. If the VPN
+is what somebody actually wants, it is two rows further down the same menu.
+
 ## Real logos: BrowserIcons never asks the site
 
 **`BrowserIcons.loadIcon(IconRequest(url))` does not go looking for an icon.**
@@ -867,9 +900,16 @@ which.
 ## The start page
 
 Laid out like the rest of the app rather than like a splash screen: a small
-brand row at the top left, then captioned cards — the same language Settings,
-the VPN screen and sign-in speak. A centred logo over a tagline is a product
-page, and a start page is not one: it is a place to leave from.
+brand row at the top left, then captioned sections. A centred logo over a
+tagline is a product page, and a start page is not one: it is a place to leave
+from.
+
+**No cards on this screen.** The shortcuts sat in a filled container for exactly
+one release and the owner's reply was "why is there a grey background behind the
+icons, remove it" — which is right: a slab behind eight icons is a box drawn
+around things that don't need one. The captions do the grouping. (Cards are
+still the language of Settings and the VPN screen, where the thing being grouped
+is a stack of rows with controls in them.)
 
   1. **the brand row** — the mark and the name, once, at 30dp;
   2. **SHORTCUTS** — the speed dial, in a card;

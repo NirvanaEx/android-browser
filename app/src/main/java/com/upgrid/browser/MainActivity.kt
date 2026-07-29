@@ -1084,6 +1084,10 @@ class MainActivity : AppCompatActivity() {
         val key = "$host\u0000$username\u0000$password"
         if (key in declinedLogins) return
         if (saveLoginDialog?.isShowing == true) return
+        // Never from a private tab. Offering to remember a password typed in
+        // the one mode whose promise is that nothing is remembered would be
+        // the app contradicting itself, in a dialog.
+        if (components.store.state.selectedTab?.content?.private == true) return
 
         saveLoginDialog = MaterialAlertDialogBuilder(this)
             .setTitle(R.string.logins_save_title)
@@ -1955,6 +1959,7 @@ class MainActivity : AppCompatActivity() {
                                 progress = tab?.content?.progress ?: 0,
                                 canGoBack = tab?.content?.canGoBack == true,
                                 canGoForward = tab?.content?.canGoForward == true,
+                                isPrivate = tab?.content?.private == true,
                             )
                         }
                         .distinctUntilChanged()
@@ -2059,6 +2064,8 @@ class MainActivity : AppCompatActivity() {
         /** Both only rendered on a tablet, where back/forward are on the bar. */
         val canGoBack: Boolean,
         val canGoForward: Boolean,
+        /** A private tab: no history, no saved logins, its own cookie jar. */
+        val isPrivate: Boolean,
     )
 
     private fun renderChrome(state: ChromeState) {
@@ -2094,7 +2101,10 @@ class MainActivity : AppCompatActivity() {
         // and ANRs the main thread. The AdBlock switch is rendered when the
         // menu or the settings sheet opens — never on a tick.
 
-        // Speed-dial overlay vs engine view.
+        // Speed-dial overlay vs engine view. In a private tab the same overlay
+        // carries the explanation of what this mode is instead.
+        startPage.setPrivate(state.isPrivate)
+        binding.privateMark.setVisibleAnimated(state.isPrivate, Motion.QUICK)
         startPage.setVisible(isHome)
 
         // The start page has nothing that can scroll the bar back into view,
@@ -2376,6 +2386,12 @@ class MainActivity : AppCompatActivity() {
     private fun recordVisit(tab: mozilla.components.browser.state.state.TabSessionState?) {
         val content = tab?.content ?: return
         if (content.loading) return
+        // A private tab leaves nothing on this phone. This is the line that
+        // makes that true — everything else about the mode is the engine's
+        // doing (its own cookie jar, dropped when the tab closes) and a-c's
+        // (private tabs are filtered out of the saved session on the way to
+        // disk, so they don't come back after a restart either).
+        if (content.private) return
 
         val url = content.url
         val title = content.title
@@ -2395,6 +2411,26 @@ class MainActivity : AppCompatActivity() {
 
     /** Browsing history. Opened from the app menu and from settings. */
     fun showHistory() = startActivity(HistoryActivity.intent(this))
+
+    /**
+     * A tab that leaves nothing behind on this phone.
+     *
+     * Three things make that true, and only the first is ours: [recordVisit]
+     * skips it, so nothing reaches history; a-c's session writer filters
+     * private tabs out on the way to disk, so they are gone after a restart
+     * rather than restored; and the engine gives the session its own cookie
+     * jar and storage, dropped when the last private tab closes.
+     *
+     * What it is not is anonymity, which is why the page it opens on says so.
+     */
+    fun openPrivateTab() {
+        leaveEditMode()
+        components.tabsUseCases.addTab(
+            url = HOME_URL,
+            selectTab = true,
+            private = true,
+        )
+    }
 
     /** Bookmarks. Opened from the app menu and from settings. */
     fun showBookmarks() = startActivity(BookmarksActivity.intent(this))

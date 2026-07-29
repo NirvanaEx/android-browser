@@ -136,6 +136,20 @@
                 android:text="@string/menu_new_tab" />
         </LinearLayout>
 
+        <!-- Right under "new tab", because that is what it is: a new tab that
+             doesn't leave a trace on this phone. -->
+        <LinearLayout
+            android:id="@+id/rowPrivateTab"
+            style="@style/Widget.UpgridBrowser.MenuRow">
+            <ImageView
+                style="@style/Widget.UpgridBrowser.MenuRowIcon"
+                android:contentDescription="@null"
+                android:src="@drawable/ic_incognito" />
+            <TextView
+                style="@style/Widget.UpgridBrowser.MenuRowLabel"
+                android:text="@string/menu_private_tab" />
+        </LinearLayout>
+
         <LinearLayout
             android:id="@+id/rowBookmarks"
             style="@style/Widget.UpgridBrowser.MenuRow">

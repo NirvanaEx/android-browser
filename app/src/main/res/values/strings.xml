@@ -26,6 +26,13 @@
     <string name="start_page_tagline">Search the web. Quietly ad-free.</string>
     <string name="start_page_quick_links">Shortcuts</string>
     <string name="start_page_recent">Recent</string>
+
+    <!-- Private browsing. The second paragraph is the half most browsers skip,
+         and the half people get wrong. -->
+    <string name="private_page_title">You are in a private tab</string>
+    <string name="private_page_body">Pages you open here are not saved to history, and the cookies and site data they leave are thrown away when you close the last private tab. Passwords aren\'t offered to be saved.</string>
+    <string name="private_page_caveat">The sites you visit and your internet provider can still see the traffic. Files you download and shortcuts you add stay on the phone.</string>
+    <string name="menu_private_tab">New private tab</string>
     <string name="start_page_all_history">All history</string>
 
     <!-- Long press on a drop-down row that came from this device's own record. -->
