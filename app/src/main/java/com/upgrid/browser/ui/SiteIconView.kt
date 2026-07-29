@@ -17,7 +17,6 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import mozilla.components.browser.icons.BrowserIcons
 import mozilla.components.browser.icons.Icon
-import mozilla.components.browser.icons.IconRequest
 
 /**
  * The leading square in every list of sites: history, bookmarks, tabs, the
@@ -68,7 +67,11 @@ class SiteIconView @JvmOverloads constructor(
 
         job = scope.launch {
             val icon = runCatching {
-                icons.loadIcon(IconRequest(url = url)).await()
+                // Favicons.request, not a bare IconRequest: BrowserIcons never
+                // asks the site for its own icon, so a plain request answers
+                // with a generated letter for every host that isn't in its
+                // bundled list of famous ones. See Favicons.
+                icons.loadIcon(Favicons.request(url)).await()
             }.getOrNull() ?: return@launch
             // GENERATOR means BrowserIcons drew its own letter tile because the
             // site has no icon. We already have a letter, in our own palette.

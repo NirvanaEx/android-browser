@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  One recently visited page on the start page.
+
+  Deliberately the same shape as a row in history, bookmarks and the omnibar
+  drop-down — SiteIconView, title, host underneath — because it is the same
+  thing being listed and it should be recognisable as one. That view stacks the
+  real favicon over a coloured letter, so the row is never blank while the icon
+  is still arriving.
+-->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:minHeight="56dp"
+    android:orientation="horizontal"
+    android:gravity="center_vertical"
+    android:paddingStart="12dp"
+    android:paddingEnd="12dp"
+    android:paddingTop="6dp"
+    android:paddingBottom="6dp"
+    android:background="?attr/selectableItemBackground"
+    android:clickable="true"
+    android:focusable="true">
+
+    <com.upgrid.browser.ui.SiteIconView
+        android:id="@+id/recentIcon"
+        android:layout_width="36dp"
+        android:layout_height="36dp" />
+
+    <LinearLayout
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:layout_marginStart="12dp"
+        android:orientation="vertical">
+
+        <TextView
+            android:id="@+id/recentTitle"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:maxLines="1"
+            android:ellipsize="end"
+            android:textSize="15sp"
+            android:textColor="?attr/colorOnSurface"
+            tools:text="Upgrid Browser — GitHub" />
+
+        <TextView
+            android:id="@+id/recentHost"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="1dp"
+            android:maxLines="1"
+            android:ellipsize="end"
+            android:textSize="12sp"
+            android:textColor="?attr/colorOnSurfaceVariant"
+            tools:text="github.com" />
+    </LinearLayout>
+</LinearLayout>

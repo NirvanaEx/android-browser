@@ -402,6 +402,8 @@ class MainActivity : AppCompatActivity() {
             onLinkClick = { link -> components.sessionUseCases.loadUrl(link.url) },
             onLinkLongClick = { link -> confirmRemoveQuickLink(link) },
             onAddClick = { promptAddQuickLink() },
+            onRecentClick = { page -> components.sessionUseCases.loadUrl(page.url) },
+            onAllHistory = { showHistory() },
         )
         wireToolbar()
         wireTabStrip()
@@ -1499,6 +1501,8 @@ class MainActivity : AppCompatActivity() {
         binding.tabStripRow.isVisible = true
 
         val adapter = TabStripAdapter(
+            icons = components.icons,
+            scope = lifecycleScope,
             onClick = { tab -> components.tabsUseCases.selectTab(tab.id) },
             onClose = { tab ->
                 components.tabThumbnails.remove(tab.id)
@@ -2508,6 +2512,20 @@ class MainActivity : AppCompatActivity() {
                     .distinctBy { it.url }
                     .take(BookmarkStore.SPEED_DIAL_SLOTS)
             )
+
+            // The other half of the start page: where you were last. Both
+            // reads are on IO inside their stores, and both are guarded by a
+            // "has this actually changed" check in the presenter — this runs
+            // on every onResume.
+            startPage.setRecent(
+                components.browsingHistory.entries(limit = RECENT_ON_START_PAGE)
+                    .map { entry ->
+                        StartPagePresenter.RecentPage(
+                            title = entry.title.ifBlank { entry.host.ifBlank { entry.url } },
+                            url = entry.url,
+                        )
+                    },
+            )
         }
     }
 
@@ -2936,6 +2954,13 @@ class MainActivity : AppCompatActivity() {
          * spent waiting to *start* is a fifth of a second it doesn't have.
          */
         private const val SUGGESTION_DEBOUNCE_MS = 180L
+
+        /**
+         * Recently visited pages on the start page. Four: enough that the
+         * section is worth its caption, few enough that the shortcuts above it
+         * are still what the screen is about.
+         */
+        private const val RECENT_ON_START_PAGE = 4
 
         /**
          * How often to re-ask whether the page on screen has gone stale.

@@ -12,7 +12,13 @@ import com.upgrid.browser.MainActivity
 import com.upgrid.browser.R
 import com.upgrid.browser.databinding.ItemTabStripBinding
 import com.upgrid.browser.databinding.ItemTabStripNewBinding
+import com.upgrid.browser.ui.Favicons
 import com.upgrid.browser.ui.HostTile
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.launch
+import mozilla.components.browser.icons.BrowserIcons
+import mozilla.components.browser.icons.Icon
 import mozilla.components.browser.state.state.TabSessionState
 
 /**
@@ -44,6 +50,9 @@ import mozilla.components.browser.state.state.TabSessionState
  * one.
  */
 class TabStripAdapter(
+    /** For a tab whose page hasn't reported an icon yet — a restored one, mostly. */
+    private val icons: BrowserIcons,
+    private val scope: CoroutineScope,
     private val onClick: (TabSessionState) -> Unit,
     private val onClose: (TabSessionState) -> Unit,
     /** The trailing "+", which is a row of this list rather than a button beside it. */
@@ -117,6 +126,8 @@ class TabStripAdapter(
                 position != tabs.lastIndex,
             onClick = onClick,
             onClose = onClose,
+            icons = icons,
+            scope = scope,
         )
     }
 
@@ -151,6 +162,10 @@ class TabStripAdapter(
     class Holder(private val binding: ItemTabStripBinding) :
         RecyclerView.ViewHolder(binding.root) {
 
+        /** In-flight logo fetch, and the tab it belongs to. */
+        private var iconJob: Job? = null
+        private var iconUrl: String? = null
+
         fun bind(
             tab: TabSessionState,
             isSelected: Boolean,
@@ -162,6 +177,8 @@ class TabStripAdapter(
             showDivider: Boolean,
             onClick: (TabSessionState) -> Unit,
             onClose: (TabSessionState) -> Unit,
+            icons: BrowserIcons,
+            scope: CoroutineScope,
         ) {
             val url = tab.content.url
             val isBlank = url.isBlank() || url == MainActivity.HOME_URL
@@ -192,6 +209,8 @@ class TabStripAdapter(
             // The tint has to be put back rather than merely cleared: a
             // recycled row that showed a favicon left it null, and ic_globe is
             // a white vector — on a light theme that is an invisible icon.
+            iconJob?.cancel()
+            iconUrl = url
             val favicon = tab.content.icon
             if (favicon != null) {
                 binding.stripFavicon.setImageBitmap(favicon)
@@ -206,6 +225,23 @@ class TabStripAdapter(
                         com.google.android.material.R.attr.colorOnSurfaceVariant,
                     ),
                 )
+                // A tab restored from disk has no icon in its state until its
+                // page loads again, and a row of identical globes says nothing
+                // about which tab is which. The cache usually answers straight
+                // away; a real fetch is one per host, ever.
+                if (!isBlank) {
+                    iconJob = scope.launch {
+                        val icon = runCatching {
+                            icons.loadIcon(Favicons.request(url)).await()
+                        }.getOrNull() ?: return@launch
+                        // GENERATOR is BrowserIcons drawing its own letter, and
+                        // a letter is not more informative than the globe.
+                        if (icon.source == Icon.Source.GENERATOR) return@launch
+                        if (iconUrl != url) return@launch
+                        binding.stripFavicon.setImageBitmap(icon.bitmap)
+                        binding.stripFavicon.imageTintList = null
+                    }
+                }
             }
 
             binding.btnStripClose.isVisible = showClose
