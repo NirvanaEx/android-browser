@@ -192,6 +192,22 @@
                 tools:visibility="visible" />
 
             <!--
+              "You are in a private tab", said on the bar rather than only on
+              the page: the page it applies to is whatever site you are on, and
+              by then the start page that explained it is long gone.
+            -->
+            <ImageView
+                android:id="@+id/privateMark"
+                android:layout_width="26dp"
+                android:layout_height="26dp"
+                android:layout_marginStart="4dp"
+                android:visibility="gone"
+                android:contentDescription="@string/menu_private_tab"
+                android:src="@drawable/ic_incognito"
+                app:tint="?attr/colorOnSurfaceVariant"
+                tools:visibility="visible" />
+
+            <!--
               paddingTop/paddingBottom="0dp" are load-bearing, not tidiness.
 
               bg_toolbar is an <inset> drawable, and InsetDrawable.getPadding()

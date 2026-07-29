@@ -73,11 +73,30 @@ class StartPagePresenter(
      */
     private var shown = false
 
+    /** True while the selected tab is a private one. */
+    private var isPrivate = false
+
     private val columns = binding.root.resources.getInteger(R.integer.start_page_columns)
 
     init {
         binding.btnAllHistory.setOnClickListener { onAllHistory() }
         setLinks(QuickLink.SEED)
+    }
+
+    /**
+     * Swap the whole page for the private-mode explanation, and back.
+     *
+     * Not a banner over the shortcuts: on a screen whose entire point is
+     * leaving no trace, a grid of the places you go and a list of the pages you
+     * were just on is the wrong furniture. What replaces them says what the
+     * mode does *and* what it doesn't, because the half everyone skips is the
+     * half people get wrong.
+     */
+    fun setPrivate(private: Boolean) {
+        if (private == isPrivate) return
+        isPrivate = private
+        binding.startNormal.isVisible = !private
+        binding.startPrivate.isVisible = private
     }
 
     /** Replace the grid. A no-op when the links haven't actually changed. */
@@ -204,6 +223,7 @@ class StartPagePresenter(
      * reads as the page settling rather than as a sequence.
      */
     private fun playEntrance() {
+        if (isPrivate) return
         val grid = binding.quickLinksGrid
         val rise = ENTRANCE_RISE_DP * grid.resources.displayMetrics.density
         val rows = buildList {

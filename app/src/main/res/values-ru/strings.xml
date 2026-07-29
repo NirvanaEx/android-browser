@@ -24,6 +24,11 @@
     <string name="start_page_tagline">Ищите в сети. Без рекламы.</string>
     <string name="start_page_quick_links">Быстрый доступ</string>
     <string name="start_page_recent">Недавнее</string>
+
+    <string name="private_page_title">Вкладка инкогнито</string>
+    <string name="private_page_body">Страницы, открытые здесь, не попадают в историю, а куки и данные сайтов удаляются, когда вы закроете последнюю вкладку инкогнито. Пароли сохранять не предлагается.</string>
+    <string name="private_page_caveat">Сайты, на которые вы заходите, и ваш провайдер по-прежнему видят трафик. Скачанные файлы и добавленные плитки остаются на телефоне.</string>
+    <string name="menu_private_tab">Новая вкладка инкогнито</string>
     <string name="start_page_all_history">Вся история</string>
 
     <string name="suggestion_forget_title">Убрать из истории?</string>

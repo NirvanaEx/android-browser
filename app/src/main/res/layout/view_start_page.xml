@@ -3,23 +3,23 @@
   The start page. Sits as an overlay on top of GeckoEngineView and is toggled
   visible by MainActivity whenever the selected tab is at about:blank.
 
-  Laid out like the rest of this app rather than like a splash screen: a small
-  brand row at the top left, then captioned cards — the same language Settings,
-  the VPN screen and sign-in speak (see values/styles.xml). The centred
-  logo-over-tagline arrangement it replaced looked like a product page, and a
-  start page is not one: it is a place to leave from.
+  Two states, and only one of them is ever on screen:
 
-    1. brand row — 30dp mark and the name, once, small;
-    2. SHORTCUTS — the speed dial, in a card. Tiles are inflated into
-       [quickLinksGrid] by StartPagePresenter, in rows of
-       R.integer.start_page_columns (four on a phone, six on a tablet);
-    3. RECENT — the last few pages, with a row into the full history. Hidden
-       entirely on a fresh install, where it would be an empty box with a
-       caption on it.
+    [normal]  brand row, SHORTCUTS, RECENT — the two lists that are the user's
+              own. Tiles are inflated into [quickLinksGrid] by
+              StartPagePresenter in rows of R.integer.start_page_columns (four
+              on a phone, six on a tablet); RECENT is hidden entirely when
+              there is no history, since a caption over an empty box reads as
+              something missing rather than as somewhere you haven't been.
+    [private] one explanation of what this mode does and does not do. No
+              shortcuts and no history: on a screen whose whole point is
+              leaving no trace, a list of the places you go is the wrong
+              furniture.
 
-  There was briefly a search field above the shortcuts. Removed at the owner's
-  request: the address bar is directly above it, and one of the two had to be
-  the real one.
+  **No cards.** The shortcuts sat in a filled container for exactly one
+  release; a grey slab behind eight icons is a box drawn around things that
+  don't need one, and the owner said so. Captions carry the grouping now, which
+  is all it needed.
 -->
 <androidx.core.widget.NestedScrollView xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
@@ -30,82 +30,67 @@
     android:background="?attr/colorSurface"
     android:fillViewport="true">
 
-    <LinearLayout
+    <FrameLayout
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="vertical"
-        android:paddingTop="@dimen/start_page_top"
-        android:paddingBottom="28dp"
-        android:paddingStart="@dimen/start_page_side"
-        android:paddingEnd="@dimen/start_page_side">
+        android:layout_height="wrap_content">
 
         <LinearLayout
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginStart="4dp"
-            android:layout_marginBottom="26dp"
-            android:orientation="horizontal"
-            android:gravity="center_vertical">
-
-            <ImageView
-                android:layout_width="30dp"
-                android:layout_height="30dp"
-                android:contentDescription="@null"
-                android:src="@drawable/ic_brand_mark" />
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginStart="10dp"
-                android:textSize="17sp"
-                android:fontFamily="sans-serif-medium"
-                android:textColor="?attr/colorOnSurface"
-                android:text="@string/app_name" />
-        </LinearLayout>
-
-        <TextView
-            style="@style/Widget.UpgridBrowser.StartCaption"
-            android:text="@string/start_page_quick_links" />
-
-        <LinearLayout
+            android:id="@+id/startNormal"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="vertical"
-            android:paddingTop="10dp"
-            android:paddingBottom="6dp"
-            android:paddingStart="6dp"
-            android:paddingEnd="6dp"
-            android:background="@drawable/bg_start_card">
+            android:paddingTop="@dimen/start_page_top"
+            android:paddingBottom="28dp"
+            android:paddingStart="@dimen/start_page_side"
+            android:paddingEnd="@dimen/start_page_side">
+
+            <LinearLayout
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="4dp"
+                android:layout_marginBottom="26dp"
+                android:orientation="horizontal"
+                android:gravity="center_vertical">
+
+                <ImageView
+                    android:layout_width="30dp"
+                    android:layout_height="30dp"
+                    android:contentDescription="@null"
+                    android:src="@drawable/ic_brand_mark" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="10dp"
+                    android:textSize="17sp"
+                    android:fontFamily="sans-serif-medium"
+                    android:textColor="?attr/colorOnSurface"
+                    android:text="@string/app_name" />
+            </LinearLayout>
+
+            <TextView
+                style="@style/Widget.UpgridBrowser.StartCaption"
+                android:text="@string/start_page_quick_links" />
 
             <LinearLayout
                 android:id="@+id/quickLinksGrid"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:orientation="vertical" />
-        </LinearLayout>
 
-        <!-- Everything below is gone until there is history to show. -->
-        <LinearLayout
-            android:id="@+id/recentSection"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="22dp"
-            android:orientation="vertical"
-            android:visibility="gone"
-            tools:visibility="visible">
-
-            <TextView
-                style="@style/Widget.UpgridBrowser.StartCaption"
-                android:text="@string/start_page_recent" />
-
+            <!-- Everything below is gone until there is history to show. -->
             <LinearLayout
+                android:id="@+id/recentSection"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
+                android:layout_marginTop="26dp"
                 android:orientation="vertical"
-                android:paddingTop="4dp"
-                android:paddingBottom="2dp"
-                android:background="@drawable/bg_start_card"
-                android:clipToOutline="true">
+                android:visibility="gone"
+                tools:visibility="visible">
+
+                <TextView
+                    style="@style/Widget.UpgridBrowser.StartCaption"
+                    android:text="@string/start_page_recent" />
 
                 <LinearLayout
                     android:id="@+id/recentList"
@@ -113,22 +98,15 @@
                     android:layout_height="wrap_content"
                     android:orientation="vertical" />
 
-                <View
-                    android:layout_width="match_parent"
-                    android:layout_height="1dp"
-                    android:layout_marginStart="16dp"
-                    android:layout_marginEnd="16dp"
-                    android:alpha="0.5"
-                    android:background="?attr/colorOutlineVariant" />
-
                 <LinearLayout
                     android:id="@+id/btnAllHistory"
                     android:layout_width="match_parent"
                     android:layout_height="48dp"
+                    android:layout_marginTop="2dp"
                     android:orientation="horizontal"
                     android:gravity="center_vertical"
-                    android:paddingStart="16dp"
-                    android:paddingEnd="12dp"
+                    android:paddingStart="12dp"
+                    android:paddingEnd="8dp"
                     android:background="?attr/selectableItemBackground"
                     android:clickable="true"
                     android:focusable="true">
@@ -151,9 +129,56 @@
             </LinearLayout>
         </LinearLayout>
 
-        <View
+        <!--
+          The private tab's start page. What this mode does, and — the half
+          every browser used to leave out — what it doesn't.
+        -->
+        <LinearLayout
+            android:id="@+id/startPrivate"
             android:layout_width="match_parent"
-            android:layout_height="0dp"
-            android:layout_weight="1" />
-    </LinearLayout>
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:gravity="center_horizontal"
+            android:paddingTop="64dp"
+            android:paddingBottom="32dp"
+            android:paddingStart="32dp"
+            android:paddingEnd="32dp"
+            android:visibility="gone"
+            tools:visibility="visible">
+
+            <ImageView
+                android:layout_width="56dp"
+                android:layout_height="56dp"
+                android:contentDescription="@null"
+                android:src="@drawable/ic_incognito"
+                app:tint="?attr/colorOnSurfaceVariant" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="18dp"
+                android:textSize="20sp"
+                android:fontFamily="sans-serif-medium"
+                android:textColor="?attr/colorOnSurface"
+                android:text="@string/private_page_title" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:lineSpacingExtra="3dp"
+                android:textSize="14sp"
+                android:textColor="?attr/colorOnSurfaceVariant"
+                android:text="@string/private_page_body" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                android:lineSpacingExtra="3dp"
+                android:textSize="14sp"
+                android:textColor="?attr/colorOnSurfaceVariant"
+                android:text="@string/private_page_caveat" />
+        </LinearLayout>
+    </FrameLayout>
 </androidx.core.widget.NestedScrollView>

@@ -143,6 +143,10 @@ class AppMenuPopup(private val activity: MainActivity) {
             components.tabsUseCases.addTab(url = MainActivity.HOME_URL, selectTab = true)
             popup.dismiss()
         }
+        rowPrivateTab.setOnClickListener {
+            popup.dismiss()
+            activity.openPrivateTab()
+        }
         rowBookmarks.setOnClickListener {
             popup.dismiss()
             activity.showBookmarks()

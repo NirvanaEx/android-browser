@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Private browsing: hat, brim, glasses. The disguise, not an eye with a line
+  through it — a struck-out eye is the platform's "password hidden" and would
+  be read as that.
+
+  Three separate paths rather than one with evenOdd holes: at 20dp the lenses
+  are 5dp across, and a hole that small closes up under the renderer's
+  anti-aliasing.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24"
+    android:tint="?attr/colorControlNormal">
+
+    <!-- Crown -->
+    <path
+        android:fillColor="@android:color/white"
+        android:pathData="M12,3.2c-2.7,0 -4.4,1.2 -5.3,3.6L5.4,10.2h13.2L17.3,6.8C16.4,4.4,14.7,3.2,12,3.2z" />
+
+    <!-- Brim -->
+    <path
+        android:fillColor="@android:color/white"
+        android:pathData="M3.6,11.4h16.8v1.7H3.6z" />
+
+    <!-- Glasses: two lobes joined by a bridge -->
+    <path
+        android:fillColor="@android:color/white"
+        android:pathData="M8.2,14.4c-1.9,0 -3.4,1.5 -3.4,3.3c0,1.8 1.5,3.3 3.4,3.3c1.7,0 3.1,-1.2 3.3,-2.8h1c0.2,1.6 1.6,2.8 3.3,2.8c1.9,0 3.4,-1.5 3.4,-3.3c0,-1.8 -1.5,-3.3 -3.4,-3.3c-1.7,0 -3.1,1.2 -3.3,2.8h-1C11.3,15.6,9.9,14.4,8.2,14.4z" />
+</vector>

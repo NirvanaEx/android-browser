@@ -63,7 +63,12 @@ sealed class TabViewHolder(view: View) : RecyclerView.ViewHolder(view) {
                 else -> host.ifBlank { url }
             }
 
-            if (isBlank) {
+            // A private tab wears the mask instead of the site's logo: which
+            // mode a tab is in is the thing you are scanning this list for, and
+            // the site is written next to it in words anyway.
+            if (tab.content.private) {
+                binding.tabIcon.bindGlyph(R.drawable.ic_incognito)
+            } else if (isBlank) {
                 binding.tabIcon.bindGlyph(R.drawable.ic_add)
             } else {
                 binding.tabIcon.bindSite(url, tab.content.icon, icons, scope)
@@ -107,7 +112,15 @@ sealed class TabViewHolder(view: View) : RecyclerView.ViewHolder(view) {
             // that showed a favicon left it null, and ic_globe is a white
             // vector — on a light theme it would be an invisible icon.
             val favicon = tab.content.icon
-            if (favicon != null) {
+            if (tab.content.private) {
+                binding.tabFavicon.setImageResource(R.drawable.ic_incognito)
+                binding.tabFavicon.imageTintList = ColorStateList.valueOf(
+                    MaterialColors.getColor(
+                        binding.tabFavicon,
+                        com.google.android.material.R.attr.colorOnSurfaceVariant,
+                    ),
+                )
+            } else if (favicon != null) {
                 binding.tabFavicon.setImageBitmap(favicon)
                 binding.tabFavicon.imageTintList = null
             } else {
