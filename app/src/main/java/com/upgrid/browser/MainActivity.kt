@@ -35,6 +35,7 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.constraintlayout.widget.ConstraintLayout
 import androidx.core.content.ContextCompat
 import androidx.core.graphics.ColorUtils
+import androidx.coordinatorlayout.widget.CoordinatorLayout
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.core.view.isVisible
@@ -365,6 +366,9 @@ class MainActivity : AppCompatActivity() {
 
     /** Clearance between the bottom of the bar and the drop-down, in px. */
     private val suggestionsGap by lazy { (6 * resources.displayMetrics.density).toInt() }
+
+    /** Whether the start page is the thing on screen, so the arrival is noticed. */
+    private var homeShowing = false
 
     /** Last value handed to the engine, so an unchanged one isn't re-sent. */
     private var dynamicToolbarHeight = -1
@@ -1386,6 +1390,32 @@ class MainActivity : AppCompatActivity() {
         // on the one screen whose entire purpose is going somewhere.
         binding.startPage.startPageScroll.isNestedScrollingEnabled = false
 
+        // The bar must not be draggable by hand, and this is a one-way door
+        // rather than a preference.
+        //
+        // AppBarLayout's behaviour lets you drag the header itself, and its
+        // default answer to "may I?" is yes for as long as it has not seen a
+        // nested scroll — and *also* yes whenever the last thing that scrolled
+        // is currently at its own top. So on the start page, where there is
+        // nothing to scroll at all, a swipe up on the toolbar took the bar
+        // away; and the only gesture that could have brought it back is a
+        // swipe down on the bar, which is no longer there. The same trap
+        // exists on any page shorter than the screen.
+        //
+        // The bar moves as a consequence of scrolling a page. Nothing else.
+        val params = binding.chrome.layoutParams as CoordinatorLayout.LayoutParams
+        val behavior = params.behavior as? AppBarLayout.Behavior
+            // Behaviours declared by the class rather than by the layout are
+            // resolved on the first measure pass, so this can still be null
+            // here. Setting the same instance CoordinatorLayout would have
+            // built marks it resolved, which is why this is safe in onCreate.
+            ?: AppBarLayout.Behavior().also { params.behavior = it }
+        behavior.setDragCallback(
+            object : AppBarLayout.Behavior.DragCallback() {
+                override fun canDrag(appBarLayout: AppBarLayout): Boolean = false
+            },
+        )
+
         // The drop-down hangs off the bottom of the bar, and the bar is not
         // always the same height — a tablet adds the tab strip, a load adds the
         // progress line. Posted rather than applied inline: this fires from a
@@ -2062,6 +2092,16 @@ class MainActivity : AppCompatActivity() {
 
         // Speed-dial overlay vs engine view.
         startPage.setVisible(isHome)
+
+        // The start page has nothing that can scroll the bar back into view,
+        // so the bar must never *arrive* here retracted — which is exactly
+        // what it does when you come home from a page you had scrolled down.
+        // Without animation: this is a jump between two screens, not a bar
+        // sliding back over one.
+        if (isHome != homeShowing) {
+            homeShowing = isHome
+            if (isHome) expandChrome(animate = false)
+        }
         renderSecurityIndicator(isHome)
 
         renderPlayerButton(isHome)
