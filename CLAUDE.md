@@ -834,14 +834,54 @@ the network is touched once per site). The coloured letter stays underneath
 rather than being swapped out, so a tile is never blank while a fetch is in
 flight and never blank for a site with no icon at all.
 
+## Real logos: BrowserIcons never asks the site
+
+**`BrowserIcons.loadIcon(IconRequest(url))` does not go looking for an icon.**
+Its preparers are a bundled "tippy top" list of a few hundred famous sites, the
+memory cache and the disk cache; if none of them has an answer it draws a letter
+tile and returns that as the icon. There is no step anywhere in that pipeline
+that asks the site. So every host that isn't famous and hasn't been visited *in
+this install* got a coloured letter — which is what "logos are placeholders"
+meant, and it was true in every list in the app at once.
+
+[ui/Favicons.kt](app/src/main/java/com/upgrid/browser/ui/Favicons.kt) names the
+two places a browser has always looked, as explicit resources on the request:
+`/apple-touch-icon.png` (usually 180×180, and ranked above favicons by a-c's own
+`IconResourceComparator`, so it wins when it exists) and `/favicon.ico`. Anything
+the engine discovered from the page itself is added by the disk preparer and
+outranks both, so this only fills the gap.
+
+**Both are requests to the site itself, never to an icon service.** Google's
+`s2/favicons` and DuckDuckGo's `ip3` would answer for more hosts and cost one
+line — and would hand whoever runs them a list of the hosts this browser's user
+visits, which is a browsing history by another name. Not in this browser.
+
+Cheap to be wrong: a site with neither file 404s twice, `HttpIconLoader` keeps a
+failure cache and stops asking, and the letter tile stays. Every call site goes
+through `Favicons.request` — `SiteIconView` (history, bookmarks, tabs, downloads,
+the omnibar drop-down, the start page's recent list), the speed-dial tiles, and
+the tablet tab strip, where a restored tab has no icon in its state until its
+page loads again and a row of identical globes says nothing about which tab is
+which.
+
 ## The start page
 
-Two parts, in the order the eye reads them: the brand lockup, then the
-shortcuts in a card.
+Laid out like the rest of the app rather than like a splash screen: a small
+brand row at the top left, then captioned cards — the same language Settings,
+the VPN screen and sign-in speak. A centred logo over a tagline is a product
+page, and a start page is not one: it is a place to leave from.
 
-There was briefly a third — a search field above the card that handed focus to
-the address bar. The owner asked for it to go: the address bar is directly
-above it, and one of the two had to be the real one. Don't add it back without
+  1. **the brand row** — the mark and the name, once, at 30dp;
+  2. **SHORTCUTS** — the speed dial, in a card;
+  3. **RECENT** — the last four pages plus a row into the full history.
+     `MainActivity.refreshStartPage` reads both lists; the section is hidden
+     entirely when there is no history, because a captioned empty box on a
+     fresh install reads as something missing rather than as somewhere you
+     haven't been yet.
+
+There was briefly a search field above the shortcuts, handing focus to the
+address bar. The owner asked for it to go: the address bar is directly above
+it, and one of the two had to be the real one. Don't add it back without
 asking.
 
 **`about:blank` is a marker, not an address.** `renderChrome` blanks the
@@ -937,6 +977,12 @@ takes the bar's measured height, re-read whenever the bar's height changes
 narrowed to the address chip's own width and lined up with it: the bar there is
 wide and mostly buttons, and a panel spanning all of it doesn't read as
 belonging to the field the cursor is in.
+
+**Each row says where it came from.** A star for a page you saved, a clock for
+one you have been to, nothing on a search row — the magnifier in front of it
+already says that, and a badge on every row stops being a mark. The icon can no
+longer carry it: it is the site's own logo now, and a bookmark, a visited page
+and a guess from the search engine all wear the same one.
 
 **A long press forgets a row.** Only rows this device put there —
 `Suggestion.removable` is true for a visited page and for a query typed before,

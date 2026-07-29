@@ -131,6 +131,22 @@
         <item name="android:paddingBottom">4dp</item>
     </style>
 
+    <!--
+      Caption above a card on the start page. Same idea as GroupHeader, with
+      the indents that screen uses: its cards run to the content edges rather
+      than sitting inside a sheet's 28dp margin.
+    -->
+    <style name="Widget.UpgridBrowser.StartCaption" parent="">
+        <item name="android:layout_width">wrap_content</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:layout_marginStart">6dp</item>
+        <item name="android:layout_marginBottom">8dp</item>
+        <item name="android:letterSpacing">0.06</item>
+        <item name="android:textAllCaps">true</item>
+        <item name="android:textAppearance">?attr/textAppearanceLabelMedium</item>
+        <item name="android:textColor">?attr/colorPrimary</item>
+    </style>
+
     <!-- Caption above a card. Sits on the sheet background, not on the card. -->
     <style name="Widget.UpgridBrowser.GroupHeader" parent="">
         <item name="android:layout_width">wrap_content</item>

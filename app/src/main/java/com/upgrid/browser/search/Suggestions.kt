@@ -1,5 +1,6 @@
 package com.upgrid.browser.search
 
+import android.content.res.ColorStateList
 import android.graphics.Typeface
 import android.net.Uri
 import android.text.Spannable
@@ -9,6 +10,7 @@ import android.view.LayoutInflater
 import android.view.ViewGroup
 import androidx.core.view.isVisible
 import androidx.recyclerview.widget.RecyclerView
+import com.google.android.material.color.MaterialColors
 import com.upgrid.browser.BrowserComponents
 import com.upgrid.browser.R
 import com.upgrid.browser.databinding.ItemSuggestionBinding
@@ -323,9 +325,33 @@ class SuggestionAdapter(
                 Suggestion.Kind.SEARCH -> suggestionIcon.bindGlyph(R.drawable.ic_find)
                 else -> suggestionIcon.bindSite(item.target, icons, scope)
             }
-            // The star marks the rows that are saved, which is the one thing
-            // the icon alone can no longer say.
-            suggestionBadge.isVisible = item.kind == Suggestion.Kind.BOOKMARK
+            // Where the row came from, said in one glyph: a star for a page
+            // you saved, a clock for one you have been to. The icon can't say
+            // it any more — it is the site's own logo now, and a bookmark, a
+            // visited page and a guess from the search engine all wear it.
+            //
+            // Nothing on a search row: "this is a search" is already said by
+            // the magnifier in front of it, and a badge that appears on every
+            // row stops being a mark.
+            val badge = when (item.kind) {
+                Suggestion.Kind.BOOKMARK -> R.drawable.ic_bookmark_filled
+                Suggestion.Kind.HISTORY -> R.drawable.ic_history
+                Suggestion.Kind.SEARCH -> null
+            }
+            suggestionBadge.isVisible = badge != null
+            if (badge != null) {
+                suggestionBadge.setImageResource(badge)
+                suggestionBadge.imageTintList = ColorStateList.valueOf(
+                    MaterialColors.getColor(
+                        suggestionBadge,
+                        if (item.kind == Suggestion.Kind.BOOKMARK) {
+                            com.google.android.material.R.attr.colorPrimary
+                        } else {
+                            com.google.android.material.R.attr.colorOnSurfaceVariant
+                        },
+                    ),
+                )
+            }
 
             root.setOnClickListener { onPick(item) }
             suggestionFill.setOnClickListener { onFill(item) }
