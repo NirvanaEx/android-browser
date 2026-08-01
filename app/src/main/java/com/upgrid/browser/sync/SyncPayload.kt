@@ -7,7 +7,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 /**
- * The single JSON document that lives in the user's Drive app-data folder.
+ * The single JSON document that lives in the user's Drive.
  *
  * Shape:
  * ```
@@ -56,7 +56,11 @@ data class SyncPayload(
     companion object {
         const val VERSION = 1
 
-        /** Name of the document inside `appDataFolder`. */
+        /**
+         * Name of the document in the user's Drive root. Under `drive.file`
+         * it is visible there, so this is a name the owner will actually read
+         * one day — it says which app put it there and what it holds.
+         */
         const val FILE_NAME = "upgrid-sync.json"
 
         /**

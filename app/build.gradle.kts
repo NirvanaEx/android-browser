@@ -233,9 +233,9 @@ dependencies {
     implementation("org.mozilla.components:support-ktx:$androidComponentsVersion")
     implementation("org.mozilla.components:support-utils:$androidComponentsVersion")
 
-    // --- Google account (bookmark/history sync via Drive appDataFolder) ---
+    // --- Google account (bookmark/history sync via Drive) ---
     // Only the sign-in half of Play services. The Drive REST calls are made by
-    // hand over HttpURLConnection in sync/DriveAppData.kt rather than through
+    // hand over HttpURLConnection in sync/DriveFiles.kt rather than through
     // google-api-services-drive, which drags in the whole Google API client
     // stack (~3 MB of jars, its own HTTP layer and a Guava slice) to send the
     // four requests we actually make.
