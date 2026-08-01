@@ -21,7 +21,7 @@ import kotlinx.coroutines.withContext
  * Google sign-in, scoped to the one thing this browser wants from an account:
  * a private corner of Drive to keep bookmarks and history in.
  *
- * We ask for `drive.appdata` and nothing else. That scope cannot see, list or
+ * We ask for `drive.file` and nothing else. That scope cannot see, list or
  * touch any file the user didn't create through this app — so "connect a Google
  * account" here does not mean handing the browser the user's Drive.
  *
@@ -32,8 +32,24 @@ import kotlinx.coroutines.withContext
  */
 object GoogleAccounts {
 
-    /** Hidden per-app Drive storage. The only scope we ever request. */
-    const val DRIVE_APPDATA = "https://www.googleapis.com/auth/drive.appdata"
+    /**
+     * Per-file Drive access, and the only scope we ever request. The app can
+     * reach the files it created and nothing else in the account.
+     *
+     * Deliberately not `drive.appdata`, which would hide the document in
+     * per-app storage the user never sees. Google classifies appdata as a
+     * *sensitive* scope: shipping it past the Cloud Console test-user list
+     * needs app verification — a verified domain, a privacy policy, a demo
+     * video, weeks of review — and the list caps at 100 accounts for the
+     * lifetime of the project. `drive.file` is non-sensitive, so anyone can
+     * sign in with no review and no list at all.
+     *
+     * The price is that `upgrid-sync.json` sits visibly in the user's Drive.
+     * They can delete it, and deleting it costs them one fresh first sync —
+     * cheap next to the alternative. [DriveFiles.findFile] carries the one
+     * behaviour that changes because of it.
+     */
+    const val DRIVE_FILE = "https://www.googleapis.com/auth/drive.file"
 
     /**
      * Play services' code for "no OAuth client matches this app". By far the
@@ -45,7 +61,7 @@ object GoogleAccounts {
     private fun options(): GoogleSignInOptions =
         GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
             .requestEmail()
-            .requestScopes(Scope(DRIVE_APPDATA))
+            .requestScopes(Scope(DRIVE_FILE))
             .build()
 
     fun client(context: Context): GoogleSignInClient =
@@ -63,7 +79,7 @@ object GoogleAccounts {
      */
     fun current(context: Context): GoogleSignInAccount? =
         GoogleSignIn.getLastSignedInAccount(context)
-            ?.takeIf { GoogleSignIn.hasPermissions(it, Scope(DRIVE_APPDATA)) }
+            ?.takeIf { GoogleSignIn.hasPermissions(it, Scope(DRIVE_FILE)) }
 
     /** Result of the sign-in activity. Throws nothing; failure comes back typed. */
     fun accountFromResult(data: Intent?): Result<GoogleSignInAccount> = runCatching {
@@ -94,7 +110,7 @@ sealed interface SyncOutcome {
 }
 
 /**
- * Two-way sync of bookmarks + history through the Drive app-data folder.
+ * Two-way sync of bookmarks + history through one document in the user's Drive.
  *
  * One document, read-merge-write, no server, no conflict UI:
  *
@@ -158,7 +174,7 @@ class SyncEngine(
                 GoogleAuthUtil.getToken(
                     context,
                     account,
-                    "oauth2:${GoogleAccounts.DRIVE_APPDATA}",
+                    "oauth2:${GoogleAccounts.DRIVE_FILE}",
                 )
             }
         )
@@ -178,7 +194,7 @@ class SyncEngine(
     }
 
     private suspend fun runSync(token: String): SyncOutcome {
-        val drive = DriveAppData(token)
+        val drive = DriveFiles(token)
 
         val fileId = drive.findFile(SyncPayload.FILE_NAME)
         if (fileId != null) {
