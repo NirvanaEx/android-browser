@@ -673,6 +673,28 @@ duplicate fails the build.
     over a live tunnel takes it down and back up with the new config, so
     `VpnActivity` just reconnects rather than leaving the switch describing a
     tunnel that isn't listening to it.
+- **Never route a family the interface has no address for.** Every WireGuard
+  server hands out `AllowedIPs = 0.0.0.0/0, ::/0`, and ours hands out an
+  `Address` that is IPv4-only — because `wg0` on the server has no IPv6 either.
+  Routing `::/0` anyway is a black hole with the worst possible symptoms:
+  Android takes the route, reports the VPN network as IPv6-capable, the
+  resolver starts answering with AAAA records, and the browser prefers IPv6 for
+  most large sites. Those packets go into the tunnel and nothing ever comes
+  back — not even an error — so pages hang instead of failing, while the tunnel
+  reads perfectly healthy: handshake fresh, a few kilobytes through, then
+  silence. It is the same shape as a stalled tunnel and it is not one.
+
+  `VpnSettings.routedAllowedIps()` drops IPv6 entries when `Address` carries no
+  IPv6. Then no address, route or DNS server of that family exists, `VpnService`
+  blocks IPv6 outright, and the browser falls back to IPv4 immediately instead
+  of waiting out a timeout per host. The stored profile text is left alone — it
+  says what the server provisioned; the filter is what this device can honour.
+  Give the interface an IPv6 address and the route returns by itself.
+
+  Worth knowing when reading the server: `wg show` counts *encrypted* traffic,
+  so keepalives make a tunnel carrying nothing useful look alive. `tcpdump -ni
+  wg0` shows the decrypted side, which is where "the browser is asking for
+  nothing" and "the browser is asking and getting nothing" stop looking alike.
 - **The status notification is posted from `BrowserApplication`, not a screen.**
   The tunnel outlives every Activity, and the notification has to still be
   correct — and its Disconnect button still reachable — after the browser is
