@@ -70,13 +70,29 @@ class VpnNotifications(private val context: Context) {
             context.getString(R.string.vpn_notification_text, endpoint)
         }
 
+        // Out of recents, this notification is the only thing the tunnel says
+        // about itself — so it is where a stall has to be reported. Reading
+        // "VPN is on · 0 B/s" over a browser that won't load anything sends the
+        // user looking at their connection instead of at the tunnel.
+        val stalled = status.health == VpnStatus.Health.STALLED
+
         val notification = NotificationCompat.Builder(context, CHANNEL)
-            .setSmallIcon(R.drawable.ic_shield)
-            .setContentTitle(context.getString(R.string.vpn_notification_title))
+            .setSmallIcon(if (stalled) R.drawable.ic_shield_off else R.drawable.ic_shield)
+            .setContentTitle(
+                context.getString(
+                    if (stalled) R.string.vpn_notification_title_stalled
+                    else R.string.vpn_notification_title,
+                ),
+            )
             // The line that changes: what is moving, right now. The server it
             // moves through is one line down, where it doesn't have to be
             // re-read every two seconds.
-            .setContentText(rateLine(status) ?: server)
+            .setContentText(
+                when {
+                    stalled -> context.getString(R.string.vpn_notification_stalled)
+                    else -> rateLine(status) ?: server
+                },
+            )
             .setSubText(if (endpoint.isBlank()) null else endpoint)
             .setStyle(
                 NotificationCompat.BigTextStyle()

@@ -312,11 +312,14 @@
     <!-- ============== VPN ============== -->
     <string name="menu_vpn">VPN</string>
     <string name="menu_vpn_state_unset">SET UP</string>
+    <string name="menu_vpn_state_stalled">NO LINK</string>
     <string name="vpn_title">VPN</string>
     <string name="vpn_connect">Connect</string>
     <string name="vpn_disconnect">Disconnect</string>
     <string name="vpn_connecting">Connecting…</string>
     <string name="vpn_state_on">Connected</string>
+    <string name="vpn_state_connecting">Reaching the server…</string>
+    <string name="vpn_state_stalled">The server isn\'t answering</string>
     <string name="vpn_state_off">Disconnected</string>
     <string name="vpn_not_configured">Not set up yet</string>
     <string name="vpn_section_device">This device</string>
@@ -327,6 +330,8 @@
     <string name="vpn_notification_channel">VPN status</string>
     <string name="vpn_notification_channel_hint">Shown only while the VPN is connected.</string>
     <string name="vpn_notification_title">VPN is on</string>
+    <string name="vpn_notification_title_stalled">VPN has no link</string>
+    <string name="vpn_notification_stalled">The server isn\'t answering — pages won\'t load</string>
     <string name="vpn_notification_text">Through %1$s</string>
     <string name="vpn_generate">New key</string>
     <string name="vpn_generated">Key generated. Add the public key on the server.</string>
@@ -349,6 +354,8 @@
     <string name="vpn_allowed">Routes through the tunnel</string>
     <string name="vpn_allowed_hint">0.0.0.0/0, ::/0 sends everything</string>
     <string name="vpn_keepalive">Keepalive, seconds</string>
+    <string name="vpn_browser_only">This browser only</string>
+    <string name="vpn_browser_only_hint">Other apps keep their normal connection.</string>
     <string name="vpn_auto_connect">Connect on start</string>
     <string name="vpn_save">Save</string>
     <string name="vpn_saved">Saved</string>

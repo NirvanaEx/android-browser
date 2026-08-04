@@ -155,6 +155,7 @@ class VpnActivity : AppCompatActivity() {
         vpnPreshared.setText(settings.presharedKey)
         vpnAllowed.setText(settings.allowedIps)
         vpnKeepalive.setText(settings.keepalive)
+        vpnBrowserOnly.isChecked = settings.browserOnly
         vpnAutoConnect.isChecked = settings.autoConnect
         renderPublicKey()
     }
@@ -169,6 +170,7 @@ class VpnActivity : AppCompatActivity() {
         settings.presharedKey = vpnPreshared.text?.toString().orEmpty()
         settings.allowedIps = vpnAllowed.text?.toString().orEmpty()
         settings.keepalive = vpnKeepalive.text?.toString().orEmpty()
+        settings.browserOnly = vpnBrowserOnly.isChecked
         settings.autoConnect = vpnAutoConnect.isChecked
     }
 
@@ -196,6 +198,19 @@ class VpnActivity : AppCompatActivity() {
 
         // Everything below the divider is the part nobody should have to open.
         btnVpnAdvanced.setOnClickListener { setAdvancedOpen(!vpnAdvanced.isVisible) }
+
+        // The application list is fixed when the tunnel is built, so moving this
+        // switch while connected has to rebuild it — otherwise the switch says
+        // one thing and the tunnel keeps doing the other until the next connect.
+        vpnBrowserOnly.setOnCheckedChangeListener { _, checked ->
+            if (checked == settings.browserOnly) return@setOnCheckedChangeListener
+            // save(), not just this one field: the tunnel is about to be built
+            // again from the whole profile, and building it from a form the
+            // user has edited but not yet saved would raise a tunnel to
+            // somewhere other than what the screen says.
+            save()
+            if (controller.isUp) connect()
+        }
 
         vpnAutoConnect.setOnCheckedChangeListener { _, checked ->
             settings.autoConnect = checked
@@ -325,23 +340,35 @@ class VpnActivity : AppCompatActivity() {
 
     private fun renderState(status: VpnStatus.Snapshot) {
         val up = status.up
+        // Up is not the same as working. A tunnel whose server has gone quiet
+        // reports itself up for as long as it is switched on, and with the
+        // whole browser routed into it that is the state where nothing loads —
+        // so it gets said in words rather than left to a green shield.
+        val stalled = up && status.health == VpnStatus.Health.STALLED
+        val online = up && status.health == VpnStatus.Health.ONLINE
+
         // "Disconnected" and "not set up" are different answers to the same
         // question and only one of them means "press the button".
         binding.vpnState.setText(
             when {
+                stalled -> R.string.vpn_state_stalled
+                up && !online -> R.string.vpn_state_connecting
                 up -> R.string.vpn_state_on
                 settings.isConfigured -> R.string.vpn_state_off
                 else -> R.string.vpn_not_configured
             },
         )
         binding.vpnStateIcon.setImageResource(
-            if (up) R.drawable.ic_shield else R.drawable.ic_shield_off,
+            if (up && !stalled) R.drawable.ic_shield else R.drawable.ic_shield_off,
         )
         binding.vpnStateIcon.setColorFilter(
             MaterialColors.getColor(
                 binding.vpnStateIcon,
-                if (up) androidx.appcompat.R.attr.colorPrimary
-                else com.google.android.material.R.attr.colorOnSurfaceVariant,
+                when {
+                    stalled -> com.google.android.material.R.attr.colorError
+                    online -> androidx.appcompat.R.attr.colorPrimary
+                    else -> com.google.android.material.R.attr.colorOnSurfaceVariant
+                },
             ),
         )
         binding.btnVpnToggle.setText(if (up) R.string.vpn_disconnect else R.string.vpn_connect)

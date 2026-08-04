@@ -177,11 +177,13 @@ class BrowserComponents(val context: Context) {
     val vpn: VpnController by lazy { VpnController(context) }
 
     /**
-     * The tunnel's live readout — up/down plus the current speed. Sampled from
-     * one place so the notification and the VPN screen can't disagree about
-     * what the connection is doing.
+     * The tunnel's live readout — up/down, whether the server is answering, and
+     * the current speed. Sampled from one place so the notification and the VPN
+     * screen can't disagree about what the connection is doing. It needs the
+     * profile as well as the tunnel: how long a silence counts as a stall is
+     * derived from the keepalive.
      */
-    val vpnStatus: VpnStatus by lazy { VpnStatus(vpn) }
+    val vpnStatus: VpnStatus by lazy { VpnStatus(vpn, vpnSettings) }
 
     /**
      * Owns the built-in WebExtension behind the built-in video player.

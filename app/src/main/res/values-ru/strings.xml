@@ -290,11 +290,14 @@
     <!-- ============== VPN ============== -->
     <string name="menu_vpn">VPN</string>
     <string name="menu_vpn_state_unset">НАСТРОИТЬ</string>
+    <string name="menu_vpn_state_stalled">НЕТ СВЯЗИ</string>
     <string name="vpn_title">VPN</string>
     <string name="vpn_connect">Подключить</string>
     <string name="vpn_disconnect">Отключить</string>
     <string name="vpn_connecting">Подключаюсь…</string>
     <string name="vpn_state_on">Подключено</string>
+    <string name="vpn_state_connecting">Связываюсь с сервером…</string>
+    <string name="vpn_state_stalled">Сервер не отвечает</string>
     <string name="vpn_state_off">Отключено</string>
     <string name="vpn_not_configured">Пока не настроено</string>
     <string name="vpn_section_device">Это устройство</string>
@@ -305,6 +308,8 @@
     <string name="vpn_notification_channel">Состояние VPN</string>
     <string name="vpn_notification_channel_hint">Показывается, только пока VPN подключён.</string>
     <string name="vpn_notification_title">VPN включён</string>
+    <string name="vpn_notification_title_stalled">VPN без связи</string>
+    <string name="vpn_notification_stalled">Сервер не отвечает — страницы не откроются</string>
     <string name="vpn_notification_text">Через %1$s</string>
     <string name="vpn_generate">Новый ключ</string>
     <string name="vpn_generated">Ключ создан. Добавьте публичный ключ на сервере.</string>
@@ -327,6 +332,8 @@
     <string name="vpn_allowed">Что идёт через туннель</string>
     <string name="vpn_allowed_hint">0.0.0.0/0, ::/0 — весь трафик</string>
     <string name="vpn_keepalive">Keepalive, секунды</string>
+    <string name="vpn_browser_only">Только для браузера</string>
+    <string name="vpn_browser_only_hint">Остальные приложения выходят в сеть как обычно.</string>
     <string name="vpn_auto_connect">Подключаться при запуске</string>
     <string name="vpn_save">Сохранить</string>
     <string name="vpn_saved">Сохранено</string>
