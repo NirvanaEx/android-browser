@@ -148,8 +148,40 @@ class VpnSettings(context: Context) {
         appendLine("PublicKey = ${peerPublicKey.trim()}")
         if (presharedKey.isNotBlank()) appendLine("PresharedKey = ${presharedKey.trim()}")
         appendLine("Endpoint = ${endpoint.trim()}")
-        appendLine("AllowedIPs = ${allowedIps.trim().ifBlank { DEFAULT_ALLOWED }}")
+        appendLine("AllowedIPs = ${routedAllowedIps()}")
         if (keepalive.isNotBlank()) appendLine("PersistentKeepalive = ${keepalive.trim()}")
+    }
+
+    /**
+     * What to actually route, as opposed to what the profile asks for.
+     *
+     * A profile that routes `::/0` into an interface holding no IPv6 address of
+     * its own is a black hole, and it is the default one every WireGuard server
+     * hands out. Android takes the route, reports the network as IPv6-capable,
+     * and the resolver starts answering with AAAA records — so the browser
+     * prefers IPv6 for most large sites and sends every one of those packets
+     * into a tunnel whose far end has no IPv6 at all. Nothing replies, not even
+     * an error, so pages hang instead of failing, and the tunnel looks healthy
+     * the whole time: handshake fine, a few kilobytes through, then silence.
+     *
+     * Dropping the route is what fixes it. With no address, route or DNS server
+     * of that family, `VpnService` blocks the family outright — connections
+     * fail immediately, and the browser falls straight back to IPv4 rather than
+     * waiting out a timeout per host.
+     *
+     * The profile's own text is left alone: the field says what the server
+     * provisioned, and this is only what this device can honour today. Give the
+     * interface an IPv6 address and the route comes back by itself.
+     */
+    private fun routedAllowedIps(): String {
+        val allowed = allowedIps.trim().ifBlank { DEFAULT_ALLOWED }
+        // A colon in the address is the only thing that makes an IPv6 route
+        // deliverable; without one there is nothing to send from.
+        if (address.contains(':')) return allowed
+        val routable = allowed.split(',')
+            .map { it.trim() }
+            .filter { it.isNotEmpty() && !it.contains(':') }
+        return if (routable.isEmpty()) DEFAULT_ALLOWED_V4 else routable.joinToString(", ")
     }
 
     /**
@@ -229,6 +261,9 @@ class VpnSettings(context: Context) {
 
         /** Everything through the tunnel — the only setting most people want. */
         const val DEFAULT_ALLOWED = "0.0.0.0/0, ::/0"
+
+        /** The same, for a device the server gave no IPv6 address to. */
+        const val DEFAULT_ALLOWED_V4 = "0.0.0.0/0"
 
         /**
          * 1420 = 1500 − 20 (IPv4) − 8 (UDP) − 32 (WireGuard). Mobile networks
