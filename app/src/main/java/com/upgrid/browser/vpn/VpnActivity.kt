@@ -365,7 +365,10 @@ class VpnActivity : AppCompatActivity() {
             MaterialColors.getColor(
                 binding.vpnStateIcon,
                 when {
-                    stalled -> com.google.android.material.R.attr.colorError
+                    // colorError from appcompat, like colorPrimary below it:
+                    // both attrs are declared there and only used by Material,
+                    // and nonTransitiveRClass means each R holds its own.
+                    stalled -> androidx.appcompat.R.attr.colorError
                     online -> androidx.appcompat.R.attr.colorPrimary
                     else -> com.google.android.material.R.attr.colorOnSurfaceVariant
                 },

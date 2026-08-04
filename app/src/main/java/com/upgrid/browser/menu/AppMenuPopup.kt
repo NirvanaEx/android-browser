@@ -327,7 +327,8 @@ class AppMenuPopup(private val activity: MainActivity) {
             MaterialColors.getColor(
                 binding.vpnIcon,
                 when {
-                    stalled -> com.google.android.material.R.attr.colorError
+                    // See VpnActivity: colorError is declared by appcompat.
+                    stalled -> androidx.appcompat.R.attr.colorError
                     online -> androidx.appcompat.R.attr.colorPrimary
                     else -> com.google.android.material.R.attr.colorOnSurfaceVariant
                 },
