@@ -76,6 +76,7 @@ Product target is **Banana Browser** (Google Play) — minimal chrome, big tap t
 - `UnsatisfiedLinkError: libxul.so` → ABI устройства не в `splits.abi.include`
 - `GeckoRuntime already running` → кто-то создал runtime мимо `BrowserComponents`, ищите `GeckoRuntime.create`
 - IDE краснит `mozilla.components.*` → invalidate caches, первый синк с maven Mozilla бывает неполным
+- **`Unresolved reference 'colorError'` (и `'colorPrimary'` до него)** — тема-атрибут ищут не в той `R`. При `android.nonTransitiveRClass=true` у каждой библиотеки своя `R`, и в ней только то, что она сама **объявляет**: `colorPrimary`, `colorError`, `colorAccent` объявлены в appcompat, а Material их лишь использует в темах. M3-атрибуты (`colorOnSurfaceVariant`, `colorSurfaceContainer`) — наоборот. Гадать не надо, это проверяется: `unzip -p <aar> res/values/values.xml | grep 'attr name="colorError"'` — где `<attr …>`, там и `R`
 - **`+ ' ' +` в Kotlin дважды сохранялся как NUL-байт**: файл становится бинарным, `grep` по нему молча ничего не находит. Писать `"${a} $b"`, проверять `git ls-files -z -- '*.kt' | xargs -0 grep -lP '\x00'`
 
 ## Тестирование
