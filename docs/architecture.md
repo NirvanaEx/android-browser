@@ -77,6 +77,7 @@ app/src/main/
 │   ├── vpn/
 │   │   ├── VpnController.kt        ← com.wireguard.android:tunnel, one per process
 │   │   ├── VpnSettings.kt          ← the profile as fields; wg-quick in and out
+│   │   ├── VpnStatus.kt            ← speed, and whether the server is answering
 │   │   └── VpnActivity.kt          ← the form, the switch, the key pair
 │   └── ui/
 │       ├── Motion.kt               ← durations, curves, setVisibleAnimated/bump
@@ -648,6 +649,30 @@ duplicate fails the build.
   `application/octet-stream` on one device and `text/plain` on the next, and
   filtering on either hides the file the user came for. `Config.parse` validates
   at connect time, where a bad value can be reported as one.
+- **The tunnel carries this browser and nothing else, by default.**
+  `VpnSettings.browserOnly` writes `IncludedApplications = <our package>` into
+  the generated config, and the backend turns that into
+  `VpnService.Builder.addAllowedApplication`. It is a list of *packages*, so it
+  covers every process the browser runs under, GeckoView's content processes
+  included — Gecko does its networking in the parent anyway. Two things follow
+  and both have been asked about:
+  - It is not a *system-wide* VPN with an exception list. Android has no
+    per-app tunnel below the VpnService: we still hold the phone's single VPN
+    slot and the system still shows its key icon while connected. Only routing
+    is scoped. A second VPN app therefore still cannot run at the same time —
+    which is the first thing to check when the tunnel refuses to come up.
+  - **The kill-switch now lands on the browser alone.** With
+    `AllowedIPs = 0.0.0.0/0, ::/0` and a single peer, `GoBackend` skips
+    `allowFamily` on purpose: nothing may leave outside the tunnel. Phone-wide,
+    a tunnel that is up but not passing traffic looks like "the internet is
+    broken"; scoped, it looks like "pages don't load in this browser while
+    everything else works" — which is the same fault, but the report is
+    different and the phone stays usable.
+  - Changing the switch while connected rebuilds the tunnel. The application
+    list is fixed when the interface is built, and `Backend.setState(UP, …)`
+    over a live tunnel takes it down and back up with the new config, so
+    `VpnActivity` just reconnects rather than leaving the switch describing a
+    tunnel that isn't listening to it.
 - **The status notification is posted from `BrowserApplication`, not a screen.**
   The tunnel outlives every Activity, and the notification has to still be
   correct — and its Disconnect button still reachable — after the browser is
@@ -666,6 +691,33 @@ duplicate fails the build.
   by a wall-clock delta goes wrong the one time the phone's clock is corrected.
   The first sample has no rate to report, only the absence of one — hence
   `Snapshot.sampled`, and no row of zeroes under a shield that just went green.
+- **`Backend.getState` is not a health check, and treating it as one was the
+  bug.** It answers "does the tunnel interface exist" — true from the moment
+  `builder.establish()` returns, and true for as long as the tunnel stays
+  switched on with an unreachable server. So the shield went green, the speed
+  read `0 B/s`, and nothing loaded: with `AllowedIPs = 0.0.0.0/0` the tunnel is
+  a kill-switch, and a kill-switch to a server that never answers is a browser
+  with no internet. That reads to the user as "the VPN is on but there's no
+  connection", and no screen said otherwise.
+
+  The honest signal is the handshake. `Statistics.PeerStats` carries
+  `latestHandshakeEpochMillis`, `VpnController.stats()` takes the newest across
+  peers, and `VpnStatus.Snapshot.health` grades it: `CONNECTING` while there
+  has never been one and the tunnel is younger than 12 s, `STALLED` once it is
+  older than that with still no answer, `ONLINE` while the last handshake is
+  recent, `STALLED` again once it ages out.
+  - **The threshold comes from the keepalive, not from a constant.** WireGuard
+    renews a handshake 120 s in, but only when it has something to send —
+    `PersistentKeepalive` is what guarantees that on an idle tunnel. So the
+    window is six keepalives (150 s at the default 25), and with no keepalive
+    at all it widens to 300 s: an idle tunnel with nothing keeping it awake is
+    *supposed* to go quiet, and calling that an outage would be a red shield
+    over a working connection.
+  - **Wall clock, unavoidably.** The handshake arrives in epoch milliseconds,
+    so that is what it must be compared against — the one place in this file
+    where `elapsedRealtime` is the wrong clock. A backwards clock correction
+    makes the age negative, which counts as fresh: a handshake the backend told
+    us about did happen.
 - **The notification channel id changed, and it had to.** A channel's importance
   is fixed at creation; an app cannot raise it later. The first version shipped
   `IMPORTANCE_LOW`, which can never produce the pop-up the user asked for, so

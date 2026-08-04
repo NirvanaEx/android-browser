@@ -20,6 +20,14 @@ class VpnSettings(context: Context) {
     private val prefs =
         context.applicationContext.getSharedPreferences(FILE, Context.MODE_PRIVATE)
 
+    /**
+     * This app's own package, which is what [browserOnly] puts on the tunnel's
+     * application list. Read from the context rather than written down: the
+     * debug build is `com.upgrid.browser.debug` and a hard-coded string would
+     * quietly route nothing at all there.
+     */
+    private val appPackage = context.applicationContext.packageName
+
     var privateKey: String
         get() = prefs.getString(KEY_PRIVATE, "").orEmpty()
         set(value) = put(KEY_PRIVATE, value)
@@ -58,6 +66,32 @@ class VpnSettings(context: Context) {
     var keepalive: String
         get() = prefs.getString(KEY_KEEPALIVE, DEFAULT_KEEPALIVE).orEmpty()
         set(value) = put(KEY_KEEPALIVE, value)
+
+    /**
+     * Route this browser through the tunnel and leave the rest of the phone
+     * alone. On by default — this is a browser's VPN, not the phone's.
+     *
+     * Android has no per-app VPN below the VpnService: whoever holds the
+     * service still holds the phone's only VPN slot and the system's key icon
+     * still appears. What it does have is an application list, and a tunnel
+     * built with one carries the listed packages and nothing else — every other
+     * app keeps using the normal connection, including while the tunnel is up.
+     * That is expressed in the config as `IncludedApplications`, which the
+     * wireguard-android backend turns into `VpnService.Builder`
+     * `.addAllowedApplication`.
+     *
+     * Turning it off is the old behaviour, the whole phone, and it is worth
+     * knowing what that costs: with `AllowedIPs = 0.0.0.0/0, ::/0` and one peer
+     * the backend deliberately builds a kill-switch, so a tunnel that is up but
+     * not passing traffic takes the phone's connectivity down with it. Scoped
+     * to the browser, the same failure is a browser that can't load pages while
+     * everything else on the phone works.
+     */
+    var browserOnly: Boolean
+        get() = prefs.getBoolean(KEY_BROWSER_ONLY, true)
+        set(value) {
+            prefs.edit().putBoolean(KEY_BROWSER_ONLY, value).apply()
+        }
 
     /** Bring the tunnel up as soon as the app starts. Off by default. */
     var autoConnect: Boolean
@@ -105,6 +139,10 @@ class VpnSettings(context: Context) {
         appendLine("Address = ${address.trim()}")
         if (dns.isNotBlank()) appendLine("DNS = ${dns.trim()}")
         if (mtu.isNotBlank()) appendLine("MTU = ${mtu.trim()}")
+        // Written here rather than passed to the backend separately because
+        // the backend has no other way in: it reads the application list off
+        // the parsed config, like every other interface setting.
+        if (browserOnly) appendLine("IncludedApplications = $appPackage")
         appendLine()
         appendLine("[Peer]")
         appendLine("PublicKey = ${peerPublicKey.trim()}")
@@ -180,6 +218,9 @@ class VpnSettings(context: Context) {
         private const val KEY_MTU = "mtu"
         private const val KEY_KEEPALIVE = "keepalive"
         private const val KEY_AUTO = "auto_connect"
+
+        /** Only this app goes through the tunnel. See [browserOnly]. */
+        private const val KEY_BROWSER_ONLY = "browser_only"
 
         /** Marks [forgetAutoConnectSetBySignIn] as already done on this phone. */
         private const val KEY_AUTO_RESET = "auto_connect_reset"

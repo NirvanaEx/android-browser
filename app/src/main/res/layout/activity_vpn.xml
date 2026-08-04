@@ -156,6 +156,23 @@
                         android:text="@string/vpn_connect" />
 
                     <com.google.android.material.materialswitch.MaterialSwitch
+                        android:id="@+id/vpnBrowserOnly"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="12dp"
+                        android:minHeight="48dp"
+                        android:textSize="14sp"
+                        android:text="@string/vpn_browser_only" />
+
+                    <TextView
+                        android:id="@+id/vpnBrowserOnlyHint"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:textSize="12sp"
+                        android:textColor="?attr/colorOnSurfaceVariant"
+                        android:text="@string/vpn_browser_only_hint" />
+
+                    <com.google.android.material.materialswitch.MaterialSwitch
                         android:id="@+id/vpnAutoConnect"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"

@@ -90,11 +90,31 @@ class VpnController(private val context: Context) {
         Unit
     }
 
-    /** Bytes in / out, or null when the tunnel is down or the backend refuses. */
-    suspend fun transfer(): Pair<Long, Long>? = withContext(Dispatchers.IO) {
+    /**
+     * What the tunnel has carried, and when it last heard from the server.
+     *
+     * @property received bytes in since the tunnel came up.
+     * @property sent bytes out since the tunnel came up.
+     * @property handshakeAt when a peer last completed a handshake, in epoch
+     * milliseconds, or 0 when none ever has. Epoch rather than uptime because
+     * that is the clock WireGuard reports it on; [VpnStatus] is where the cost
+     * of that is dealt with.
+     */
+    data class Stats(val received: Long, val sent: Long, val handshakeAt: Long)
+
+    /** The counters, or null when the tunnel is down or the backend refuses. */
+    suspend fun stats(): Stats? = withContext(Dispatchers.IO) {
         runCatching {
             val stats = backend.getStatistics(tunnel)
-            stats.totalRx() to stats.totalTx()
+            // The newest handshake across peers. Every profile this browser
+            // writes has exactly one, but a pasted config may carry several,
+            // and the tunnel is alive if any of them is still answering.
+            var handshakeAt = 0L
+            for (peer in stats.peers()) {
+                val at = stats.peer(peer)?.latestHandshakeEpochMillis() ?: 0L
+                if (at > handshakeAt) handshakeAt = at
+            }
+            Stats(stats.totalRx(), stats.totalTx(), handshakeAt)
         }.getOrNull()
     }
 

@@ -315,18 +315,27 @@ class AppMenuPopup(private val activity: MainActivity) {
     private fun renderVpnState(status: VpnStatus.Snapshot) {
         val up = status.up
         val configured = components.vpnSettings.isConfigured
+        // A tunnel that is switched on but not reaching its server is the state
+        // where pages stop loading, so the row says so instead of reading ON —
+        // this is usually where the user looks first.
+        val stalled = up && status.health == VpnStatus.Health.STALLED
+        val online = up && status.health == VpnStatus.Health.ONLINE
         binding.vpnIcon.setImageResource(
-            if (up) R.drawable.ic_shield else R.drawable.ic_shield_off
+            if (up && !stalled) R.drawable.ic_shield else R.drawable.ic_shield_off
         )
         binding.vpnIcon.setColorFilter(
             MaterialColors.getColor(
                 binding.vpnIcon,
-                if (up) androidx.appcompat.R.attr.colorPrimary
-                else com.google.android.material.R.attr.colorOnSurfaceVariant,
+                when {
+                    stalled -> com.google.android.material.R.attr.colorError
+                    online -> androidx.appcompat.R.attr.colorPrimary
+                    else -> com.google.android.material.R.attr.colorOnSurfaceVariant
+                },
             )
         )
         binding.vpnState.setText(
             when {
+                stalled -> R.string.menu_vpn_state_stalled
                 up -> R.string.menu_adblock_state_on
                 configured -> R.string.menu_adblock_state_off
                 else -> R.string.menu_vpn_state_unset

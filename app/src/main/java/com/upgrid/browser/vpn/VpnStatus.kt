@@ -27,10 +27,30 @@ import kotlinx.coroutines.launch
  * `collectLatest` on the tunnel state, so a disconnect cancels it rather than
  * leaving a timer polling a backend that has nothing to say.
  */
-class VpnStatus(private val controller: VpnController) {
+class VpnStatus(
+    private val controller: VpnController,
+    private val settings: VpnSettings,
+) {
 
     /**
-     * @property up whether the tunnel is carrying traffic at all.
+     * Whether the tunnel is talking to the server, as opposed to merely
+     * existing. See [health] for why the difference is the whole point.
+     */
+    enum class Health {
+        /** Up, but no handshake yet. Normal for the first few seconds. */
+        CONNECTING,
+
+        /** Up and the server answered recently. */
+        ONLINE,
+
+        /** Up, and the server has gone quiet. Nothing will load. */
+        STALLED,
+    }
+
+    /**
+     * @property up whether the tunnel interface exists.
+     * @property health whether it is reaching the server. Only meaningful
+     * while [up]; a down tunnel reports [Health.CONNECTING] and nobody reads it.
      * @property received total bytes in since the tunnel came up.
      * @property sent total bytes out since the tunnel came up.
      * @property downstream bytes per second in, over the last sample.
@@ -40,6 +60,7 @@ class VpnStatus(private val controller: VpnController) {
      */
     data class Snapshot(
         val up: Boolean = false,
+        val health: Health = Health.CONNECTING,
         val received: Long = 0,
         val sent: Long = 0,
         val downstream: Long = 0,
@@ -75,39 +96,85 @@ class VpnStatus(private val controller: VpnController) {
         var previousRx = 0L
         var previousTx = 0L
         var previousAt = 0L
+        val startedAt = SystemClock.elapsedRealtime()
 
         while (true) {
-            val transfer = controller.transfer()
+            val stats = controller.stats()
             // elapsedRealtime, not wall clock: a rate divided by a wall-clock
             // delta goes wrong the one time the phone's clock is corrected.
             val now = SystemClock.elapsedRealtime()
 
-            if (transfer == null) {
+            if (stats == null) {
                 // The backend can refuse mid-handshake. The tunnel is still up;
                 // we just have nothing new to say about it.
                 current.value = current.value.copy(up = true)
             } else {
-                val (rx, tx) = transfer
                 val elapsed = now - previousAt
                 val first = previousAt == 0L
                 current.value = Snapshot(
                     up = true,
-                    received = rx,
-                    sent = tx,
+                    health = health(stats.handshakeAt, now - startedAt),
+                    received = stats.received,
+                    sent = stats.sent,
                     // Counters restart with the tunnel, so a reconnect can make
                     // a delta negative. That's zero traffic, not negative
                     // traffic.
-                    downstream = if (first) 0 else rate(rx - previousRx, elapsed),
-                    upstream = if (first) 0 else rate(tx - previousTx, elapsed),
+                    downstream = if (first) 0 else rate(stats.received - previousRx, elapsed),
+                    upstream = if (first) 0 else rate(stats.sent - previousTx, elapsed),
                     sampled = !first,
                 )
-                previousRx = rx
-                previousTx = tx
+                previousRx = stats.received
+                previousTx = stats.sent
                 previousAt = now
             }
 
             delay(SAMPLE_MS)
         }
+    }
+
+    /**
+     * Is anybody there?
+     *
+     * `Backend.getState` answers "does the tunnel interface exist", which goes
+     * true the moment the interface is built and stays true while the server is
+     * unreachable — so a shield wired to it alone turns green over a tunnel
+     * that has never carried a single packet, which is the one failure a VPN
+     * screen exists to report. The handshake is the honest signal: WireGuard
+     * renews it two minutes into its life for as long as there is anything to
+     * send, and `PersistentKeepalive` is what guarantees there is.
+     *
+     * Wall clock here, unavoidably — the handshake is reported in epoch
+     * milliseconds, so that is the clock it has to be compared against. A
+     * correction to the phone's clock can therefore age a handshake wrongly for
+     * one sample. Forwards it recovers by itself two seconds later; backwards
+     * it reads as negative, which is treated as fresh rather than stale,
+     * because a handshake we were told about did happen.
+     */
+    private fun health(handshakeAt: Long, upFor: Long): Health {
+        if (handshakeAt <= 0L) {
+            // None yet. The first exchange takes a moment on a mobile network;
+            // past that, silence means the server is not answering at all.
+            return if (upFor < GRACE_MS) Health.CONNECTING else Health.STALLED
+        }
+        val age = System.currentTimeMillis() - handshakeAt
+        return if (age <= staleAfterMs()) Health.ONLINE else Health.STALLED
+    }
+
+    /**
+     * How old a handshake may get before the tunnel counts as stalled.
+     *
+     * Built from the keepalive rather than fixed: WireGuard renews a handshake
+     * 120 s in, but only when it has something to send, and on an idle tunnel
+     * `PersistentKeepalive` is the only thing that keeps it having something.
+     * Six keepalives of slack, so a couple lost to a bad mobile connection
+     * don't get called an outage. Without a keepalive an idle tunnel is
+     * *supposed* to go quiet, so the window widens rather than the state
+     * turning red on a connection that is merely unused.
+     */
+    private fun staleAfterMs(): Long {
+        val keepalive = settings.keepalive.trim().toLongOrNull() ?: 0L
+        if (keepalive <= 0L) return SILENT_STALE_MS
+        return (keepalive * 6_000L).coerceIn(STALE_MS, SILENT_STALE_MS)
     }
 
     private fun rate(delta: Long, elapsedMs: Long): Long =
@@ -120,5 +187,14 @@ class VpnStatus(private val controller: VpnController) {
          * short burst is over before it shows up at all.
          */
         const val SAMPLE_MS = 2_000L
+
+        /** Room for a first handshake over a slow mobile connection. */
+        const val GRACE_MS = 12_000L
+
+        /** Floor for the stale window: WireGuard's own 120 s renewal, plus slack. */
+        const val STALE_MS = 150_000L
+
+        /** The window when no keepalive is set and silence is allowed to mean nothing. */
+        const val SILENT_STALE_MS = 300_000L
     }
 }
