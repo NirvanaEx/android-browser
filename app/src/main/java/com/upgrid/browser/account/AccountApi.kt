@@ -1,5 +1,6 @@
 package com.upgrid.browser.account
 
+import android.net.Uri
 import android.util.Base64
 import android.util.Log
 import kotlinx.coroutines.Dispatchers
@@ -96,9 +97,20 @@ class AccountApi(private val client: Client) {
         )
     }.getOrElse { Outcome.Unreachable("bad response") }
 
+    /**
+     * `https://host/accounts` + `superadmin` → `https://host/accounts/superadmin.json`.
+     *
+     * The login is encoded, not pasted. It is whatever was typed into the
+     * sign-in form, and typed text reaches this as a path segment: a `?` or a
+     * `#` in it truncates the path and asks the server for the directory
+     * instead, and `../` walks out of it — so a sign-in could address a file
+     * that has nothing to do with accounts and hand whatever came back to the
+     * parser as a profile. Encoding leaves an ordinary login untouched and
+     * turns the rest into one segment that simply isn't found.
+     */
     private fun profileUrl(baseUrl: String, login: String): String {
         val base = baseUrl.trim().trimEnd('/')
-        return "$base/${login.trim().lowercase()}.json"
+        return "$base/${Uri.encode(login.trim().lowercase())}.json"
     }
 
     private companion object {

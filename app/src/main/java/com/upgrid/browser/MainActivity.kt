@@ -1057,7 +1057,19 @@ class MainActivity : AppCompatActivity() {
                 // picker would be better and is a bigger feature than this one.
                 val login = components.logins.forHost(host)
                     .maxByOrNull { it.updatedAt } ?: return
+                // The host travels with the password, and logins.js refuses a
+                // fill that doesn't match the document it is running in.
+                //
+                // Necessary because the announcement and the fill take
+                // different routes: "ready" comes up the port from whichever
+                // tab finished loading, and the fill goes back down through
+                // background.js, which addresses the tab that is on screen. A
+                // page loading in the background therefore asks for its
+                // password and the foreground page — a different site — is the
+                // one that receives it. Without this check that is a saved
+                // password typed into somebody else's form.
                 components.videoPlayerBridge.sendPageCommand("loginFill") {
+                    put("host", login.host)
                     put("username", login.username)
                     put("password", login.password)
                 }
