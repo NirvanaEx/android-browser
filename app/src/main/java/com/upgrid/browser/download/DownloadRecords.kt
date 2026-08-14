@@ -58,30 +58,42 @@ class DownloadRecords(context: Context) {
     /** Newest first. */
     val records: StateFlow<List<DownloadRecord>> = state.asStateFlow()
 
+    // Downloads run concurrently, each on its own IO thread, and every one of
+    // them reads state.value and writes it back. Without a lock two updates
+    // racing that read-modify-write can overwrite each other — the second
+    // writer wins with a list computed before the first writer's change, so
+    // a finished download's DONE row can be clobbered back to a stale RUNNING
+    // snapshot from another download's progress tick.
+    private val lock = Any()
+
     fun add(record: DownloadRecord) {
-        state.value = (listOf(record) + state.value).take(MAX_ROWS)
+        synchronized(lock) {
+            state.value = (listOf(record) + state.value).take(MAX_ROWS)
+        }
         persist()
     }
 
     /** Replace a row by id. [durable] false = progress tick, don't touch disk. */
     fun update(record: DownloadRecord, durable: Boolean = true) {
-        val updated = state.value.map { if (it.id == record.id) record else it }
-        // A record can vanish while its download runs (the user cleared the
-        // list); re-adding it here would resurrect a row they deleted.
-        if (updated.none { it.id == record.id }) return
-        state.value = updated
+        synchronized(lock) {
+            val updated = state.value.map { if (it.id == record.id) record else it }
+            // A record can vanish while its download runs (the user cleared the
+            // list); re-adding it here would resurrect a row they deleted.
+            if (updated.none { it.id == record.id }) return
+            state.value = updated
+        }
         if (durable) persist()
     }
 
     fun byId(id: String): DownloadRecord? = state.value.firstOrNull { it.id == id }
 
     fun remove(id: String) {
-        state.value = state.value.filterNot { it.id == id }
+        synchronized(lock) { state.value = state.value.filterNot { it.id == id } }
         persist()
     }
 
     fun clear() {
-        state.value = emptyList()
+        synchronized(lock) { state.value = emptyList() }
         persist()
     }
 
@@ -90,17 +102,22 @@ class DownloadRecords(context: Context) {
      * spinner that never moves would be a lie.
      */
     fun failInterrupted() {
-        val fixed = state.value.map {
-            if (it.status == DownloadRecord.Status.RUNNING) {
-                it.copy(status = DownloadRecord.Status.FAILED)
+        val changed = synchronized(lock) {
+            val fixed = state.value.map {
+                if (it.status == DownloadRecord.Status.RUNNING) {
+                    it.copy(status = DownloadRecord.Status.FAILED)
+                } else {
+                    it
+                }
+            }
+            if (fixed != state.value) {
+                state.value = fixed
+                true
             } else {
-                it
+                false
             }
         }
-        if (fixed != state.value) {
-            state.value = fixed
-            persist()
-        }
+        if (changed) persist()
     }
 
     // --- Storage -----------------------------------------------------------
