@@ -8,6 +8,7 @@ import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
 import android.provider.MediaStore
+import android.util.Log
 import androidx.annotation.RequiresApi
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -137,6 +138,12 @@ class DownloadManager(
             records.update(record)
             post(Event.Finished(record))
         } catch (t: Throwable) {
+            // The user is told the file failed and nothing more, which is the
+            // right amount for them and none at all for anyone asked why. The
+            // three causes look identical from the outside — the server said
+            // no, MediaStore refused the entry, the stream died mid-copy — so
+            // without this line a download that never works is unanswerable.
+            Log.w(TAG, "Download failed: $name", t)
             runCatching { sink?.discard() }
             records.update(record.copy(status = DownloadRecord.Status.FAILED))
             post(Event.Failed(name))
@@ -263,6 +270,7 @@ class DownloadManager(
     }
 
     private companion object {
+        const val TAG = "DownloadManager"
         val HTTP_OK = 200..299
         const val BUFFER_BYTES = 64 * 1024
         const val PROGRESS_INTERVAL_MS = 250L
