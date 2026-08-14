@@ -90,7 +90,12 @@ class DownloadManager(
     }
 
     private suspend fun perform(tabId: String, download: DownloadState) {
-        val name = download.fileName?.takeIf { it.isNotBlank() }
+        // Sanitised even when the engine already named it: that name comes from
+        // the server's Content-Disposition, and only the names this class
+        // produces itself have been through FileNames. One `../` in the header
+        // is otherwise a write outside the downloads folder on the legacy path,
+        // where the name becomes a real filesystem path.
+        val name = download.fileName?.takeIf { it.isNotBlank() }?.let(FileNames::sanitize)
             ?: FileNames.guessFileName(null, download.url, download.contentType)
 
         var record = DownloadRecord(
@@ -243,7 +248,16 @@ class DownloadManager(
             ?: File(context.filesDir, Environment.DIRECTORY_DOWNLOADS)
         directory.mkdirs()
 
+        // Belt to the sanitiser's braces: whatever the name is, the file it
+        // names has to end up inside the downloads directory. Checked on the
+        // resolved path, because that is the only form the filesystem cares
+        // about — a name is safe or not after `..` has been folded out, not
+        // before.
+        fun inside(candidate: File): Boolean =
+            candidate.canonicalPath.startsWith(directory.canonicalPath + File.separator)
+
         var file = File(directory, fileName)
+        if (!inside(file)) throw IOException("Refusing to write outside the downloads folder")
         var counter = 1
         while (file.exists() && counter < MAX_NAME_ATTEMPTS) {
             val stem = fileName.substringBeforeLast('.', fileName)

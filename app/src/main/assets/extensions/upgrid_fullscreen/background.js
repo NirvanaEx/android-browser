@@ -37,6 +37,16 @@ function ensurePort() {
                 }).catch(function () {});
                 return;
             }
+            // A saved password goes back to the document that asked for it and
+            // nowhere else — see loginTabId.
+            if (msg && msg.cmd === "loginFill") {
+                var target = loginTabId;
+                loginTabId = null;
+                if (target === null) return;
+                browser.tabs.sendMessage(target, msg, { frameId: 0 })
+                    .catch(function () {});
+                return;
+            }
             // Find and translate act on the page you are looking at, whichever
             // frame the player happens to be locked to.
             if (msg && PAGE_COMMANDS[msg.cmd]) {
@@ -66,8 +76,15 @@ function postToNative(msg) {
 var PAGE_COMMANDS = {
     find: 1, findNext: 1, findPrev: 1, findClear: 1,
     translate: 1, untranslate: 1, translateState: 1,
-    loginFill: 1,
 };
+
+// The tab that last reported a password field, and is therefore the one the
+// native side is answering. loginFill is NOT a page command: it carries a saved
+// password, and sendToPage delivers to whatever tab is in front — which for a
+// page that finished loading in the background is a different site altogether,
+// and it would receive the password with no way for us to take it back. Single
+// use: an answer that arrives with no outstanding question is dropped.
+var loginTabId = null;
 
 /**
  * Deliver to the foreground tab's main frame.
@@ -154,6 +171,9 @@ function publishMedia() {
 }
 
 function forgetTab(tabId) {
+    // A tab that navigated or closed is no longer the document that asked for
+    // a password, even if the answer is still in flight.
+    if (loginTabId === tabId) loginTabId = null;
     if (mediaByTab[tabId]) {
         delete mediaByTab[tabId];
         publishMedia();
@@ -179,6 +199,12 @@ browser.runtime.onMessage.addListener(function (msg, sender) {
     // most straight-through of all — a single bit meaning "a link was
     // followed", from any frame of any tab.
     if (msg.t === "find" || msg.t === "translate" || msg.t === "login" || msg.t === "tap") {
+        // Remember who is asking for a fill, so the answer can be routed back
+        // to them rather than broadcast. Only "ready" asks; "offer" is the page
+        // handing a password up and expects nothing back.
+        if (msg.t === "login" && msg.action === "ready" && frameId === 0) {
+            loginTabId = tabId;
+        }
         postToNative(msg);
         return;
     }
