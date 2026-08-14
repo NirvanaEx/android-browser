@@ -4,6 +4,7 @@ import android.content.Context
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -47,6 +48,13 @@ data class DownloadRecord(
  * flow but are NOT written to disk — persisting twenty times a second to
  * describe a number that is meaningless after a restart would be the one
  * expensive thing this class does.
+ *
+ * Every mutation goes through [MutableStateFlow.update], which retries on a
+ * concurrent write, rather than through `state.value = f(state.value)`, which
+ * does not. Two downloads run as two coroutines on the IO pool and each ticks
+ * progress several times a second, so the interleaving is not a rare one: read
+ * both, both compute a new list from the same old one, and whichever assigns
+ * second silently discards the other's row.
  */
 class DownloadRecords(context: Context) {
 
@@ -59,24 +67,30 @@ class DownloadRecords(context: Context) {
     val records: StateFlow<List<DownloadRecord>> = state.asStateFlow()
 
     fun add(record: DownloadRecord) {
-        state.value = (listOf(record) + state.value).take(MAX_ROWS)
+        state.update { current -> (listOf(record) + current).take(MAX_ROWS) }
         persist()
     }
 
     /** Replace a row by id. [durable] false = progress tick, don't touch disk. */
     fun update(record: DownloadRecord, durable: Boolean = true) {
-        val updated = state.value.map { if (it.id == record.id) record else it }
-        // A record can vanish while its download runs (the user cleared the
-        // list); re-adding it here would resurrect a row they deleted.
-        if (updated.none { it.id == record.id }) return
-        state.value = updated
-        if (durable) persist()
+        var replaced = false
+        state.update { current ->
+            // A record can vanish while its download runs (the user cleared the
+            // list); re-adding it here would resurrect a row they deleted.
+            replaced = current.any { it.id == record.id }
+            if (replaced) {
+                current.map { if (it.id == record.id) record else it }
+            } else {
+                current
+            }
+        }
+        if (replaced && durable) persist()
     }
 
     fun byId(id: String): DownloadRecord? = state.value.firstOrNull { it.id == id }
 
     fun remove(id: String) {
-        state.value = state.value.filterNot { it.id == id }
+        state.update { current -> current.filterNot { it.id == id } }
         persist()
     }
 
@@ -90,17 +104,19 @@ class DownloadRecords(context: Context) {
      * spinner that never moves would be a lie.
      */
     fun failInterrupted() {
-        val fixed = state.value.map {
-            if (it.status == DownloadRecord.Status.RUNNING) {
-                it.copy(status = DownloadRecord.Status.FAILED)
-            } else {
-                it
+        var changed = false
+        state.update { current ->
+            val fixed = current.map {
+                if (it.status == DownloadRecord.Status.RUNNING) {
+                    it.copy(status = DownloadRecord.Status.FAILED)
+                } else {
+                    it
+                }
             }
+            changed = fixed != current
+            fixed
         }
-        if (fixed != state.value) {
-            state.value = fixed
-            persist()
-        }
+        if (changed) persist()
     }
 
     // --- Storage -----------------------------------------------------------
