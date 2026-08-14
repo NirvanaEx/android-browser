@@ -1058,6 +1058,12 @@ class MainActivity : AppCompatActivity() {
                 val login = components.logins.forHost(host)
                     .maxByOrNull { it.updatedAt } ?: return
                 components.videoPlayerBridge.sendPageCommand("loginFill") {
+                    // The site the password belongs to travels with it. The
+                    // relay routes the fill back to the tab that asked, and
+                    // logins.js refuses it if that tab is no longer showing
+                    // this host — a password must never be typed into a page
+                    // that didn't earn it.
+                    put("host", host)
                     put("username", login.username)
                     put("password", login.password)
                 }
@@ -2935,8 +2941,27 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun Intent.dataStringIfView(): String? =
-        if (action == Intent.ACTION_VIEW) dataString else null
+    /**
+     * The address an external app asked us to open — if it is one we're willing
+     * to open at all.
+     *
+     * The manifest's intent filter says http and https, but a filter only
+     * constrains *implicit* intents: MainActivity is exported, so any app on
+     * the phone can name it directly and hand it whatever URI it likes, filter
+     * or no filter. Which is why the scheme is checked here rather than trusted
+     * from the manifest — `file://` would turn another app's intent into a read
+     * of this one's private storage, and `javascript:`/`data:` are somebody
+     * else's script asking to be run in a tab of ours.
+     *
+     * Anything else is dropped rather than shown: the caller had a browser open
+     * a link, and a link means the web.
+     */
+    private fun Intent.dataStringIfView(): String? {
+        if (action != Intent.ACTION_VIEW) return null
+        val url = dataString?.takeIf { it.isNotBlank() } ?: return null
+        val scheme = runCatching { Uri.parse(url).scheme }.getOrNull()?.lowercase()
+        return if (scheme == "http" || scheme == "https") url else null
+    }
 
     /**
      * Bare URL or hostname → https; everything else → search via the user's

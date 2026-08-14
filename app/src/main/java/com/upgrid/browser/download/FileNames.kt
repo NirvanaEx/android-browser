@@ -55,8 +55,15 @@ object FileNames : DownloadDelegate {
         return null
     }
 
-    /** Strip anything that would make this a path rather than a name. */
-    private fun sanitize(name: String): String = name
+    /**
+     * Strip anything that would make this a path rather than a name.
+     *
+     * Public because this is the only place that knows the rule, and the
+     * download itself has to apply it too: a name that reached
+     * [mozilla.components.browser.state.state.content.DownloadState] by some
+     * other route than [guessFileName] is still a name a server chose.
+     */
+    fun sanitize(name: String): String = name
         .substringAfterLast('/')
         .substringAfterLast('\\')
         .replace(ILLEGAL, "_")
