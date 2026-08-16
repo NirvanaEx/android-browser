@@ -147,10 +147,28 @@
         setValue(passwordField, password);
     }
 
+    /**
+     * Is this fill meant for the document it just arrived at?
+     *
+     * The answer to "ready" travels native → background → tab and can outlive
+     * the document that asked: a navigation, a redirect, a command queued while
+     * the native port was down. Whatever the routing does, a password is typed
+     * into a form only when the site in front of it is the site it was saved
+     * for. Normalised the way the native side does it — lowercase, no `www.`.
+     */
+    function sameHost(host) {
+        if (!host) return false;
+        var mine = hostOf().toLowerCase().replace(/^www\./, "");
+        return mine !== "" && mine === String(host).toLowerCase().replace(/^www\./, "");
+    }
+
     browser.runtime.onMessage.addListener(function (msg) {
         // Shared channel: player, find and translate have their own verbs.
         if (!msg || !msg.cmd) return;
-        if (msg.cmd === "loginFill") fill(msg.username || "", msg.password || "");
+        if (msg.cmd === "loginFill") {
+            if (!sameHost(msg.host)) return;
+            fill(msg.username || "", msg.password || "");
+        }
     });
 
     // Announce once the document has a password field to fill. A page without

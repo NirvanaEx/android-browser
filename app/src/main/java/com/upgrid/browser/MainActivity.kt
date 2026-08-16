@@ -1058,6 +1058,10 @@ class MainActivity : AppCompatActivity() {
                 val login = components.logins.forHost(host)
                     .maxByOrNull { it.updatedAt } ?: return
                 components.videoPlayerBridge.sendPageCommand("loginFill") {
+                    // The host travels with the password so the page can refuse
+                    // one that isn't its own: this answer is routed back through
+                    // the extension and may arrive after the tab has navigated.
+                    put("host", host)
                     put("username", login.username)
                     put("password", login.password)
                 }
@@ -2935,8 +2939,27 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun Intent.dataStringIfView(): String? =
-        if (action == Intent.ACTION_VIEW) dataString else null
+    /**
+     * The address another app asked us to open — if it is one we advertise.
+     *
+     * The manifest's intent-filter lists `http` and `https`, but a filter only
+     * governs *implicit* intents. This activity is exported, so any app on the
+     * device can name it explicitly and hand over any URI at all; taking
+     * `dataString` as it came meant a zero-permission app could point the
+     * browser at `file:///data/data/com.upgrid.browser/…` and have it render
+     * this app's own private files, which it can read because it is us reading
+     * them. Same for `resource://` and the internal `about:` pages.
+     *
+     * So: the filter is enforced here too, where explicit intents also pass.
+     * Anything else is dropped and the caller gets the start page — the two
+     * schemes below are exactly what the manifest promises to open.
+     */
+    private fun Intent.dataStringIfView(): String? {
+        if (action != Intent.ACTION_VIEW) return null
+        val url = dataString?.trim().orEmpty()
+        val scheme = runCatching { Uri.parse(url).scheme }.getOrNull()?.lowercase()
+        return url.takeIf { scheme == "http" || scheme == "https" }
+    }
 
     /**
      * Bare URL or hostname → https; everything else → search via the user's
