@@ -1058,6 +1058,11 @@ class MainActivity : AppCompatActivity() {
                 val login = components.logins.forHost(host)
                     .maxByOrNull { it.updatedAt } ?: return
                 components.videoPlayerBridge.sendPageCommand("loginFill") {
+                    // The host travels with the credentials so both hops back
+                    // can check that this is the page that asked: the relay
+                    // routes to the tab that announced, and logins.js refuses
+                    // anything addressed to a document it isn't.
+                    put("host", host)
                     put("username", login.username)
                     put("password", login.password)
                 }
