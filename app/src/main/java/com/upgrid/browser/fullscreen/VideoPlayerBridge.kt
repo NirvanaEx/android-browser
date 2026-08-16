@@ -169,13 +169,6 @@ class VideoPlayerBridge(private val components: BrowserComponents) {
     }
 
     /**
-     * True once the extension is installed and has announced its browser
-     * action — i.e. [requestTakeover] has a gesture path to fire. False for a
-     * beat after cold start (install + action announcement are async).
-     */
-    val isReady: Boolean get() = browserActionOnClick != null
-
-    /**
      * Take over the page's video. Caller MUST be inside a real Android input
      * event handler (e.g. button onClickListener) — that's what supplies the
      * gesture token that propagates through to the page.

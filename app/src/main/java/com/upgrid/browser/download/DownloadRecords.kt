@@ -73,8 +73,6 @@ class DownloadRecords(context: Context) {
         if (durable) persist()
     }
 
-    fun byId(id: String): DownloadRecord? = state.value.firstOrNull { it.id == id }
-
     fun remove(id: String) {
         state.value = state.value.filterNot { it.id == id }
         persist()

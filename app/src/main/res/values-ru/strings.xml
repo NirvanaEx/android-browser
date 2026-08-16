@@ -21,7 +21,6 @@
     <string name="action_undo">Вернуть</string>
 
     <!-- Стартовая страница -->
-    <string name="start_page_tagline">Ищите в сети. Без рекламы.</string>
     <string name="start_page_quick_links">Быстрый доступ</string>
     <string name="start_page_recent">Недавнее</string>
 
@@ -85,7 +84,6 @@
     <string name="settings_sync_consent_declined">Доступ к Диску не выдан — синхронизировать некуда.</string>
     <string name="settings_auto_sync">Синхронизировать автоматически</string>
 
-    <string name="settings_section_content">Блокировка контента</string>
     <string name="settings_adblock">Блокировать рекламу и трекеры</string>
     <string name="settings_adblock_hint">uBlock Origin работает на каждой странице. Если выключить, перестанет работать и косметическая фильтрация.</string>
 
@@ -125,17 +123,12 @@
     <string name="settings_background_playback">Продолжать воспроизведение в фоне</string>
     <string name="settings_background_playback_hint">Выключено — видео останавливается, когда уходите с вкладки или блокируете экран. Включено — продолжает играть; удобно, чтобы слушать видео с выключенным экраном.</string>
 
-    <string name="settings_section_bookmarks">Закладки</string>
-    <string name="settings_open_bookmarks">Открыть закладки</string>
     <string name="settings_clear_bookmarks">Удалить все</string>
     <string name="settings_clear_bookmarks_message">Все сохранённые страницы будут удалены. Быстрый доступ вернётся к стандартному набору.</string>
 
-    <string name="settings_section_browsing">История посещений</string>
-    <string name="settings_open_history">Открыть историю</string>
     <string name="settings_clear_browsing">Очистить историю</string>
 
     <string name="settings_section_history">История поиска</string>
-    <string name="settings_clear_history">Очистить запросы</string>
 
     <string name="settings_section_about">О программе</string>
     <string name="settings_version">Версия %1$s · %2$s</string>
@@ -219,8 +212,6 @@
     <string name="menu_account_connected">Google-аккаунт</string>
 
     <!-- Вкладки -->
-    <string name="tabs_tray_title">Вкладки</string>
-    <string name="tabs_tray_title_count">Вкладки · %1$d</string>
     <string name="tabs_tray_close">Закрыть вкладку</string>
     <string name="tabs_tray_close_all">Закрыть все</string>
     <string name="tabs_tray_new">Новая</string>
@@ -423,17 +414,13 @@
 
     <string name="settings_section_privacy">Защита</string>
     <string name="settings_section_data">Данные на телефоне</string>
-    <string name="settings_section_downloads">Загрузки</string>
-    <string name="settings_open_vpn">VPN</string>
     <string name="settings_open_passwords">Пароли</string>
     <string name="settings_save_passwords">Сохранять и подставлять пароли</string>
     <string name="settings_save_passwords_hint">Хранятся только на этом телефоне и зашифрованы ключом, который его не покидает.</string>
     <string name="settings_vpn_on">Подключён</string>
     <string name="settings_vpn_off">Отключён</string>
     <string name="settings_open_site_data">Данные сайтов</string>
-    <string name="settings_clear_data">Очистить данные</string>
     <string name="settings_data_size">Кэш и данные сайтов: %1$s</string>
-    <string name="settings_open_downloads">Открыть загрузки</string>
 
 
     <!-- ============== Аккаунт браузера ============== -->
