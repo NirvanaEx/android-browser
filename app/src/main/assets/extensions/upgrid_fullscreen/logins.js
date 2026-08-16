@@ -147,10 +147,22 @@
         setValue(passwordField, password);
     }
 
+    /** Lower-case, without `www.` — what LoginStore.normaliseHost does. */
+    function normaliseHost(host) {
+        return String(host || "").toLowerCase().replace(/^www\./, "");
+    }
+
     browser.runtime.onMessage.addListener(function (msg) {
         // Shared channel: player, find and translate have their own verbs.
         if (!msg || !msg.cmd) return;
-        if (msg.cmd === "loginFill") fill(msg.username || "", msg.password || "");
+        if (msg.cmd !== "loginFill") return;
+        // The password this document asked for, and no other. The command
+        // crosses the background page and the native side, neither of which
+        // can see this document — and a password typed into somebody else's
+        // page is readable by that page's own scripts the moment the `input`
+        // event below fires.
+        if (msg.host && normaliseHost(msg.host) !== normaliseHost(hostOf())) return;
+        fill(msg.username || "", msg.password || "");
     });
 
     // Announce once the document has a password field to fill. A page without
