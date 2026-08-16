@@ -37,6 +37,12 @@ function ensurePort() {
                 }).catch(function () {});
                 return;
             }
+            // A password goes to the one tab that asked for it, never to
+            // whatever happens to be in front. See sendLoginFill.
+            if (msg && msg.cmd === "loginFill") {
+                sendLoginFill(msg);
+                return;
+            }
             // Find and translate act on the page you are looking at, whichever
             // frame the player happens to be locked to.
             if (msg && PAGE_COMMANDS[msg.cmd]) {
@@ -66,8 +72,50 @@ function postToNative(msg) {
 var PAGE_COMMANDS = {
     find: 1, findNext: 1, findPrev: 1, findClear: 1,
     translate: 1, untranslate: 1, translateState: 1,
-    loginFill: 1,
 };
+
+/**
+ * The tab whose logins.js last said "this document has a password field",
+ * as {tabId, host}. Null until one does, and again as soon as the answer is
+ * delivered.
+ *
+ * loginFill used to travel through sendToPage with find and translate, and it
+ * is the one command that cannot: the native side looks a password up by host
+ * and hands it back with no idea which tab asked. sendToPage delivers to the
+ * *active* tab — so a background tab finishing its load would have its saved
+ * password typed into whatever page was in front, on a different site. Worse,
+ * sendToPage falls back to every open tab when the active-tab query comes back
+ * empty, which is harmless for "find the next match" and is a credential
+ * broadcast for this.
+ */
+var loginReadyTab = null;
+
+/** Lower-case, without `www.` — what LoginStore.normaliseHost does natively. */
+function normaliseHost(host) {
+    return String(host || "").toLowerCase().replace(/^www\./, "");
+}
+
+/**
+ * Deliver a saved password to the tab that announced it had somewhere to put
+ * one, and to nothing else.
+ *
+ * One fill per announcement: the pairing is consumed here, so a second fill
+ * needs a second "ready". The host is re-checked because the announcement and
+ * the answer are a round trip apart, and the tab may have navigated in between;
+ * logins.js checks it again against its own document, which is the only place
+ * the check cannot be raced.
+ */
+function sendLoginFill(msg) {
+    var target = loginReadyTab;
+    loginReadyTab = null;
+    if (!target) return;
+    if (msg.host && normaliseHost(msg.host) !== normaliseHost(target.host)) return;
+    browser.tabs.sendMessage(target.tabId, msg, { frameId: 0 }).catch(function () {});
+}
+
+function forgetLoginTab(tabId) {
+    if (loginReadyTab && loginReadyTab.tabId === tabId) loginReadyTab = null;
+}
 
 /**
  * Deliver to the foreground tab's main frame.
@@ -179,6 +227,12 @@ browser.runtime.onMessage.addListener(function (msg, sender) {
     // most straight-through of all — a single bit meaning "a link was
     // followed", from any frame of any tab.
     if (msg.t === "find" || msg.t === "translate" || msg.t === "login" || msg.t === "tap") {
+        // Remember who is asking for a password, so the answer can be routed
+        // back to them rather than to the foreground. Top frame only —
+        // logins.js is registered with all_frames: false.
+        if (msg.t === "login" && msg.action === "ready" && frameId === 0) {
+            loginReadyTab = { tabId: tabId, host: msg.host || "" };
+        }
         postToNative(msg);
         return;
     }
@@ -253,12 +307,14 @@ browser.tabs.onUpdated.addListener(function (tabId, changeInfo) {
     if (changeInfo.status === "loading" && changeInfo.url) {
         dropIfControlled(tabId, "navigated");
         forgetTab(tabId);
+        forgetLoginTab(tabId);
     }
 });
 
 browser.tabs.onRemoved.addListener(function (tabId) {
     dropIfControlled(tabId, "tab closed");
     forgetTab(tabId);
+    forgetLoginTab(tabId);
 });
 
 // A tab we still have media state for has navigated away from the page that
