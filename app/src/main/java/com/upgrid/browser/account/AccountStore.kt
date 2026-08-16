@@ -62,8 +62,6 @@ class AccountStore(context: Context) {
             }.getOrNull()
         }
 
-    val isSignedIn: Boolean get() = current != null
-
     /**
      * The VPN profile this account was given, as `wg-quick` text. Null when the
      * account has none — the browser then behaves exactly as it did before.

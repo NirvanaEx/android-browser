@@ -23,7 +23,6 @@
     <string name="action_undo">Undo</string>
 
     <!-- Start page -->
-    <string name="start_page_tagline">Search the web. Quietly ad-free.</string>
     <string name="start_page_quick_links">Shortcuts</string>
     <string name="start_page_recent">Recent</string>
 
@@ -100,7 +99,6 @@
     <string name="settings_sync_consent_declined">Drive access wasn\'t granted, so there\'s nowhere to sync to.</string>
     <string name="settings_auto_sync">Sync automatically</string>
 
-    <string name="settings_section_content">Content blocking</string>
     <string name="settings_adblock">Block ads and trackers</string>
     <string name="settings_adblock_hint">uBlock Origin runs on every page. Turning it off also stops cosmetic filtering.</string>
 
@@ -140,17 +138,12 @@
     <string name="settings_background_playback">Keep playing in the background</string>
     <string name="settings_background_playback_hint">Off, video stops when you leave the tab or lock the screen. On, it keeps going — useful for listening to a video with the screen off.</string>
 
-    <string name="settings_section_bookmarks">Bookmarks</string>
-    <string name="settings_open_bookmarks">Open bookmarks</string>
     <string name="settings_clear_bookmarks">Delete all</string>
     <string name="settings_clear_bookmarks_message">Every saved page will be removed. The speed dial goes back to its defaults.</string>
 
-    <string name="settings_section_browsing">Browsing history</string>
-    <string name="settings_open_history">Open history</string>
     <string name="settings_clear_browsing">Clear history</string>
 
     <string name="settings_section_history">Search history</string>
-    <string name="settings_clear_history">Clear searches</string>
 
     <string name="settings_section_about">About</string>
     <!-- versionName, then the short commit the build came from. -->
@@ -241,8 +234,6 @@
     <string name="menu_sync_badge" translatable="false">SYNC</string>
 
     <!-- Tabs tray -->
-    <string name="tabs_tray_title">Tabs</string>
-    <string name="tabs_tray_title_count">Tabs · %1$d</string>
     <string name="tabs_tray_close">Close tab</string>
     <string name="tabs_tray_close_all">Close all</string>
     <string name="tabs_tray_new">New</string>
@@ -446,17 +437,13 @@
     <!-- ============== Settings: new sections ============== -->
     <string name="settings_section_privacy">Protection</string>
     <string name="settings_section_data">Data on this phone</string>
-    <string name="settings_section_downloads">Downloads</string>
-    <string name="settings_open_vpn">VPN</string>
     <string name="settings_open_passwords">Passwords</string>
     <string name="settings_save_passwords">Save and fill passwords</string>
     <string name="settings_save_passwords_hint">Stored on this phone only, encrypted with a key that never leaves it.</string>
     <string name="settings_vpn_on">Connected</string>
     <string name="settings_vpn_off">Disconnected</string>
     <string name="settings_open_site_data">Site data</string>
-    <string name="settings_clear_data">Clear data</string>
     <string name="settings_data_size">Cache and site data: %1$s</string>
-    <string name="settings_open_downloads">Open downloads</string>
 
 
     <!-- ============== The browser's own account ============== -->
