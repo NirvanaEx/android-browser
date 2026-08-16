@@ -37,6 +37,13 @@ function ensurePort() {
                 }).catch(function () {});
                 return;
             }
+            // A password is not a page command: it belongs to the one tab that
+            // asked for it, which is not necessarily the one in front by the
+            // time the answer arrives. See sendLoginFill.
+            if (msg && msg.cmd === "loginFill") {
+                sendLoginFill(msg);
+                return;
+            }
             // Find and translate act on the page you are looking at, whichever
             // frame the player happens to be locked to.
             if (msg && PAGE_COMMANDS[msg.cmd]) {
@@ -66,8 +73,28 @@ function postToNative(msg) {
 var PAGE_COMMANDS = {
     find: 1, findNext: 1, findPrev: 1, findClear: 1,
     translate: 1, untranslate: 1, translateState: 1,
-    loginFill: 1,
 };
+
+/**
+ * The tab whose logins.js last said "this page has a password field".
+ *
+ * A fill must never be routed like a page command. logins.js announces on load
+ * in any tab, foreground or not — a link opened in a background tab announces
+ * the moment it finishes loading — while the native answer comes back a beat
+ * later and sendToPage would hand it to whatever tab is active *then*, or, when
+ * no tab is marked active, to every tab at once. That is one site's saved
+ * password typed into another site's form.
+ */
+var loginTabId = null;
+
+function sendLoginFill(msg) {
+    var target = loginTabId;
+    // One answer per request: a queued or duplicated fill must not be replayed
+    // into a tab that has since gone somewhere else.
+    loginTabId = null;
+    if (target === null) return;
+    browser.tabs.sendMessage(target, msg, { frameId: 0 }).catch(function () {});
+}
 
 /**
  * Deliver to the foreground tab's main frame.
@@ -179,6 +206,9 @@ browser.runtime.onMessage.addListener(function (msg, sender) {
     // most straight-through of all — a single bit meaning "a link was
     // followed", from any frame of any tab.
     if (msg.t === "find" || msg.t === "translate" || msg.t === "login" || msg.t === "tap") {
+        // Remember who is waiting for a password, so the answer can be routed
+        // back to that tab rather than broadcast.
+        if (msg.t === "login" && msg.action === "ready") loginTabId = tabId;
         postToNative(msg);
         return;
     }
