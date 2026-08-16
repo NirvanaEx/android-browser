@@ -700,7 +700,10 @@ class MainActivity : AppCompatActivity() {
             if (trimmed.isEmpty()) return@setOnUrlCommitListener true
 
             // Search history captures only free-text queries — URLs are noise.
-            if (looksLikeQuery(trimmed)) searchHistory.record(trimmed)
+            // And never from a private tab: the query is typed into the one
+            // mode whose promise is that nothing is kept, and this list is
+            // written to disk and read back into the drop-down afterwards.
+            if (looksLikeQuery(trimmed) && !inPrivateTab()) searchHistory.record(trimmed)
 
             components.sessionUseCases.loadUrl(normalizeToUrl(trimmed))
             // Drop the keyboard + return the toolbar to display mode so the
@@ -744,6 +747,18 @@ class MainActivity : AppCompatActivity() {
 
     private fun currentUrl(): String =
         components.store.state.selectedTab?.content?.url.orEmpty()
+
+    /**
+     * Whether the tab being typed into is a private one.
+     *
+     * The same question [recordVisit] and [promptSaveLogin] ask before writing
+     * anything down, and for the same reason — see [openPrivateTab] for what
+     * the mode promises. Read from the store at the moment of the write rather
+     * than remembered: the selected tab can change under a drop-down that is
+     * still open.
+     */
+    private fun inPrivateTab(): Boolean =
+        components.store.state.selectedTab?.content?.private == true
 
     private fun toggleBookmarkForCurrentPage() {
         val tab = components.store.state.selectedTab ?: return
@@ -942,7 +957,7 @@ class MainActivity : AppCompatActivity() {
             // picking a completion is as much a search as typing one, and
             // otherwise the past-searches half of this list never fills up.
             Suggestion.Kind.SEARCH -> {
-                searchHistory.record(suggestion.target)
+                if (!inPrivateTab()) searchHistory.record(suggestion.target)
                 components.sessionUseCases.loadUrl(normalizeToUrl(suggestion.target))
             }
             else -> components.sessionUseCases.loadUrl(suggestion.target)
@@ -2415,11 +2430,14 @@ class MainActivity : AppCompatActivity() {
     /**
      * A tab that leaves nothing behind on this phone.
      *
-     * Three things make that true, and only the first is ours: [recordVisit]
-     * skips it, so nothing reaches history; a-c's session writer filters
-     * private tabs out on the way to disk, so they are gone after a restart
-     * rather than restored; and the engine gives the session its own cookie
-     * jar and storage, dropped when the last private tab closes.
+     * Four things make that true, and only the first two are ours:
+     * [recordVisit] skips it, so nothing reaches history; the omnibar's two
+     * writers ([wireUrlCommit] and [onSuggestionPicked]) check [inPrivateTab]
+     * before recording a query, so nothing reaches the saved search list
+     * either; a-c's session writer filters private tabs out on the way to
+     * disk, so they are gone after a restart rather than restored; and the
+     * engine gives the session its own cookie jar and storage, dropped when
+     * the last private tab closes.
      *
      * What it is not is anonymity, which is why the page it opens on says so.
      */
