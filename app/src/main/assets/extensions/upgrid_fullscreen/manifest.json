@@ -1,8 +1,8 @@
 {
   "manifest_version": 2,
   "name": "Upgrid Player Helper",
-  "version": "2.0.0",
-  "description": "Takes over the page's <video> for the built-in player overlay. The topbar button fires browser_action.onClicked, which preserves the user-gesture token Gecko needs for requestFullscreen/play; state and commands flow over a native-messaging port.",
+  "version": "4.1.0",
+  "description": "Transfers supported video sources to the browser's native player screen.",
   "applications": {
     "gecko": {
       "id": "fullscreen@upgrid.local",
@@ -10,12 +10,19 @@
     }
   },
   "background": {
-    "scripts": ["background.js"],
+    "scripts": ["player.js", "background.js"],
     "persistent": true
   },
   "browser_action": {
     "default_title": "Open in player"
   },
+  "content_scripts": [{
+    "matches": ["<all_urls>"],
+    "js": ["lifecycle.js"],
+    "all_frames": true,
+    "match_about_blank": true,
+    "run_at": "document_start"
+  }],
   "permissions": [
     "<all_urls>",
     "tabs",

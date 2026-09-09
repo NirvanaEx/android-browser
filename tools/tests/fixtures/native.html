@@ -1,0 +1,38 @@
+<!doctype html><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Native player regression</title>
+<style>
+body{background:#23354a;color:white;font:18px sans-serif;margin:12px}
+#stage{width:70%;transform:scale(.85);transform-origin:top left;overflow:hidden;max-height:260px;border:8px solid red}
+video{width:100%}button{padding:14px;font:inherit;margin:4px}#state{white-space:pre-wrap}
+</style>
+<h2>Native player regression</h2>
+<p>The red frame must stay on this page. The native player must show a full, correctly proportioned video.</p>
+<button id="play">Play at 5 seconds</button><button id="blob">Use blob source</button>
+<button id="pause">Pause at 10 seconds</button>
+<p><a style="color:#8cf" href="https://mover.uz/watch/ugGfwVpH">Mover regression video</a></p>
+<p><a style="color:#8cf" href="iframe.html">Cross-origin iframe</a> · <a style="color:#8cf" href="multiple.html">Multiple videos</a></p>
+<p><a style="color:#8cf" href="native.html?failure=1">HTTP failure test</a> <button id="fail" hidden>Deny next video request</button></p>
+<div id="stage"><video controls muted playsinline src="/sample.mp4"></video></div>
+<p id="state"></p>
+<script>
+const video = document.querySelector('video');
+if (new URLSearchParams(location.search).has('failure')) {
+    video.src = '/failure.mp4'; document.querySelector('#fail').hidden = false;
+    if (new URLSearchParams(location.search).has('alternatives')) {
+        const alternative=document.createElement('source'); alternative.src='/sample.mp4'; alternative.type='video/mp4';
+        video.appendChild(alternative);
+    }
+    document.querySelector('#fail').onclick = async () => {
+        await fetch('/deny-native'); document.querySelector('#fail').textContent = 'Next request will receive 403';
+    };
+}
+play.onclick = async () => { video.currentTime = 5; await video.play(); };
+document.querySelector('#pause').onclick = async () => { await video.play(); video.currentTime = 10; video.pause(); };
+blob.onclick = async () => { video.src = URL.createObjectURL(await (await fetch('/sample.mp4')).blob()); await video.play(); };
+setInterval(() => { const text =
+    'PAGE ' + (video.paused ? 'PAUSED' : 'PLAYING') + ' ' + video.currentTime.toFixed(1) + '\n' +
+    'CSS ' + (video.getAttribute('style') || 'unchanged') + '\n' +
+    (video.currentSrc.startsWith('blob:') ? 'BLOB' : 'DIRECT MP4');
+    const status = document.querySelector('#state'); if (status.textContent !== text) status.textContent = text;
+}, 2000);
+</script>

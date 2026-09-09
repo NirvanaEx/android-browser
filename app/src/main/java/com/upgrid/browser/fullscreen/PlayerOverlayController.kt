@@ -12,7 +12,6 @@ import android.widget.TextView
 import androidx.core.view.isVisible
 import com.upgrid.browser.R
 import com.upgrid.browser.databinding.ViewFullscreenControlsBinding
-import com.upgrid.browser.prefs.BrowserPreferences
 import org.json.JSONObject
 import kotlin.math.abs
 import kotlin.math.roundToInt
@@ -25,16 +24,15 @@ import kotlin.math.roundToInt
  *
  * Gesture map (the standard mobile-player vocabulary):
  *  - single tap          → toggle control bars
- *  - double tap left     → seek back  [BrowserPreferences.playerSeekSeconds]
+ *  - double tap left     → seek back by the configured step
  *  - double tap right    → seek forward            — " —
- *  - double tap center   → play/pause
  *  - vertical drag right → system media volume
  *  - vertical drag left  → screen brightness (this window only)
  */
 class PlayerOverlayController(
     private val binding: ViewFullscreenControlsBinding,
     private val bridge: VideoPlayerBridge,
-    private val prefs: BrowserPreferences,
+    private val seekSeconds: () -> Int,
     private val window: Window,
     private val audioManager: AudioManager,
     private val onExit: () -> Unit,
@@ -62,6 +60,7 @@ class PlayerOverlayController(
     private val hideFlashLeft = Runnable { binding.fsSeekFlashLeft.isVisible = false }
     private val hideFlashRight = Runnable { binding.fsSeekFlashRight.isVisible = false }
     private val hideIndicator = Runnable { binding.fsGestureIndicator.isVisible = false }
+    private val originalBrightness = window.attributes.screenBrightness
 
     init {
         wireButtons()
@@ -80,10 +79,20 @@ class PlayerOverlayController(
             binding.fsSeekFlashLeft.isVisible = false
             binding.fsSeekFlashRight.isVisible = false
             binding.fsGestureIndicator.isVisible = false
+        } else {
+            window.attributes = window.attributes.apply { screenBrightness = originalBrightness }
         }
     }
 
     val isVisible: Boolean get() = binding.root.isVisible
+
+    fun dispose() {
+        binding.fsSeekFlashLeft.removeCallbacks(hideFlashLeft)
+        binding.fsSeekFlashRight.removeCallbacks(hideFlashRight)
+        binding.fsGestureIndicator.removeCallbacks(hideIndicator)
+        binding.root.setOnTouchListener(null)
+        window.attributes = window.attributes.apply { screenBrightness = originalBrightness }
+    }
 
     /** Render a "state"/"takeover" snapshot from the content script. */
     fun renderState(s: JSONObject) {
@@ -93,6 +102,9 @@ class PlayerOverlayController(
 
         binding.fsPlayPause.setImageResource(
             if (playing) R.drawable.ic_pause else R.drawable.ic_play_filled
+        )
+        binding.fsPlayPause.contentDescription = binding.root.context.getString(
+            if (playing) R.string.player_pause else R.string.player_play
         )
         binding.fsRepeat.setColorFilter(
             if (s.optBoolean("loop")) ACCENT else Color.WHITE
@@ -116,8 +128,8 @@ class PlayerOverlayController(
 
         fsPlayPause.setOnClickListener { bridge.sendCommand("toggle") }
         fsRepeat.setOnClickListener { bridge.sendCommand("loop") }
-        fsPrev.setOnClickListener { seekBy(-prefs.playerSeekSeconds) }
-        fsNext.setOnClickListener { seekBy(+prefs.playerSeekSeconds) }
+        fsPrev.setOnClickListener { seekBy(-seekSeconds()) }
+        fsNext.setOnClickListener { seekBy(+seekSeconds()) }
 
         // Pop the system volume slider; precise control is the drag gesture.
         fsVolume.setOnClickListener {
@@ -171,11 +183,7 @@ class PlayerOverlayController(
 
                 override fun onDoubleTap(e: MotionEvent): Boolean {
                     val w = binding.root.width
-                    when {
-                        e.x < w * 0.4f -> seekBy(-prefs.playerSeekSeconds)
-                        e.x > w * 0.6f -> seekBy(+prefs.playerSeekSeconds)
-                        else -> bridge.sendCommand("toggle")
-                    }
+                    seekBy(if (e.x < w / 2f) -seekSeconds() else seekSeconds())
                     return true
                 }
 

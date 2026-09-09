@@ -1,0 +1,9 @@
+{
+  "repository": "https://github.com/mozilla-firefox/firefox.git",
+  "tag": "FIREFOX_155_0_1_RELEASE",
+  "commit": "fb95137a04eb8fe1196cb12f26b100c1e060295c",
+  "version": "155.0.1",
+  "versionSource": "https://product-details.mozilla.org/1.0/mobile_versions.json",
+  "checkedOn": "2026-09-07",
+  "purpose": "Pinned upstream for the Fenix migration; not a completed Upgrid release."
+}

@@ -134,6 +134,15 @@ class MainActivity : AppCompatActivity() {
         if (::binding.isInitialized) renderAdblockShield()
     }
 
+    override fun onDestroy() {
+        if (::playerOverlay.isInitialized) {
+            components.videoPlayerBridge.onPlayerEvent = {}
+            components.videoPlayerBridge.sendCommand("release")
+            playerOverlay.dispose()
+        }
+        super.onDestroy()
+    }
+
     // --- View wiring -------------------------------------------------------
 
     private fun wireToolbar() {
@@ -167,7 +176,9 @@ class MainActivity : AppCompatActivity() {
         // want to hide chrome optimistically before knowing whether the
         // request succeeded (silently misleading if Gecko rejects it).
         binding.btnTopVideo.setOnClickListener {
-            components.videoPlayerBridge.requestTakeover()
+            if (!components.videoPlayerBridge.requestTakeover()) {
+                Toast.makeText(this, R.string.player_not_ready, Toast.LENGTH_SHORT).show()
+            }
         }
     }
 
@@ -420,7 +431,7 @@ class MainActivity : AppCompatActivity() {
         playerOverlay = PlayerOverlayController(
             binding = binding.fsOverlay,
             bridge = components.videoPlayerBridge,
-            prefs = preferences,
+            seekSeconds = { preferences.playerSeekSeconds },
             window = window,
             audioManager = getSystemService(AUDIO_SERVICE) as AudioManager,
             onExit = { exitPlayer() },
@@ -433,16 +444,15 @@ class MainActivity : AppCompatActivity() {
                 "takeover" -> if (event.optBoolean("ok")) {
                     playerOverlay.setVisible(true)
                     playerOverlay.renderState(event)
-                    // Hide chrome unconditionally. Even when requestFullscreen
-                    // is silently rejected (the content script can't know —
-                    // the promise settles later), the takeover styles the
-                    // video to fill the viewport, so chrome-less + overlay is
-                    // the correct presentation either way. If engine
-                    // fullscreen does engage, FullScreenFeature re-runs this
-                    // idempotently.
+                    // The bridge reports success after fullscreen is confirmed.
                     setVideoFocus(true)
                 } else {
-                    Toast.makeText(this, R.string.player_no_video, Toast.LENGTH_SHORT).show()
+                    val message = when (event.optString("reason")) {
+                        "player_failed", "fullscreen_failed" -> R.string.player_fullscreen_failed
+                        "busy" -> R.string.player_not_ready
+                        else -> R.string.player_no_video
+                    }
+                    Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
                 }
                 "state" -> playerOverlay.renderState(event)
                 "released" -> {

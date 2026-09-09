@@ -1,0 +1,9 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="com.upgrid.startupprobe">
+    <uses-sdk android:minSdkVersion="26" android:targetSdkVersion="35" />
+    <application android:label="Upgrid startup test" android:debuggable="true" />
+    <instrumentation android:name="com.upgrid.startupprobe.StartupProbe"
+        android:targetPackage="com.upgrid.browser.next.debug" />
+    <instrumentation android:name="com.upgrid.startupprobe.DiagnosticsProbe"
+        android:targetPackage="com.upgrid.browser.next.debug" />
+</manifest>

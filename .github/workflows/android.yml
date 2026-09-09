@@ -36,6 +36,11 @@ jobs:
       - name: Set up Gradle (with build cache)
         uses: gradle/actions/setup-gradle@v4
 
+      - name: Test player and migration tooling
+        run: |
+          node --test tools/tests/player.test.cjs
+          python3 tools/tests/fenix_overlay_test.py
+
       - name: Build debug APK
         run: |
           chmod +x gradlew

@@ -1,0 +1,34 @@
+<!doctype html><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Engine player regression</title>
+<style>
+body{background:#23354a;color:white;font:18px sans-serif;margin:12px}
+#stage{width:65%;transform:scale(.85);overflow:hidden;max-height:240px;border:8px solid red}
+video{width:100%;object-fit:contain}button{padding:14px;font:inherit;margin:4px}
+</style>
+<h2>Engine player regression</h2>
+<button id="blob">Play blob</button><button id="mse">Play MediaSource</button>
+<button id="pause">Pause at 10 seconds</button><button id="play">Play</button>
+<button id="fullscreen">Fullscreen test</button>
+<div id="stage"><video controls playsinline muted src="/sample.mp4"></video></div>
+<p id="state"></p>
+<script>
+const video = document.querySelector('video');
+document.querySelector('#blob').onclick = async () => {
+ video.src = URL.createObjectURL(await (await fetch('/sample.mp4')).blob()); await video.play();
+};
+document.querySelector('#mse').onclick = async () => {
+ const bytes = await (await fetch('/sample-fragmented.mp4')).arrayBuffer();
+ const media = new MediaSource(); video.src = URL.createObjectURL(media);
+ media.addEventListener('sourceopen', () => {
+  const buffer = media.addSourceBuffer('video/mp4; codecs="avc1.42C01E, mp4a.40.2"');
+  buffer.addEventListener('updateend', () => { media.endOfStream(); video.play(); }, {once:true});
+  buffer.appendBuffer(bytes);
+ }, {once:true});
+};
+document.querySelector('#pause').onclick = () => {video.currentTime=10;video.pause();};
+document.querySelector('#play').onclick = () => video.play();
+document.querySelector('#fullscreen').onclick = () => window.playerCommand ?
+ playerCommand({cmd:'engine_takeover',requestId:1}) : video.requestFullscreen();
+setInterval(() => document.querySelector('#state').textContent =
+ `${video.paused?'PAUSED':'PLAYING'} ${video.currentTime.toFixed(1)} · ${video.readyState} · ${video.error?.code || ''}`, 1000);
+</script>
