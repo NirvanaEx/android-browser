@@ -1,5 +1,17 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="player_native_title">Video player</string>
+    <string name="player_engine_tap">Нажмите «Открыть плеер» на видео</string>
+    <string name="player_play">Play</string>
+    <string name="player_pause">Pause</string>
+    <string name="player_native_back">Return to page</string>
+    <string name="player_native_rotate">Rotate video</string>
+    <string name="player_native_mute">Mute</string>
+    <string name="player_native_unmute">Unmute</string>
+    <string name="player_native_seek_back">−5 s</string>
+    <string name="player_native_seek_forward">+5 s</string>
+    <string name="player_native_failed">The video could not be opened separately. Playback has been returned to the page.</string>
+    <string name="player_native_unsupported">Это видео пока не удалось открыть в плеере. Его можно продолжить смотреть на странице.</string>
     <string name="app_name">Upgrid Browser</string>
     <string name="omnibar_hint">Search or enter address</string>
 
@@ -71,4 +83,6 @@
     <string name="tabs_tray_new">New</string>
     <string name="tabs_tray_empty_title">Your tabs will appear here.</string>
     <string name="tabs_tray_empty_subtitle">Use tabs to browse multiple pages at once.</string>
+    <string name="player_not_ready">Player is starting. Please try again in a moment.</string>
+    <string name="player_fullscreen_failed">Unable to open this video in the player. Start it on the page and try again.</string>
 </resources>

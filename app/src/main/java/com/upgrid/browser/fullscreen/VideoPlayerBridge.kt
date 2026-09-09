@@ -3,7 +3,7 @@ package com.upgrid.browser.fullscreen
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
-import com.upgrid.browser.BrowserComponents
+import mozilla.components.concept.engine.Engine
 import mozilla.components.concept.engine.EngineSession
 import mozilla.components.concept.engine.webextension.Action
 import mozilla.components.concept.engine.webextension.ActionHandler
@@ -14,25 +14,19 @@ import org.json.JSONObject
 
 /**
  * Native half of the built-in video player. Bridges the topbar ▶ button and
- * the fullscreen overlay to the bundled player WebExtension.
- *
- * Why a WebExtension at all: Gecko refuses `video.requestFullscreen()` (and
- * autoplaying `play()`) unless it can prove a user-gesture token is in scope.
- * A `loadUrl("javascript:...")` injection from native code carries no gesture
- * and silently fails. The one path that DOES preserve the gesture is
- * `browser_action.onClicked` → `tabs.executeScript` — Mozilla wires the
- * activation through both hops on purpose so toolbar actions can fullscreen.
+ * the player screen to the bundled WebExtension without replacing the media
+ * session or requiring HTML fullscreen.
  *
  * Two channels:
  *  - takeover trigger: [requestTakeover] fires the extension's browser_action
  *    (gesture in) → background.js injects player.js → the page's <video> is
- *    stripped of its controls and fullscreened — OUR overlay becomes the UI.
+ *    expanded in place; the native overlay supplies its controls.
  *  - state/commands: a native-messaging port ("upgridPlayer") between this
  *    class and background.js. The content script streams playback state
  *    (position/duration/paused/...) up; [sendCommand] sends play/seek/loop/
  *    release down. See player.js header for the message protocol.
  */
-class VideoPlayerBridge(private val components: BrowserComponents) {
+class VideoPlayerBridge(private val engine: Engine) {
 
     /**
      * Player events from the extension, always delivered on the main thread.
@@ -40,6 +34,7 @@ class VideoPlayerBridge(private val components: BrowserComponents) {
      * playback snapshot), "released" (page got its video back).
      */
     var onPlayerEvent: (JSONObject) -> Unit = {}
+    var onDiagnostic: (String, Throwable?) -> Unit = { _, _ -> }
 
     /** Captured when the extension finishes install + announces its action. */
     private var browserActionOnClick: (() -> Unit)? = null
@@ -50,7 +45,7 @@ class VideoPlayerBridge(private val components: BrowserComponents) {
     private val mainHandler = Handler(Looper.getMainLooper())
 
     fun setupAndInstall() {
-        components.engine.installBuiltInWebExtension(
+        engine.installBuiltInWebExtension(
             id = EXTENSION_ID,
             url = EXTENSION_URL,
             onSuccess = { ext ->
@@ -80,17 +75,27 @@ class VideoPlayerBridge(private val components: BrowserComponents) {
                     override fun onPortDisconnected(port: Port) {
                         if (this@VideoPlayerBridge.port == port) {
                             this@VideoPlayerBridge.port = null
+                            mainHandler.post { onPlayerEvent(JSONObject().put("t", "released")) }
                         }
                     }
 
                     override fun onPortMessage(message: Any, port: Port) {
                         val json = message as? JSONObject ?: return
-                        if (json.optString("t") != "state") Log.i(TAG, "event: $json")
-                        mainHandler.post { runCatching { onPlayerEvent(json) } }
+                        if (json.optString("t") == "takeover" && !json.optBoolean("ok")) {
+                            onDiagnostic("player_" + json.optString("reason", "failed"), null)
+                        }
+                        // A stream event contains a possibly signed URL. Never log its payload.
+                        if (json.optString("t") != "state") Log.i(TAG, "event: ${json.optString("t")}")
+                        mainHandler.post {
+                            runCatching { onPlayerEvent(json) }.onFailure {
+                                onDiagnostic("player_event", it)
+                                sendCommand("release")
+                            }
+                        }
                     }
                 })
             },
-            onError = { t -> Log.w(TAG, "install failed", t) },
+            onError = { t -> Log.w(TAG, "install failed", t); onDiagnostic("player_install", t) },
         )
     }
 
@@ -99,13 +104,16 @@ class VideoPlayerBridge(private val components: BrowserComponents) {
      * event handler (e.g. button onClickListener) — that's what supplies the
      * gesture token that propagates through to the page.
      */
-    fun requestTakeover() {
+    fun requestTakeover(): Boolean {
         val click = browserActionOnClick
         if (click == null) {
             Log.w(TAG, "requestTakeover: extension not yet ready, dropping tap")
-            return
+            onDiagnostic("player_not_ready", null)
+            return false
         }
-        runCatching { click.invoke() }.onFailure { Log.w(TAG, "onClick threw", it) }
+        return runCatching { click.invoke() }
+            .onFailure { Log.w(TAG, "onClick threw", it); onDiagnostic("player_open", it) }
+            .isSuccess
     }
 
     /**
@@ -120,7 +128,7 @@ class VideoPlayerBridge(private val components: BrowserComponents) {
             return
         }
         runCatching { p.postMessage(JSONObject().put("cmd", cmd).apply(configure)) }
-            .onFailure { Log.w(TAG, "sendCommand($cmd) failed", it) }
+            .onFailure { Log.w(TAG, "sendCommand($cmd) failed", it); onDiagnostic("player_command", it) }
     }
 
     companion object {

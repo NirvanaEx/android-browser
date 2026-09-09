@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="ru">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Upgrid — прокрутка медиа</title>
+<style>
+  body { margin: 0; background: #eceff3; color: #152333; font: 17px system-ui; }
+  header { padding: 20px; background: #fff; }
+  nav { display: flex; gap: 16px; flex-wrap: wrap; }
+  main { max-width: 760px; margin: auto; padding: 12px; }
+  article { margin: 0 0 18px; background: white; border-radius: 12px; overflow: hidden; }
+  article p { padding: 0 16px; }
+  img, video { display: block; width: 100%; aspect-ratio: 16 / 9; object-fit: cover; }
+  output { display: block; margin: 12px 0; }
+</style>
+<header>
+  <h1>Прокрутка медиа</h1>
+  <p>Искусственные обложки, без внешних сайтов и отправки данных.</p>
+  <nav><a href="?mode=text">Текст</a><a href="?mode=posters">Обложки</a><a href="?mode=video">Обложки + видео</a></nav>
+  <output id="status">Подготовка…</output>
+  <p>После подготовки прокрутите вниз и обратно с одинаковой скоростью. В режиме видео сначала запустите ролик.</p>
+</header>
+<main id="feed"></main>
+<script>
+  const mode = new URLSearchParams(location.search).get('mode') || 'posters';
+  const feed = document.getElementById('feed');
+  const status = document.getElementById('status');
+  const canvas = document.createElement('canvas');
+  canvas.width = 960; canvas.height = 540;
+  const ctx = canvas.getContext('2d');
+  const urls = [];
+  async function prepare() {
+    for (let i = 0; i < 48; i++) {
+      const card = document.createElement('article');
+      if (mode !== 'text') {
+        const gradient = ctx.createLinearGradient(0, 0, 960, 540);
+        gradient.addColorStop(0, `hsl(${i * 37 % 360} 65% 28%)`);
+        gradient.addColorStop(1, `hsl(${(i * 37 + 90) % 360} 80% 65%)`);
+        ctx.fillStyle = gradient; ctx.fillRect(0, 0, 960, 540);
+        ctx.fillStyle = '#fff'; ctx.font = 'bold 80px sans-serif';
+        ctx.fillText(`Media ${i + 1}`, 80, 280);
+        const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.88));
+        if (!blob) throw new Error('Cannot generate poster');
+        const url = URL.createObjectURL(blob); urls.push(url);
+        const media = document.createElement(mode === 'video' && i === 0 ? 'video' : 'img');
+        if (media.tagName === 'VIDEO') {
+          media.poster = url; media.src = '/sample.mp4'; media.controls = true;
+          media.loop = true; media.muted = true; media.preload = 'metadata'; media.playsInline = true;
+        } else {
+          media.src = url; media.alt = `Обложка ${i + 1}`;
+          media.width = 960; media.height = 540;
+        }
+        card.append(media);
+      } else {
+        const spacer = document.createElement('div');
+        spacer.style.aspectRatio = '16 / 9';
+        card.append(spacer);
+      }
+      const label = document.createElement('p');
+      label.textContent = `Карточка ${i + 1}. Контрольный текст: исчезает ли он вместе с обложкой?`;
+      card.append(label); feed.append(card);
+    }
+    await Promise.all([...feed.querySelectorAll('img')].map(img => img.decode()));
+    canvas.width = canvas.height = 1;
+    status.textContent = 'Готово: 48 карточек. Обложки созданы и декодированы, сетевой загрузки изображений нет.';
+  }
+  prepare().catch(() => { status.textContent = 'Не удалось подготовить страницу. Перезагрузите её.'; });
+  // Keep Blob URLs alive for BFCache restores; the document owns their lifetime.
+</script>
+</html>

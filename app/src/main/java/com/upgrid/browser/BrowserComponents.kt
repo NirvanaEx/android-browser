@@ -88,6 +88,6 @@ class BrowserComponents(val context: Context) {
      * is ready; the bridge then has a port open for the lifetime of the app.
      */
     val videoPlayerBridge: VideoPlayerBridge by lazy {
-        VideoPlayerBridge(this)
+        VideoPlayerBridge(engine)
     }
 }

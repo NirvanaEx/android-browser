@@ -1,0 +1,25 @@
+[Unit]
+Description=Upgrid diagnostic report receiver
+After=network.target
+
+[Service]
+Type=simple
+DynamicUser=yes
+StateDirectory=upgrid-diagnostics
+StateDirectoryMode=0700
+WorkingDirectory=/opt/upgrid-diagnostics
+ExecStart=/usr/bin/python3 /opt/upgrid-diagnostics/receiver.py serve
+EnvironmentFile=/etc/upgrid-diagnostics.env
+Restart=on-failure
+RestartSec=5
+UMask=0077
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+RestrictAddressFamilies=AF_INET AF_UNIX
+MemoryMax=192M
+TasksMax=64
+
+[Install]
+WantedBy=multi-user.target

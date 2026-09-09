@@ -1,0 +1,37 @@
+<!doctype html><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Player controls regression</title>
+<style>
+body{margin:0;background:#172231;color:white;font:18px sans-serif}header{padding:20px;background:#923b37}
+#stage{position:relative;transform:translateZ(0);overflow:hidden;margin:20px;background:black}
+video{display:block;width:100%;max-height:360px}.site-controls{position:absolute;inset:12px 12px auto;background:#a00;padding:16px;z-index:999999}
+.site-controls *{visibility:visible!important}.site-controls button{font:inherit;color:white;background:#600;border:1px solid white;padding:8px}
+#late{position:fixed;right:10px;top:240px;background:#a00;padding:12px;z-index:2147483647}
+</style>
+<header>RED SITE CONTROLS MUST DISAPPEAR IN PLAYER MODE</header>
+<div id="stage"><video controls muted playsinline loop src="/sample.mp4"></video>
+<div id="panel" class="site-controls"><button id="site-cc">CC</button> <button>Settings</button><p id="site-time">Site timeline</p></div></div>
+<p>Play the video, then open Upgrid's player. Only the app controls should remain. Back must restore the red controls.</p>
+<script>
+if (new URLSearchParams(location.search).has('shadow')) {
+    const host = document.createElement('div'); document.body.append(host);
+    const root = host.attachShadow({mode:'open'});
+    root.append(document.querySelector('style').cloneNode(true), document.querySelector('#stage'));
+    window.stageRoot = root;
+} else window.stageRoot = document;
+window.originalVideo = stageRoot.querySelector('video');
+window.addSitePanel = function () {
+    let panel = stageRoot.querySelector('#late');
+    if (!panel) {
+        panel = document.createElement('div'); panel.id = 'late'; panel.className = 'site-controls';
+        panel.innerHTML = '<button style="visibility:visible!important">Late site controls</button>';
+        stageRoot.querySelector('#stage').append(panel);
+    }
+    panel.style.cssText = 'visibility:visible!important;opacity:1!important';
+};
+setInterval(function () {
+    if (originalVideo.paused) return;
+    stageRoot.querySelector('#site-time').textContent = 'Site timeline: ' + Math.floor(originalVideo.currentTime);
+    stageRoot.querySelector('#panel').style.cssText = 'visibility:visible!important;opacity:1!important';
+    addSitePanel();
+}, 1000);
+</script>

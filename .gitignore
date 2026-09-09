@@ -32,3 +32,4 @@ screenshots/
 # Tooling caches
 .kotlin/
 .claude/
+__pycache__/

@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="upgrid_player_native_title">Видеоплеер</string>
+    <string name="upgrid_player_native_back">Вернуться на страницу</string>
+    <string name="upgrid_player_native_rotate">Повернуть видео</string>
+    <string name="upgrid_player_native_mute">Выключить звук</string>
+    <string name="upgrid_player_native_unmute">Включить звук</string>
+    <string name="upgrid_player_native_seek_back">−5 с</string>
+    <string name="upgrid_player_native_seek_forward">+5 с</string>
+    <string name="upgrid_player_native_failed">Не удалось открыть видео отдельно. Воспроизведение возвращено на страницу.</string>
+    <string name="upgrid_player_native_unsupported">Этот сайт собирает или защищает видео внутри страницы. Доступного для переноса потока нет. Продолжите просмотр на сайте.</string>
+    <string name="upgrid_home_hint">Поиск или адрес сайта</string>
+    <string name="upgrid_normal_tabs">Обычный просмотр</string>
+    <string name="upgrid_private_tabs">Приватный просмотр</string>
+    <string name="upgrid_private_hint">Приватный просмотр</string>
+    <string name="upgrid_adblock">Блокировка рекламы</string>
+    <string name="upgrid_extensions">Расширения</string>
+    <string name="upgrid_desktop">Версия для компьютера</string>
+    <string name="upgrid_desktop_on">Версия для компьютера: включена</string>
+    <string name="upgrid_find">Найти на странице</string>
+    <string name="upgrid_bookmark">Добавить в закладки</string>
+    <string name="upgrid_edit_bookmark">Изменить закладку</string>
+    <string name="upgrid_settings">Настройки</string>
+    <string name="upgrid_player_open">Открыть видео в плеере</string>
+    <string name="upgrid_player_not_ready">Плеер запускается. Попробуйте ещё раз.</string>
+    <string name="upgrid_player_no_video">Запустите видео на странице и откройте плеер.</string>
+    <string name="upgrid_player_fullscreen_failed">Не удалось открыть видео в плеере. Запустите его на странице и попробуйте ещё раз.</string>
+</resources>
