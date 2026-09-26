@@ -65,8 +65,19 @@ class NativeVideoPlayer(
     private var player: ExoPlayer? = null
     private var playerView: PlayerView? = null
     private var seekFeedback: TextView? = null
+    private var poster: VideoPoster? = null
+    private val preparationDeadline = VideoPreparationDeadline()
     private val hideSeekFeedback = Runnable { seekFeedback?.visibility = View.GONE }
-    private val timeout = Runnable { retryOrFail("prepare_timeout") }
+    private val timeout = object : Runnable {
+        override fun run() {
+            if (released || firstFrame) return
+            val now = SystemClock.elapsedRealtime()
+            val buffered = player?.bufferedPosition ?: 0L
+            // Let progressing streams buffer; real decoder/network errors retry immediately.
+            if (preparationDeadline.expired(now, buffered)) retryOrFail("prepare_timeout")
+            else handler.postDelayed(this, 1_000)
+        }
+    }
 
     fun show() {
         try {
@@ -90,6 +101,8 @@ class NativeVideoPlayer(
             exo.addListener(object : Player.Listener {
                 override fun onRenderedFirstFrame() {
                     firstFrame = true
+                    poster?.close()
+                    poster = null
                     handler.removeCallbacks(timeout)
                     android.util.Log.i("UpgridNativePlayer", "first_frame")
                 }
@@ -185,6 +198,9 @@ class NativeVideoPlayer(
                 setShutterBackgroundColor(Color.BLACK)
             }
             playerView = view
+            view.findViewById<FrameLayout>(androidx.media3.ui.R.id.exo_content_frame)?.let { frame ->
+                poster = VideoPoster(frame, stream.optString("poster"), stream.optString("referrer"))
+            }
             listOf(androidx.media3.ui.R.id.exo_bottom_bar, androidx.media3.ui.R.id.exo_progress,
                 androidx.media3.ui.R.id.exo_minimal_controls).forEach { id ->
                 view.findViewById<View>(id)?.let { control ->
@@ -231,6 +247,8 @@ class NativeVideoPlayer(
     }
 
     private fun prepareSource(position: Double, paused: Boolean) {
+        firstFrame = false
+        preparationDeadline.reset(SystemClock.elapsedRealtime())
         val item = sources[sourceIndex]
         val uri = android.net.Uri.parse(item.getString("url"))
         require(uri.scheme in setOf("http", "https") && !uri.host.isNullOrBlank() && uri.userInfo == null)
@@ -246,13 +264,13 @@ class NativeVideoPlayer(
             prepare()
         }
         handler.removeCallbacks(timeout)
-        handler.postDelayed(timeout, 3_000)
+        handler.postDelayed(timeout, 1_000)
     }
 
     private fun retryOrFail(code: String) {
         if (released) return
         if (sourceIndex + 1 < minOf(sources.size, 2) &&
-            SystemClock.elapsedRealtime() - prepareStartedAt < 6_000) {
+            SystemClock.elapsedRealtime() - prepareStartedAt < 30_000) {
             val position = if (firstFrame) (player?.currentPosition ?: 0).coerceAtLeast(0) / 1000.0 else startPosition
             val paused = player?.playWhenReady != true
             sourceIndex++
@@ -329,6 +347,8 @@ class NativeVideoPlayer(
     private fun dispose() {
         if (released) return
         released = true
+        poster?.close()
+        poster = null
         scaleDialog?.dismiss()
         scaleDialog = null
         mirrorDialog?.dismiss()
@@ -350,4 +370,15 @@ class NativeVideoPlayer(
 
     private fun header(value: String) = value.take(512).replace("\r", "").replace("\n", "")
     private fun dp(value: Int) = (value * activity.resources.displayMetrics.density).toInt()
+}
+
+internal class VideoPreparationDeadline {
+    private var start = 0L
+    private var progress = 0L
+    private var buffered = 0L
+    fun reset(now: Long) { start = now; progress = now; buffered = 0 }
+    fun expired(now: Long, bufferedPosition: Long): Boolean {
+        if (bufferedPosition > buffered) { buffered = bufferedPosition; progress = now }
+        return now - start >= 20_000 || now - progress >= 10_000
+    }
 }

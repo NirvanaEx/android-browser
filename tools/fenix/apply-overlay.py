@@ -68,7 +68,7 @@ def generate(checkout):
             return f"R.{kind}.upgrid_{name}"
         return re.sub(r"(?<![\w.])R\.(drawable|string)\.([a-z0-9_]+)", replace, text)
 
-    for name in ("VideoPlayerBridge.kt", "PlayerOverlayController.kt", "NativeVideoPlayer.kt"):
+    for name in ("VideoPlayerBridge.kt", "PlayerOverlayController.kt", "NativeVideoPlayer.kt", "VideoPoster.kt"):
         text = (kotlin / name).read_text(encoding="utf-8")
         text = text.replace("package com.upgrid.browser.fullscreen", "package org.mozilla.fenix.upgrid")
         text = text.replace("import com.upgrid.browser.R", "import org.mozilla.fenix.R")
@@ -83,6 +83,17 @@ def generate(checkout):
         xml_resources((local / "res/layout/view_native_player.xml").read_text(encoding="utf-8")))
     add(f"{APP}/src/main/java/org/mozilla/fenix/upgrid/UpgridPlayerFeature.kt",
         (HERE / "overlay/UpgridPlayerFeature.kt").read_text(encoding="utf-8"))
+    for name in ("UpgridTranslations.kt", "UpgridTranslationSheet.kt"):
+        add(f"{APP}/src/main/java/org/mozilla/fenix/upgrid/{name}",
+            (HERE / f"overlay/{name}").read_text(encoding="utf-8"))
+    add(f"{APP}/src/test/java/org/mozilla/fenix/upgrid/UpgridTranslationsTest.kt",
+        (HERE / "overlay/UpgridTranslationsTest.kt").read_text(encoding="utf-8"))
+    add(f"{APP}/src/test/java/org/mozilla/fenix/upgrid/UpgridVideoPreparationTest.kt",
+        (HERE / "overlay/UpgridVideoPreparationTest.kt").read_text(encoding="utf-8"))
+    add(f"{APP}/src/test/java/org/mozilla/fenix/upgrid/UpgridTranslationSheetTest.kt",
+        (HERE / "overlay/UpgridTranslationSheetTest.kt").read_text(encoding="utf-8"))
+    add(f"{APP}/src/test/java/org/mozilla/fenix/upgrid/UpgridVideoPosterTest.kt",
+        (HERE / "overlay/UpgridVideoPosterTest.kt").read_text(encoding="utf-8"))
     add(f"{APP}/src/main/java/org/mozilla/fenix/upgrid/UpgridAdblock.kt",
         (HERE / "overlay/UpgridAdblock.kt").read_text(encoding="utf-8"))
     add(f"{APP}/src/main/java/org/mozilla/fenix/upgrid/UpgridUi.kt",
@@ -145,11 +156,15 @@ def generate(checkout):
         add(f"{APP}/src/main/assets/extensions/upgrid_fullscreen/{name}",
             (local / f"assets/extensions/upgrid_fullscreen/{name}").read_text(encoding="utf-8")
             .replace("var nativePlayerEnabled = false;", "var nativePlayerEnabled = true;")
+            .replace("var automaticFullscreen = false;", "var automaticFullscreen = true;")
+            .replace("var nativeErrorFallback = false;", "var nativeErrorFallback = true;")
             .replace("var enginePlayerPreferred = false;", "var enginePlayerPreferred = true;"))
 
     components = f"{APP}/src/main/java/org/mozilla/fenix/components/Components.kt"
     add(components, replace_once(original(components), "    val useCases by lazyMonitored {", """    val upgridPlayer by lazyMonitored {
-        org.mozilla.fenix.upgrid.VideoPlayerBridge(core.engine).also {
+        org.mozilla.fenix.upgrid.VideoPlayerBridge(core.engine) {
+            core.store.state.extensions[org.mozilla.fenix.upgrid.VideoPlayerBridge.EXTENSION_ID]?.browserAction?.onClick
+        }.also {
             it.onDiagnostic = { source, throwable ->
                 org.mozilla.fenix.upgrid.UpgridDiagnostics.get(context).error(source, throwable)
             }
@@ -159,7 +174,11 @@ def generate(checkout):
 
     val useCases by lazyMonitored {"""))
     text = files[components].decode("utf-8")
-    add(components, replace_once(text, "    val upgridPlayer by lazyMonitored {", """    val upgridAdblock by lazyMonitored {
+    add(components, replace_once(text, "    val upgridPlayer by lazyMonitored {", """    val upgridTranslations by lazyMonitored {
+        org.mozilla.fenix.upgrid.UpgridTranslations(context, core.store)
+    }
+
+    val upgridAdblock by lazyMonitored {
         org.mozilla.fenix.upgrid.UpgridAdblock(core.engine, addonManager)
     }
 
@@ -559,7 +578,31 @@ def generate(checkout):
                 }
 
                 // Trigger automatic popup""")
+    text = replace_once(text, "    mainDispatcher: CoroutineDispatcher = Dispatchers.Main,", """    mainDispatcher: CoroutineDispatcher = Dispatchers.Main,
+    private val onAutomaticTranslation: (BrowserState) -> Unit = {},""")
+    text = replace_once(text, "                Pair(it.translationsState, it.readerState)",
+        "                listOf(it.id, it.content.url, it.content.loading, it.translationsState, it.readerState)")
+    text = replace_once(text, "            .collect { state ->", """            .collect { state ->
+                onAutomaticTranslation(browserStore.state)""")
     add(translations, text)
+    browser_fragment = f"{APP}/src/main/java/org/mozilla/fenix/browser/BrowserFragment.kt"
+    text = original(browser_fragment)
+    text = replace_once(text, "                    onShowTranslationsDialog = ::openTranslationsDialogFromToolbar,", """                    onShowTranslationsDialog = ::openTranslationsDialogFromToolbar,
+                    onAutomaticTranslation = rootView.context.components.upgridTranslations::onState,""")
+    add(browser_fragment, text)
+    dialog_binding = f"{APP}/src/main/java/org/mozilla/fenix/translations/TranslationsDialogBinding.kt"
+    text = replace_once(original(dialog_binding), "    mainDispatcher: CoroutineDispatcher = Dispatchers.Main,", """    mainDispatcher: CoroutineDispatcher = Dispatchers.Main,
+    private val preferredTarget: ((List<mozilla.components.concept.engine.translate.Language>?) -> mozilla.components.concept.engine.translate.Language?)? = null,""")
+    text = replace_once(text, """                val toSelected =
+                    sessionTranslationsState.translationEngineState?.initialToLanguage(""", """                val toSelected = if (preferredTarget != null) preferredTarget(translateToLanguages) else
+                    sessionTranslationsState.translationEngineState?.initialToLanguage(""")
+    add(dialog_binding, text)
+    dialog_fragment = f"{APP}/src/main/java/org/mozilla/fenix/translations/TranslationsDialogFragment.kt"
+    text = original(dialog_fragment)
+    text = replace_once(text, "        TranslationsDialog(", "        org.mozilla.fenix.upgrid.UpgridTranslationSheet(")
+    text = replace_once(text, "            feature = TranslationsDialogBinding(", """            feature = TranslationsDialogBinding(
+                preferredTarget = requireComponents.upgridTranslations::target,""")
+    add(dialog_fragment, text)
     translations_test = f"{APP}/src/test/java/org/mozilla/fenix/browser/TranslationsBindingTest.kt"
     text = original(translations_test)
     test_start = text.index("fun `GIVEN translationState WHEN translation state isOfferTranslate is true")
@@ -571,6 +614,10 @@ def generate(checkout):
             verify { navController.navigate(expectedNavigation) }""", """            verify(exactly = 0) { binding.recordTranslationStartTelemetry() }
             verify(exactly = 0) { navController.navigate(expectedNavigation) }""")
     add(translations_test, text)
+    dialog_middleware_test = f"{APP}/src/test/java/org/mozilla/fenix/translations/TranslationsDialogMiddlewareTest.kt"
+    # Upgrid defaults to manual translation, without automatic popup offers.
+    add(dialog_middleware_test, replace_once(original(dialog_middleware_test),
+        "            assertTrue(settings.offerTranslation)", "            assertFalse(settings.offerTranslation)"))
     translation_worker = "toolkit/components/translations/content/translations-engine.worker.js"
     text = original(translation_worker)
     text = replace_once(text, """    return this.#getWorkQueue(innerWindowId).runTask(translationId, () =>

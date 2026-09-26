@@ -27,7 +27,7 @@ import org.json.JSONObject
  *    (position/duration/paused/...) up; [sendCommand] sends play/seek/loop/
  *    release down. See player.js header for the message protocol.
  */
-class VideoPlayerBridge(private val engine: Engine) {
+class VideoPlayerBridge(private val engine: Engine, private val storedAction: () -> (() -> Unit)? = { null }) {
 
     /**
      * Player events from the extension, always delivered on the main thread.
@@ -115,7 +115,7 @@ class VideoPlayerBridge(private val engine: Engine) {
      */
     fun requestTakeover(): Boolean {
         val connectedPort = port
-        val click = browserActionOnClick
+        val click = browserActionOnClick ?: storedAction()
         if (connectedPort == null && click == null) {
             Log.w(TAG, "requestTakeover: extension not yet ready, dropping tap")
             onDiagnostic("player_not_ready", null)
@@ -126,12 +126,13 @@ class VideoPlayerBridge(private val engine: Engine) {
             Log.i(TAG, "open_start")
             onPlayerEvent(JSONObject().put("t", "opening"))
             // Fenix also registers action delegates for installed extensions.
-            // Its cached action can be delivered before our handler is attached,
-            // so a ready native connection must not depend on that callback.
+            // Recover its cached action if it arrived before our handler.
+            // A ready native port remains the fallback during cold startup.
             // This does not grant page activation: requestFullscreen still uses
             // Gecko's normal permission and trusted-input checks.
-            if (connectedPort != null) connectedPort.postMessage(JSONObject().put("cmd", "open"))
-            else click?.invoke()
+            // The genuine extension action already identifies the target tab.
+            if (click != null) click.invoke()
+            else connectedPort?.postMessage(JSONObject().put("cmd", "open"))
         }
             .onFailure {
                 onPlayerEvent(JSONObject().put("t", "released"))

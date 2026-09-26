@@ -3,7 +3,7 @@ const { readFileSync } = require('node:fs');
 const { resolve } = require('node:path');
 const { test } = require('node:test');
 const vm = require('node:vm');
-const source = readFileSync(resolve(__dirname, '../../app/src/main/assets/extensions/upgrid_fullscreen/player.js'), 'utf8');
+const source = readFileSync(process.env.UPGRID_PLAYER_SOURCE || resolve(__dirname, '../../app/src/main/assets/extensions/upgrid_fullscreen/player.js'), 'utf8');
 const flush = () => new Promise(resolve => setImmediate(resolve));
 
 function facebookHarness(options) {
@@ -162,7 +162,7 @@ function element(css = '') {
         setAttribute: function (_, value) { this.style.cssText = value; },
         removeAttribute: function () { this.style.cssText = ''; }, contains: () => false };
 }
-function harness({ nested = false, width = 640, shadow = false, now = () => 0, preloaded = false } = {}) {
+function harness({ nested = false, width = 640, shadow = false, now = () => 0, preloaded = false, automaticFullscreen = false, pageHook = false, nativeErrors = false } = {}) {
     const messages = [], timers = new Map(), intervals = new Map(), listeners = {}, observers = [];
     let timerId = 0, fullscreenRequests = 0;
     const commands = [], documentListeners = {};
@@ -180,16 +180,28 @@ function harness({ nested = false, width = 640, shadow = false, now = () => 0, p
     parent.children = [video, sibling]; parent.parentElement = root; root.children = [parent];
     const shadowRoot = { querySelectorAll: s => s === 'video' ? [video] : [] };
     const document = { URL: 'https://example.com/watch?id=private', baseURI: 'https://example.com/', title: 'Video',
-        addEventListener: (type, fn) => { documentListeners[type] = fn; },
+        addEventListener: (type, fn) => { (documentListeners[type] ||= []).push(fn); },
         documentElement: root, fullscreenElement: null, fullscreenEnabled: false, createElement: () => element(),
         querySelectorAll: s => s === 'video' ? (shadow ? [] : [video]) : (shadow ? [{ shadowRoot }] : [video]),
     };
     const window = { getComputedStyle: () => ({ visibility: 'visible', display: 'block' }),
-        addEventListener: (name, fn) => { listeners[name] = fn; } };
+        addEventListener: (name, fn) => { (listeners[name] ||= []).push(fn); } };
     const posted = [];
     window.top = nested ? {} : window;
     window.parent = nested ? { postMessage: msg => posted.push(msg) } : window;
+    const fullscreenTargets = [];
+    const nativeElement = function () {};
+    nativeElement.prototype.requestFullscreen = function (options) {
+        fullscreenTargets.push({target:this, options});
+        if (!document.fullscreenEnabled) return Promise.reject(new Error('NotAllowedError'));
+        document.fullscreenElement = this;
+        return Promise.resolve();
+    };
+    nativeElement.prototype.querySelectorAll = function () { return this.children.filter(node => node.tagName === 'VIDEO'); };
+    nativeElement.prototype.contains = function (node) { return this.children.includes(node); };
+    if (pageHook) window.wrappedJSObject = {Element:function () {},document};
     const context = vm.createContext({ document, window, Promise, Map, isFinite, URL, Date: { now }, navigator: { userAgent: 'Test' },
+        Element:nativeElement, exportFunction:pageHook ? fn => fn : undefined,
         getComputedStyle: window.getComputedStyle,
         MutationObserver: class {
             constructor(callback) { this.callback = callback; this.nodes = new Set(); observers.push(this); }
@@ -203,16 +215,22 @@ function harness({ nested = false, width = 640, shadow = false, now = () => 0, p
             onMessage: { addListener: fn => { commands.push(fn); } },
         } },
     });
-    vm.runInContext(source, context);
-    if (preloaded) vm.runInContext(readFileSync(resolve(__dirname, '../../app/src/main/assets/extensions/upgrid_fullscreen/preload.js'), 'utf8'), context);
-    return { video, parent, sibling, root, window, document, timers, intervals, messages, posted, observers,
+    vm.runInContext(source.replace('var nativeErrorFallback = false;', `var nativeErrorFallback = ${nativeErrors};`), context);
+    if (preloaded) vm.runInContext(readFileSync(resolve(__dirname, '../../app/src/main/assets/extensions/upgrid_fullscreen/preload.js'), 'utf8')
+        .replace('var automaticFullscreen = false;', `var automaticFullscreen = ${automaticFullscreen};`), context);
+    return { video, parent, sibling, root, window, document, timers, intervals, messages, posted, observers, fullscreenTargets,
+        pageFullscreen: (target, options) => window.wrappedJSObject.Element.prototype.requestFullscreen.call(target, options),
         mutate: () => observers.filter(observer => observer.nodes.size).forEach(observer => observer.callback()),
         probe: (id = 1) => context.upgridPlayerMain(id, 'test-token'),
         command: msg => command({ requestId: 1, ...msg }),
-        documentEvent: (type, target = video) => documentListeners[type]({type, isTrusted:true, composedPath:() => [target]}),
-        confirmParent: (extra = {}) => listeners.message({ source: window.parent,
-            data: { upgrid: 'expanded', requestId: 1, token: 'test-token', ok: true, ...extra } }),
-        event: name => listeners[name](),
+        documentEvent: (type, target = video) => {
+            const event = {type, isTrusted:true, composedPath:() => [target]};
+            documentListeners[type]?.forEach(fn => fn(event));
+            if (type === 'fullscreenchange') listeners[type]?.forEach(fn => fn(event));
+        },
+        confirmParent: (extra = {}) => listeners.message.forEach(fn => fn({ source: window.parent,
+            data: { upgrid: 'expanded', requestId: 1, token: 'test-token', ok: true, ...extra } })),
+        event: name => listeners[name]?.forEach(fn => fn()),
         get fullscreenRequests() { return fullscreenRequests; },
     };
 }
@@ -510,14 +528,14 @@ test('cold connected native transport opens the selected video without an action
 });
 
 test('native open retains the validated cached frame and normal activation fallback', async () => {
-    const h = relayHarness(true, undefined, 'awaiting_gesture', 'ok', true);
+    const h = relayHarness(true, {error:'embedded_stream'}, 'awaiting_gesture', 'ok', true);
     h.message({t:'video_hint',key:'selected',playing:true,area:800});
     h.hooks.command({cmd:'open'}); await flush();
     assert.equal(h.executions.length,0);
     assert.equal(h.commands[0].msg.cmd,'fast_takeover');
     assert.equal(h.commands[0].msg.key,'selected');
     assert.equal(h.events.at(-1).t,'gesture_required');
-    assert.equal(h.commands.some(item=>item.msg.cmd==='describe_stream'),false);
+    assert.equal(h.commands.find(item=>item.msg.cmd==='describe_stream').msg.directOnly,true);
 });
 
 for (const cancel of ['release','suspend','activate','disconnect'])
@@ -636,10 +654,10 @@ test('engine-first opening does not describe, pause or reopen the network stream
     assert.equal(h.timers.size, 0);
 });
 
-test('engine activation prompt keeps the current video and does not start Media3', async () => {
-    const h = relayHarness(true, undefined, 'awaiting_gesture', 'ok', true);
+test('MSE activation prompt keeps the current video and does not start Media3', async () => {
+    const h = relayHarness(true, {error:'embedded_stream'}, 'awaiting_gesture', 'ok', true);
     h.click(); await h.select();
-    assert.deepEqual(h.commands.map(x => x.msg.cmd), ['engine_takeover']);
+    assert.deepEqual(h.commands.map(x => x.msg.cmd), ['engine_takeover','describe_stream']);
     assert.equal(h.events.at(-1).t, 'gesture_required');
     h.hooks.command({cmd:'release'});
     h.message({t:'takeover',ok:true,mode:'engine'});
@@ -863,4 +881,213 @@ test('native failure starts engine fallback only for the same capture and preser
     assert.equal(h.commands[2].msg.cmd, 'engine_takeover');
     assert.equal(h.commands[2].msg.paused, true);
     assert.equal(h.commands[2].options.frameId, 2);
+});
+
+test('site fullscreen on a video adopts existing top layer without another request or reload', async () => {
+    const h = harness({preloaded:true,automaticFullscreen:true});
+    h.document.fullscreenElement = h.video;
+    h.documentEvent('fullscreenchange');
+    await flush();
+    const event = h.messages.at(-1);
+    assert.equal(event.t,'site_fullscreen');
+    assert.equal(await h.command({cmd:'adopt_fullscreen',key:event.key}),'ok');
+    assert.equal(h.fullscreenRequests,0);
+    assert.equal(h.video.currentTime,8);
+    assert.equal(h.video.paused,false);
+    assert.equal(h.messages.at(-1).mode,'engine');
+});
+
+for (const change of ['source','hidden','exit','key']) test(`site fullscreen adoption revalidates ${change}`, async () => {
+    const h = harness({preloaded:true,automaticFullscreen:true});
+    h.document.fullscreenElement=h.video; h.documentEvent('fullscreenchange');
+    await flush();
+    let key=h.messages.at(-1).key;
+    if(change==='source') h.video.currentSrc='https://cdn.example/another.mp4';
+    if(change==='hidden') h.document.hidden=true;
+    if(change==='exit') h.document.fullscreenElement=null;
+    if(change==='key') key+='invalid';
+    assert.equal(await h.command({cmd:'adopt_fullscreen',key}),'stale');
+    assert.equal(h.video.controls,true);
+    assert.equal(h.video.paused,false);
+});
+
+test('non-video fullscreen never claims Upgrid controls', async () => {
+    const h=harness({preloaded:true,automaticFullscreen:true});
+    h.document.fullscreenElement=h.root; h.documentEvent('fullscreenchange');
+    await flush();
+    assert.equal(h.messages.some(x=>x.t==='site_fullscreen'),false);
+});
+
+test('Upgrid fullscreen does not recursively adopt its own request', async () => {
+    const h=harness({preloaded:true,automaticFullscreen:true});
+    h.video.requestFullscreen=async()=>{h.document.fullscreenElement=h.video;h.documentEvent('fullscreenchange');};
+    await h.probe(); await h.command({cmd:'engine_takeover'});
+    assert.equal(h.messages.some(x=>x.t==='site_fullscreen'),false);
+    assert.equal(h.messages.filter(x=>x.t==='takeover').length,1);
+});
+
+test('selected poster is carried to native playback without unrelated page metadata', async () => {
+    const h=harness(); h.video.poster='https://cdn.example/selected.jpg';
+    await h.probe(); const stream=await h.command({cmd:'describe_stream'});
+    assert.equal(stream.poster,'https://cdn.example/selected.jpg');
+});
+for(const poster of ['javascript:alert(1)','file:///private.jpg','https://user:password@example.org/private.jpg','http://cdn.example/insecure.jpg'])
+test(`unsafe poster scheme or credentials are omitted: ${poster.split(':')[0]}`,async()=>{
+    const h=harness();h.video.poster=poster;await h.probe();
+    assert.equal((await h.command({cmd:'describe_stream'})).poster,'');
+});
+
+test('direct fallback refuses MSE before extraction and preserves original playback',async()=>{
+    const h=harness();h.video.currentSrc='blob:https://example.com/selected';await h.probe();
+    const result=await h.command({cmd:'describe_stream',directOnly:true});
+    assert.equal(result.error,'embedded_stream');assert.equal(h.video.paused,false);
+});
+
+test('direct network video opens native after denied fullscreen without a second tap',async()=>{
+    const h=relayHarness(true,undefined,'awaiting_gesture','ok',true);h.click();await h.select();
+    assert.equal(h.events.at(-1).t,'stream');
+    assert.equal(h.commands.at(-1).msg.directOnly,true);
+    assert.equal(h.events.some(x=>x.t==='gesture_required'),false);
+});
+
+test('known active tab opens immediately without another active-tab query',async()=>{
+    const h=relayHarness(true,undefined,'ok','ok',true);h.hooks.activate({tabId:7});
+    h.message({t:'video_hint',key:'selected',playing:true,area:800});
+    h.hooks.command({cmd:'open'});await flush();
+    assert.equal(h.queries.length,0);assert.equal(h.commands[0].msg.cmd,'fast_takeover');
+});
+
+test('audible playing frame wins over a larger muted autoplay frame',async()=>{
+    const h=relayHarness(true,undefined,'ok','ok',true);
+    h.message({t:'video_hint',key:'ad',playing:true,audible:false,area:90000},7,1);
+    h.message({t:'video_hint',key:'movie',playing:true,audible:true,area:10000},7,2);
+    h.click();await flush();
+    assert.equal(h.commands[0].options.frameId,2);assert.equal(h.commands[0].msg.key,'movie');
+});
+
+test('site fullscreen is accepted only for active tab and confirmed frame',async()=>{
+    const h=relayHarness(true,undefined,'ok','ok',true);
+    h.message({t:'site_fullscreen',key:'site'},8,3);await flush();
+    assert.equal(h.commands.length,0);
+    h.message({t:'site_fullscreen',key:'site'},7,3);await flush();
+    assert.equal(h.commands.at(-1).msg.cmd,'adopt_fullscreen');
+    assert.equal(h.commands.at(-1).options.frameId,3);
+    assert.equal(h.events[0].t,'opening');
+    h.message({t:'takeover',ok:true,mode:'engine'},7,3);
+    assert.equal(h.events.at(-1).mode,'engine');
+});
+
+test('cancellation while checking site fullscreen prevents late adoption',async()=>{
+    let done;const activeTabs=new Promise(resolve=>{done=resolve;});
+    const h=relayHarness(true,undefined,'ok','ok',true,activeTabs);
+    h.message({t:'site_fullscreen',key:'site'});h.hooks.command({cmd:'release'});
+    done([{id:7}]);await flush();
+    assert.equal(h.commands.some(x=>x.msg.cmd==='adopt_fullscreen'),false);
+});
+
+test('website container fullscreen redirects to its playing video and preserves API options', async () => {
+    const h = harness({preloaded:true, automaticFullscreen:true, pageHook:true});
+    const ad = {...h.video, muted:true, getBoundingClientRect:()=>({width:2000,height:1200})};
+    h.parent.children.push(ad);
+    h.documentEvent('playing', ad); h.documentEvent('playing');
+    h.document.fullscreenEnabled = true;
+    const options = {navigationUI:'hide'};
+    await h.pageFullscreen(h.parent, options);
+    assert.equal(h.fullscreenTargets[0].target, h.video);
+    assert.equal(h.fullscreenTargets[0].options, options);
+    assert.equal(h.video.currentTime, 8);
+    assert.equal(h.video.paused, false);
+});
+
+test('website fullscreen redirect still propagates native policy refusal', async () => {
+    const h = harness({preloaded:true, automaticFullscreen:true, pageHook:true});
+    await assert.rejects(h.pageFullscreen(h.parent), /NotAllowedError/);
+    assert.equal(h.document.fullscreenElement, null);
+    assert.equal(h.messages.some(message=>message.t==='site_fullscreen'), false);
+});
+
+test('non-video and document fullscreen requests keep their original target', async () => {
+    const h = harness({preloaded:true, automaticFullscreen:true, pageHook:true});
+    h.document.fullscreenEnabled = true;
+    await h.pageFullscreen(h.sibling);
+    await h.pageFullscreen(h.root);
+    assert.equal(h.fullscreenTargets[0].target, h.sibling);
+    assert.equal(h.fullscreenTargets[1].target, h.root);
+});
+
+test('native site video fullscreen is adopted after the previous video releases its controls', async () => {
+    const h = harness({preloaded:true, automaticFullscreen:true});
+    h.document.fullscreenElement = h.video;
+    await h.probe(); await h.command({cmd:'engine_takeover'});
+    const next = {...h.video, controls:true, currentSrc:'https://cdn.example/next.mp4'};
+    h.document.fullscreenElement = next;
+    h.documentEvent('fullscreenchange', next);
+    await flush();
+    const event = h.messages.at(-1);
+    assert.equal(event.t, 'site_fullscreen');
+    assert.equal(h.video.controls, true);
+    assert.equal(await h.command({cmd:'adopt_fullscreen', key:event.key, requestId:2}), 'ok');
+    assert.equal(next.controls, false);
+});
+
+test('a late fullscreen grant after Back cannot reopen the cancelled player as a site request', async () => {
+    const h = harness({preloaded:true, automaticFullscreen:true});
+    let grant;
+    h.video.requestFullscreen = () => new Promise(resolve => { grant = resolve; });
+    h.document.exitFullscreen = async () => { h.document.fullscreenElement = null; };
+    await h.probe();
+    const opening = h.command({cmd:'engine_takeover'});
+    await h.command({cmd:'release'});
+    h.document.fullscreenElement = h.video;
+    h.documentEvent('fullscreenchange');
+    await flush();
+    grant();
+    assert.equal(await opening, 'cancelled');
+    assert.equal(h.document.fullscreenElement, null);
+    assert.equal(h.messages.some(message => message.t === 'site_fullscreen'), false);
+    assert.equal(h.video.controls, true);
+});
+
+test('a Gecko decode error can still hand its exact clear HTTP source to the native decoder', async () => {
+    const h = harness({nativeErrors:true}); h.video.error = {code:3};
+    assert.ok(await h.probe());
+    assert.equal(await h.command({cmd:'engine_takeover'}), 'none');
+    const stream = await h.command({cmd:'describe_stream'});
+    assert.equal(stream.url, 'https://cdn.example/video.mp4');
+    assert.equal(stream.pos, 8);
+    assert.equal(h.video.currentSrc, stream.url);
+});
+
+test('an errored blob or protected session is not transferred as a guessed source', async () => {
+    for (const mode of ['blob','drm','stream']) {
+        const h = harness({nativeErrors:true}); h.video.error = {code:3};
+        if (mode === 'blob') h.video.currentSrc = 'blob:https://example.com/broken';
+        if (mode === 'drm') h.video.mediaKeys = {};
+        if (mode === 'stream') h.video.srcObject = {};
+        assert.equal(await h.probe(), null);
+        assert.equal(h.video.paused, false);
+    }
+});
+
+test('legacy discovery still excludes videos with an engine error', async () => {
+    const h = harness(); h.video.error = {code:3};
+    assert.equal(await h.probe(), null);
+});
+
+test('media error refreshes the cached hint before attempting native recovery', async () => {
+    const h = harness({preloaded:true, automaticFullscreen:true, nativeErrors:true});
+    h.documentEvent('playing');
+    h.video.error = {code:3}; h.documentEvent('error');
+    const hint = h.messages.at(-1);
+    assert.equal(hint.failed, true); assert.equal(hint.playing, false);
+    assert.equal(await h.command({cmd:'fast_takeover',key:hint.key,token:'error'}), 'none');
+    assert.equal((await h.command({cmd:'describe_stream'})).url, h.video.currentSrc);
+});
+
+test('a healthy paused video wins over a larger errored frame', async () => {
+    const h = relayHarness(true,undefined,'ok','ok',true);
+    h.message({t:'video_hint',key:'broken-ad',failed:true,playing:false,area:90000},7,1);
+    h.message({t:'video_hint',key:'movie',failed:false,playing:false,area:10000},7,2);
+    h.click(); await flush();
+    assert.equal(h.commands[0].options.frameId,2);
 });

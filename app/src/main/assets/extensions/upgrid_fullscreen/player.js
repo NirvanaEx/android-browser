@@ -1,6 +1,7 @@
 // Keep the original media session alive while presenting a player page.
 function upgridPlayerMain(requestId, token, preferredVideo, openEngine) {
     "use strict";
+    var nativeErrorFallback = false; // Enabled only in the Fenix overlay.
     if (!window.__upgridPagePlayer) {
         var currentId = null, currentToken = null, candidate = null, active = null;
         var nativeSession = null, engineMode = false, engineSource = null, engineFacebookId = null, engineTrigger = null;
@@ -8,7 +9,11 @@ function upgridPlayerMain(requestId, token, preferredVideo, openEngine) {
         var savedStyles = new Map();
         var engineFit = null, engineStyleObserver = null, scaleMode = "contain";
         var mirrorX = false, mirrorY = false, recoveryStarted = null;
-        var captureStarted = 0, capturePath = "scan";
+        var captureStarted = 0, capturePath = "scan", engineEntering = new Map();
+        window.__upgridOwnsFullscreen = function () {
+            return Array.from(engineEntering.values()).some(isVideoFullscreen) ||
+                (engineMode && active && isVideoFullscreen(active));
+        };
         var styleRules = new Map();
         var isolated = null, isolationObserver = null;
         var events = ["play", "pause", "seeked", "ended", "durationchange", "volumechange", "resize", "loadedmetadata", "error"];
@@ -133,6 +138,8 @@ function upgridPlayerMain(requestId, token, preferredVideo, openEngine) {
         }
         function release(report, preservePlayback) {
             var oldId = currentId, wasActive = !!active;
+            // Keep pending native fullscreen requests identified until they settle.
+            // A late grant after cancellation must not look like a fresh site request.
             if (engineTrigger) engineTrigger.remove();
             engineTrigger = null;
             if (engineStyleObserver) engineStyleObserver.disconnect();
@@ -184,16 +191,24 @@ function upgridPlayerMain(requestId, token, preferredVideo, openEngine) {
             });
             return found;
         }
+        function transferableError(video) {
+            return nativeErrorFallback && !video.mediaKeys && !video.srcObject &&
+                /^https?:\/\//i.test(video.currentSrc || video.src || "");
+        }
         function pickVideo() {
             var videos = findElements(document, "video").filter(function (video) {
                 var rect = video.getBoundingClientRect(), css = window.getComputedStyle(video);
-                return video.isConnected && !video.error && rect.width > 0 && rect.height > 0 &&
+                return video.isConnected && (!video.error || transferableError(video)) && rect.width > 0 && rect.height > 0 &&
                     css.display !== "none" && css.visibility !== "hidden";
             });
             videos.sort(function (a, b) {
-                var playingA = !a.paused && !a.ended && a.readyState >= 2;
-                var playingB = !b.paused && !b.ended && b.readyState >= 2;
+                var playingA = !a.error && !a.paused && !a.ended && a.readyState >= 2;
+                var playingB = !b.error && !b.paused && !b.ended && b.readyState >= 2;
                 if (playingA !== playingB) return playingB ? 1 : -1;
+                if (!!a.error !== !!b.error) return a.error ? 1 : -1;
+                var audibleA = playingA && !a.muted && a.volume !== 0;
+                var audibleB = playingB && !b.muted && b.volume !== 0;
+                if (audibleA !== audibleB) return audibleB ? 1 : -1;
                 var ra = a.getBoundingClientRect(), rb = b.getBoundingClientRect();
                 return rb.width * rb.height - ra.width * ra.height;
             });
@@ -366,17 +381,18 @@ function upgridPlayerMain(requestId, token, preferredVideo, openEngine) {
             return null;
         }
         // Transfer a real network resource; never restyle, reparent or replace the page.
-        async function describeStream() {
+        async function describeStream(directOnly) {
             var video = candidate;
-            if (!video || !video.isConnected || video.error) return { error: "no_video" };
+            if (!video || !video.isConnected || (video.error && !transferableError(video))) return { error: "no_video" };
             if (video.mediaKeys || video.srcObject) return { error: "protected_stream" };
             if (!(video.currentSrc || video.src)) return { error: "no_video" };
             var source = video.currentSrc || video.src, captureId = currentId, url;
             try { url = new URL(source, document.baseURI); } catch (_) {}
+            if (directOnly && (!url || !/^https?:$/.test(url.protocol))) return {error:"embedded_stream"};
             var sources = playerSources(video);
             var facebook = url?.protocol === "blob:" ? await facebookStream(video) : null;
             // A navigation, cancellation or React element reuse may happen at a yield.
-            if (currentId !== captureId || candidate !== video || !video.isConnected || video.error ||
+            if (currentId !== captureId || candidate !== video || !video.isConnected || (video.error && !transferableError(video)) ||
                 (video.currentSrc || video.src) !== source ||
                 (facebook?.id && facebookIdentity(video)?.id !== facebook.id)) return { error: "no_video" };
             if (video.mediaKeys || video.srcObject) return { error: "protected_stream" };
@@ -396,7 +412,13 @@ function upgridPlayerMain(requestId, token, preferredVideo, openEngine) {
             var referrer = /^https?:$/.test(page.protocol) && !(page.protocol === "https:" && url.protocol === "http:") ? page.origin + "/" : "";
             if (page.protocol === "https:" && sources.some(function (item) {return item.url.startsWith("http:");})) referrer = "";
             if (document.referrerPolicy === "no-referrer") referrer = "";
-            return { url: url.href, sources: sources.slice(0, 4), referrer: referrer, userAgent: navigator.userAgent,
+            var poster = "";
+            try {
+                var image = new URL(video.poster, document.baseURI);
+                if (video.poster && /^https?:$/.test(image.protocol) && !image.username && !image.password &&
+                    !(page.protocol === "https:" && image.protocol === "http:")) poster = image.href;
+            } catch (_) {}
+            return { url: url.href, sources: sources.slice(0, 4), poster: poster, referrer: referrer, userAgent: navigator.userAgent,
                 pos: nativeSession.position, paused: nativeSession.paused,
                 loop: !!video.loop, muted: !!video.muted };
         }
@@ -430,13 +452,15 @@ function upgridPlayerMain(requestId, token, preferredVideo, openEngine) {
             var source = video.currentSrc || video.src, facebookId = facebookIdentity(video)?.id;
             returnStream(null, false, true);
             var controls = video.controls;
+            engineEntering.set(id, video);
             try {
                 // A site may already have fullscreened this exact video. Reusing
                 // the existing top-layer element needs no second user activation.
                 if (!isVideoFullscreen(video)) await video.requestFullscreen();
                 if (currentId !== id || !video.isConnected || (video.currentSrc || video.src) !== source ||
                     (facebookId && facebookIdentity(video)?.id !== facebookId) || !isVideoFullscreen(video)) {
-                    if (isVideoFullscreen(video)) await document.exitFullscreen();
+                    // A stale completion must not exit fullscreen now owned by a newer capture.
+                    if ((currentId === id || currentId === null) && isVideoFullscreen(video)) await document.exitFullscreen();
                     return "cancelled";
                 }
                 active = video;
@@ -481,6 +505,7 @@ function upgridPlayerMain(requestId, token, preferredVideo, openEngine) {
                     path: capturePath, pageMs: Date.now() - captureStarted }));
                 return "ok";
             } catch (_) {
+                if (currentId !== id || !video.isConnected || document.hidden) return "cancelled";
                 video.controls = controls;
                 if (canPrompt !== false && currentId === id && document.fullscreenEnabled !== false && video.isConnected) {
                     // Gecko does not propagate a toolbar gesture into the document.
@@ -511,7 +536,7 @@ function upgridPlayerMain(requestId, token, preferredVideo, openEngine) {
                     return "awaiting_gesture";
                 }
                 return "failed";
-            }
+            } finally { engineEntering.delete(id); }
         }
         function expandParents() {
             if (window === window.top) return Promise.resolve(true);
@@ -562,7 +587,7 @@ function upgridPlayerMain(requestId, token, preferredVideo, openEngine) {
         }
         browser.runtime.onMessage.addListener(function (msg) {
             if (!msg || msg.requestId !== currentId || currentId === null) return;
-            if (msg.cmd === "describe_stream") return Promise.resolve(describeStream());
+            if (msg.cmd === "describe_stream") return Promise.resolve(describeStream(msg.directOnly === true));
             if (msg.cmd === "return_stream") {
                 return Promise.resolve(returnStream(msg.pos, msg.resume === true, msg.paused) ? "ok" : "stale");
             }
@@ -613,6 +638,7 @@ function upgridPlayerMain(requestId, token, preferredVideo, openEngine) {
             if (engineMode && active && !isVideoFullscreen(active)) release(true, true);
         });
         window.__upgridPagePlayer = function (id, key, preferred, engineFirst) {
+            if (currentId === id && engineMode && ready && active === preferred) return Promise.resolve("ok");
             if (currentId !== id) release(false);
             currentId = id;
             currentToken = key;
@@ -624,7 +650,9 @@ function upgridPlayerMain(requestId, token, preferredVideo, openEngine) {
             if (!candidate) return Promise.resolve(null);
             if (engineFirst) return engineTakeover();
             var rect = candidate.getBoundingClientRect();
-            return send({ t: "candidate", playing: !candidate.paused && !candidate.ended && candidate.readyState >= 2,
+            return send({ t: "candidate", playing: !candidate.error && !candidate.paused && !candidate.ended && candidate.readyState >= 2,
+                failed: !!candidate.error,
+                audible: !candidate.error && !candidate.paused && !candidate.muted && candidate.volume !== 0,
                 area: rect.width * rect.height });
         };
     }

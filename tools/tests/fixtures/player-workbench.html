@@ -1,0 +1,49 @@
+<!doctype html><html lang="en"><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Player acceptance workbench</title>
+<style>
+body{margin:12px;background:#152338;color:#fff;font:16px/1.4 sans-serif}button,a{font:inherit;padding:12px;margin:4px;color:inherit}
+button{background:#304c70;border:0;border-radius:10px}#stage{width:94%;overflow:hidden;transform:translateZ(0)}video{width:100%;height:220px;background:#000;object-fit:contain}#state{font-size:14px}iframe{width:100%;height:500px;border:0}
+</style>
+<h2>Player acceptance workbench</h2>
+<div id="actions">
+<button id="play">Play movie</button><button id="pause">Pause movie</button>
+<button id="site-video">Fullscreen video</button><button id="site-container">Fullscreen container</button>
+<button id="blob">Play blob</button><button id="mse">Play MSE</button>
+<button id="switch">Change source</button><button id="remove">Remove video</button>
+</div>
+<div id="stage"><video id="movie" controls playsinline loop preload="metadata" poster="/sample-poster.png" src="/sample.mp4"></video></div>
+<p id="state">Ready</p>
+<script>
+const query=new URLSearchParams(location.search),kind=query.get('case')||'direct';
+const movie=document.querySelector('#movie'),stage=document.querySelector('#stage'),actions=document.querySelector('#actions'),state=document.querySelector('#state');
+let pauses=0,loads=0,frames=0;
+const report=event=>fetch('/probe-events',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+ kind:kind+':'+event,time:movie.currentTime,paused:movie.paused,fullscreen:document.fullscreenElement===movie,
+ pauses,loads,scale:getComputedStyle(movie).scale,fit:getComputedStyle(movie).objectFit,videoWidth:movie.videoWidth,videoHeight:movie.videoHeight
+})}).catch(()=>{});
+function frame(){frames++;movie.requestVideoFrameCallback?.(frame)}movie.requestVideoFrameCallback?.(frame);
+document.querySelector('#play').onclick=()=>movie.play();
+document.querySelector('#pause').onclick=()=>movie.pause();
+document.querySelector('#site-video').onclick=()=>movie.requestFullscreen().catch(()=>report('fs-denied'));
+document.querySelector('#site-container').onclick=()=>stage.requestFullscreen().catch(()=>report('fs-denied'));
+document.querySelector('#switch').onclick=()=>{movie.src='/portrait.mp4';movie.play()};
+document.querySelector('#remove').onclick=()=>movie.remove();
+document.querySelector('#blob').onclick=async()=>{movie.src=URL.createObjectURL(await(await fetch('/sample.mp4')).blob());await movie.play()};
+document.querySelector('#mse').onclick=async()=>{
+ const bytes=await(await fetch('/sample-fragmented.mp4')).arrayBuffer();const media=new MediaSource();movie.src=URL.createObjectURL(media);
+ media.addEventListener('sourceopen',()=>{const buffer=media.addSourceBuffer('video/mp4; codecs="avc1.42C01E, mp4a.40.2"');
+ buffer.addEventListener('updateend',()=>{media.endOfStream();movie.play()},{once:true});buffer.appendBuffer(bytes)},{once:true});
+};
+movie.addEventListener('pause',()=>pauses++);movie.addEventListener('loadstart',()=>loads++);
+for(const event of ['playing','pause','error','loadeddata','emptied'])movie.addEventListener(event,()=>report(event));
+document.addEventListener('fullscreenchange',()=>report('fullscreen'));
+setInterval(()=>{state.textContent=`${movie.paused?'PAUSED':'PLAYING'} ${movie.currentTime.toFixed(1)} FRAMES ${frames} LOADS ${loads} PAUSES ${pauses}`;report('tick')},1000);
+if(kind==='multiple'){
+ const ad=document.createElement('video');ad.muted=true;ad.autoplay=true;ad.loop=true;ad.src='/square.mp4';ad.style.height='280px';document.body.append(ad);
+}
+if(kind==='iframe'||kind==='blocked-iframe'){
+ actions.remove();stage.remove();const frame=document.createElement('iframe');frame.src='http://localhost:8766/player-workbench.html?case=child';
+ if(kind==='iframe')frame.allow='fullscreen';document.body.prepend(frame);
+}
+</script></html>
