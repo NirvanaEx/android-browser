@@ -1,0 +1,27 @@
+<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Tab memory fixture</title>
+<style>body{font:20px sans-serif;margin:24px;background:#eee;color:#123}button,textarea,a{font:inherit;padding:12px}canvas{width:100%;height:180px}textarea{width:90%}section{height:1800px}</style>
+<h1 id="title"></h1><p id="loads"></p><p><a id="newtab" target="_blank" rel="noopener">Open next tab</a></p><canvas id="canvas" width="1024" height="512"></canvas>
+<p><a id="next">Next page (history check)</a></p><label>Unsaved draft<textarea id="draft"></textarea></label>
+<p><button id="scroll">Scroll down</button></p><section></section><p id="bottom">BOTTOM: scroll restoration check</p>
+<script>
+const query=new URLSearchParams(location.search),id=query.get('id')||'0',step=query.get('step')||'1';
+document.title='Memory tab '+id;document.querySelector('#title').textContent='Memory tab '+id+' / page '+step;
+const plain=query.has('plain');
+const draft=document.querySelector('#draft');
+const count=plain?1:Number(sessionStorage.getItem('loads')||0)+1;
+if(!plain)sessionStorage.setItem('loads',count);
+if(plain)draft.closest('label').remove();
+document.querySelector('#loads').textContent='Document loads: '+count;
+document.querySelector('#next').href='tabs.html?id='+encodeURIComponent(id)+'&step=2'+(plain?'&plain=1':'');
+document.querySelector('#newtab').href='tabs.html?id='+(Number(id)+1)+(plain?'&plain=1':'');
+window.fixtureMemory=new Uint8Array(16*1024*1024);fixtureMemory.fill(Number(id)+1);
+const ctx=canvas.getContext('2d');ctx.fillStyle='#365ec5';ctx.fillRect(0,0,1024,512);ctx.fillStyle='white';ctx.font='80px sans-serif';ctx.fillText('Tab '+id,80,260);
+document.querySelector('#scroll').onclick=()=>document.querySelector('#bottom').scrollIntoView();
+const report = kind => fetch('/tab-events', {method:'POST',headers:{'Content-Type':'application/json'},
+ body:JSON.stringify({kind,id,step,loads:count,scroll:scrollY,draftLength:draft.value.length})}).catch(()=>{});
+addEventListener('load',()=>{report('load');setTimeout(()=>report('restored'),2000);});
+draft.addEventListener('input',()=>report('input'));
+let scrollReport;
+addEventListener('scroll',()=>{clearTimeout(scrollReport);scrollReport=setTimeout(()=>report('scroll'),250);});
+</script>

@@ -2,6 +2,7 @@ package com.upgrid.browser.fullscreen
 
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.util.Log
 import mozilla.components.concept.engine.Engine
 import mozilla.components.concept.engine.EngineSession
@@ -14,13 +15,13 @@ import org.json.JSONObject
 
 /**
  * Native half of the built-in video player. Bridges the topbar ▶ button and
- * the player screen to the bundled WebExtension without replacing the media
- * session or requiring HTML fullscreen.
+ * the player screen to the bundled WebExtension. Fenix retains the original
+ * media session in real Gecko fullscreen; Media3 is a bounded fallback.
  *
  * Two channels:
- *  - takeover trigger: [requestTakeover] fires the extension's browser_action
- *    (gesture in) → background.js injects player.js → the page's <video> is
- *    expanded in place; the native overlay supplies its controls.
+ *  - takeover trigger: [requestTakeover] sends an explicit native open command
+ *    → background.js selects the video → player.js requests fullscreen;
+ *    the native overlay supplies its controls.
  *  - state/commands: a native-messaging port ("upgridPlayer") between this
  *    class and background.js. The content script streams playback state
  *    (position/duration/paused/...) up; [sendCommand] sends play/seek/loop/
@@ -39,10 +40,15 @@ class VideoPlayerBridge(private val engine: Engine) {
     /** Captured when the extension finishes install + announces its action. */
     private var browserActionOnClick: (() -> Unit)? = null
 
-    /** Native-messaging port; connected lazily by background.js on first tap. */
+    /** Native-messaging port, prepared when the background script starts. */
     private var port: Port? = null
 
     private val mainHandler = Handler(Looper.getMainLooper())
+    private var openingAt = 0L
+
+    fun markControlsDrawn() {
+        if (openingAt > 0) Log.i(TAG, "controls_draw elapsedMs=${SystemClock.elapsedRealtime() - openingAt}")
+    }
 
     fun setupAndInstall() {
         engine.installBuiltInWebExtension(
@@ -63,9 +69,8 @@ class VideoPlayerBridge(private val engine: Engine) {
                         browserActionOnClick = action.onClick
                     }
                 })
-                // Must be registered before background.js calls connectNative —
-                // guaranteed because the connect only happens on the first
-                // browser_action tap, long after install completes.
+                // Built-in background messages/connections are queued by the
+                // engine until this handler is registered.
                 ext.registerBackgroundMessageHandler(PORT_NAME, object : MessageHandler {
                     override fun onPortConnected(port: Port) {
                         Log.i(TAG, "player port connected")
@@ -81,6 +86,10 @@ class VideoPlayerBridge(private val engine: Engine) {
 
                     override fun onPortMessage(message: Any, port: Port) {
                         val json = message as? JSONObject ?: return
+                        if (json.optString("t") == "takeover" && json.optBoolean("ok") && openingAt > 0) {
+                            val path = if (json.optString("path") == "cached") "cached" else "scan"
+                            Log.i(TAG, "player_ready elapsedMs=${SystemClock.elapsedRealtime() - openingAt} pageMs=${json.optLong("pageMs")} path=$path")
+                        }
                         if (json.optString("t") == "takeover" && !json.optBoolean("ok")) {
                             onDiagnostic("player_" + json.optString("reason", "failed"), null)
                         }
@@ -101,18 +110,33 @@ class VideoPlayerBridge(private val engine: Engine) {
 
     /**
      * Take over the page's video. Caller MUST be inside a real Android input
-     * event handler (e.g. button onClickListener) — that's what supplies the
-     * gesture token that propagates through to the page.
+     * event handler (e.g. button onClickListener). Gecko can still require a
+     * direct page gesture after the page's fullscreen activation has expired.
      */
     fun requestTakeover(): Boolean {
+        val connectedPort = port
         val click = browserActionOnClick
-        if (click == null) {
+        if (connectedPort == null && click == null) {
             Log.w(TAG, "requestTakeover: extension not yet ready, dropping tap")
             onDiagnostic("player_not_ready", null)
             return false
         }
-        return runCatching { click.invoke() }
-            .onFailure { Log.w(TAG, "onClick threw", it); onDiagnostic("player_open", it) }
+        return runCatching {
+            openingAt = SystemClock.elapsedRealtime()
+            Log.i(TAG, "open_start")
+            onPlayerEvent(JSONObject().put("t", "opening"))
+            // Fenix also registers action delegates for installed extensions.
+            // Its cached action can be delivered before our handler is attached,
+            // so a ready native connection must not depend on that callback.
+            // This does not grant page activation: requestFullscreen still uses
+            // Gecko's normal permission and trusted-input checks.
+            if (connectedPort != null) connectedPort.postMessage(JSONObject().put("cmd", "open"))
+            else click?.invoke()
+        }
+            .onFailure {
+                onPlayerEvent(JSONObject().put("t", "released"))
+                Log.w(TAG, "onClick threw", it); onDiagnostic("player_open", it)
+            }
             .isSuccess
     }
 

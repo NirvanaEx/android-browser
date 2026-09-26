@@ -1,0 +1,40 @@
+<!doctype html><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Player aspect regression</title>
+<style>
+body{background:#23354a;color:white;font:18px sans-serif;margin:12px}
+button{padding:12px;margin:4px;font:inherit}
+video{width:85%;height:240px;object-fit:fill;background:black}
+</style>
+<h2>Player aspect regression</h2>
+<button onclick="select('sample.mp4')">Landscape</button>
+<button onclick="select('portrait.mp4')">Portrait</button>
+<button onclick="select('square.mp4')">Square</button>
+<button onclick="video.pause()">Pause</button>
+<button onclick="video.play()">Play</button>
+<video id="video" muted loop playsinline controls src="/sample.mp4"></video>
+<p id="state"></p>
+<p><a href="engine.html" style="color:#8cf">Blob and MediaSource</a></p>
+<script>
+function select(file){video.src='/'+file;video.play();}
+if (new URLSearchParams(location.search).has('failure')) video.src='/failure.mp4';
+let pauses=0, loads=0;
+video.addEventListener('pause',()=>pauses++);
+video.addEventListener('loadstart',()=>loads++);
+// Explicitly enabled for Android checks; the normal browser regression fixture stays quiet.
+if (new URLSearchParams(location.search).has('probe') || new URLSearchParams(location.search).has('nofs')) {
+ const report = kind => fetch('/probe-events', { method:'POST', headers:{'Content-Type':'application/json'},
+   body:JSON.stringify({kind,time:video.currentTime,paused:video.paused,fullscreen:document.fullscreenElement===video,pauses,loads,
+     scale:getComputedStyle(video).scale,fit:getComputedStyle(video).objectFit,
+     videoWidth:video.videoWidth,videoHeight:video.videoHeight}) }).catch(()=>{});
+ for (const event of ['playing','pause','loadstart','error']) video.addEventListener(event,()=>report(event));
+ document.addEventListener('fullscreenchange',()=>report('fullscreenchange'));
+ setInterval(()=>report('tick'),1000);
+}
+document.addEventListener('fullscreenchange',()=>{
+ if(document.fullscreenElement===video) setTimeout(()=>{
+   video.style.setProperty('object-fit','fill','important');
+   video.style.setProperty('transform','scaleX(1.5)','important');
+ },150);
+});
+setInterval(()=>{state.textContent=`${video.paused?'PAUSED':'PLAYING'} ${video.currentTime.toFixed(1)} · ${video.videoWidth}x${video.videoHeight} · PAUSES ${pauses} · LOADS ${loads} · FIT ${getComputedStyle(video).objectFit}`;},500);
+</script>

@@ -1,32 +1,74 @@
 // Keep the original media session alive while presenting a player page.
-function upgridPlayerMain(requestId, token) {
+function upgridPlayerMain(requestId, token, preferredVideo, openEngine) {
     "use strict";
     if (!window.__upgridPagePlayer) {
         var currentId = null, currentToken = null, candidate = null, active = null;
         var nativeSession = null, engineMode = false, engineSource = null, engineFacebookId = null, engineTrigger = null;
         var hadControls = false, ready = false, timer = null, pending = null, parentReply = null;
         var savedStyles = new Map();
-        var engineFit = null;
+        var engineFit = null, engineStyleObserver = null, scaleMode = "contain";
+        var mirrorX = false, mirrorY = false, recoveryStarted = null;
+        var captureStarted = 0, capturePath = "scan";
         var styleRules = new Map();
         var isolated = null, isolationObserver = null;
-        var events = ["play", "pause", "seeked", "ended", "durationchange", "volumechange"];
+        var events = ["play", "pause", "seeked", "ended", "durationchange", "volumechange", "resize", "loadedmetadata", "error"];
         function send(message) {
             return browser.runtime.sendMessage(Object.assign({ requestId: currentId }, message)).catch(function () {});
         }
         function snapshot(extra) {
             return Object.assign({
-                t: "state", pos: active ? active.currentTime || 0 : 0,
+                t: "state", pos: active && Number.isFinite(active.currentTime) ? active.currentTime : 0,
                 dur: active && isFinite(active.duration) ? active.duration : 0,
                 paused: !active || active.paused, ended: !!(active && active.ended),
                 loop: !!(active && active.loop), muted: !!(active && active.muted),
+                scale: scaleMode, mirrorX: mirrorX, mirrorY: mirrorY,
+                videoWidth: active && Number.isFinite(active.videoWidth) ? active.videoWidth : 0,
+                videoHeight: active && Number.isFinite(active.videoHeight) ? active.videoHeight : 0,
+                recovering: recoveryStarted !== null,
             }, extra || {});
         }
         function pushState() {
-            if (active && (!active.isConnected || active.error)) { release(true); return; }
-            if (engineMode && active && !isVideoFullscreen(active)) { release(true); return; }
-            if (engineMode && active && ((active.currentSrc || active.src) !== engineSource ||
-                (engineFacebookId && facebookIdentity(active)?.id !== engineFacebookId))) { release(true); return; }
+            if (active && !active.isConnected) { release(true); return; }
+            if (engineMode && active && !isVideoFullscreen(active)) { release(true, true); return; }
+            if (engineMode && active) {
+                var source = active.currentSrc || active.src;
+                // Some players briefly clear currentSrc while recovering a seek.
+                // Keep ownership of the same fullscreen element for a bounded time;
+                // a nonempty replacement source or Facebook ID always invalidates it.
+                if ((source && source !== engineSource) ||
+                    (engineFacebookId && facebookIdentity(active)?.id !== engineFacebookId)) { release(true); return; }
+                if (active.error || (!source && engineSource)) {
+                    if (recoveryStarted === null) recoveryStarted = Date.now();
+                    if (Date.now() - recoveryStarted >= 2500) { release(true); return; }
+                } else recoveryStarted = null;
+            } else if (active && active.error) { release(true); return; }
             if (active && ready) send(snapshot());
+        }
+        function seekVideo(position) {
+            if (!active || !Number.isFinite(position)) return;
+            if (engineMode && (active.error || (active.currentSrc || active.src) !== engineSource ||
+                (engineFacebookId && facebookIdentity(active)?.id !== engineFacebookId))) return;
+            try {
+                var duration = active.duration;
+                var next = Math.max(0, Number.isFinite(duration) ? Math.min(duration, position) : position);
+                var ranges = active.seekable;
+                if (ranges && ranges.length) {
+                    var nearest = null, distance = Infinity;
+                    // Seeking into an MSE gap or beyond a live window can make the
+                    // site's own player replace its source. Use the closest range.
+                    for (var i = 0; i < Math.min(ranges.length, 128); i++) {
+                        var start = ranges.start(i), end = ranges.end(i);
+                        if (!Number.isFinite(start) || !Number.isFinite(end) || end < start) continue;
+                        var bounded = Math.max(start, Math.min(end, next));
+                        if (Math.abs(bounded - next) < distance) { nearest = bounded; distance = Math.abs(bounded - next); }
+                    }
+                    if (nearest !== null) next = nearest;
+                }
+                active.currentTime = next;
+            } catch (_) {
+                // Source/seekable state can change between the check and setter.
+                // A rejected seek must not tear down a still usable player.
+            }
         }
         function style(element, value) {
             if (!savedStyles.has(element)) savedStyles.set(element, element.getAttribute("style"));
@@ -89,17 +131,22 @@ function upgridPlayerMain(requestId, token) {
                 isolationObserver.observe(node, { childList: true, attributes: true, attributeFilter: ["style", "controls"] });
             });
         }
-        function release(report) {
+        function release(report, preservePlayback) {
             var oldId = currentId, wasActive = !!active;
             if (engineTrigger) engineTrigger.remove();
             engineTrigger = null;
-            returnStream(null, true);
+            if (engineStyleObserver) engineStyleObserver.disconnect();
+            engineStyleObserver = null;
+            returnStream(null, preservePlayback === true);
             if (engineMode && active) {
-                suspendVideo(active);
+                // Returning to the same visible page only removes our controls.
+                // Do not pause/play/seek the Gecko video: retain the current state.
+                if (!preservePlayback || document.hidden) suspendVideo(active);
                 if (isVideoFullscreen(active)) document.exitFullscreen().catch(function () {});
             }
             engineMode = false;
             engineSource = engineFacebookId = null;
+            recoveryStarted = null;
             currentId = null;
             currentToken = null;
             ready = false;
@@ -365,7 +412,7 @@ function upgridPlayerMain(requestId, token) {
             if (typeof position === "number" && isFinite(position) && position >= 0) {
                 try { video.currentTime = isFinite(video.duration) ? Math.min(position, video.duration) : position; } catch (_) {}
             }
-            if (resume && !(typeof paused === "boolean" ? paused : session.paused)) {
+            if (resume && !document.hidden && !(typeof paused === "boolean" ? paused : session.paused)) {
                 resumeByUser(video);
                 video.play().catch(function () {});
             } else suspendVideo(video);
@@ -384,7 +431,9 @@ function upgridPlayerMain(requestId, token) {
             returnStream(null, false, true);
             var controls = video.controls;
             try {
-                await video.requestFullscreen();
+                // A site may already have fullscreened this exact video. Reusing
+                // the existing top-layer element needs no second user activation.
+                if (!isVideoFullscreen(video)) await video.requestFullscreen();
                 if (currentId !== id || !video.isConnected || (video.currentSrc || video.src) !== source ||
                     (facebookId && facebookIdentity(video)?.id !== facebookId) || !isVideoFullscreen(video)) {
                     if (isVideoFullscreen(video)) await document.exitFullscreen();
@@ -394,24 +443,42 @@ function upgridPlayerMain(requestId, token) {
                 engineMode = true;
                 // Gecko's fullscreen dimensions override page CSS, but object-fit
                 // does not. Prevent a site's cover/crop setting clipping the frame.
-                var css = window.getComputedStyle(video);
                 engineFit = { hadStyle: video.getAttribute("style") !== null, properties: [] };
-                [["object-fit", "contain", css.objectFit], ["object-position", "50% 50%", css.objectPosition]].forEach(function (item) {
-                    if (!item[2] || item[2] === item[1]) return;
-                    engineFit.properties.push({ name: item[0], applied: item[1],
-                        value: video.style.getPropertyValue(item[0]), priority: video.style.getPropertyPriority(item[0]) });
+                [["object-fit", scaleMode], ["object-position", "50% 50%"], ["transform", "none"],
+                    ["scale", "none"], ["rotate", "none"], ["translate", "none"], ["transform-origin", "50% 50%"]].forEach(function (item) {
+                    var property = {name:item[0], value:video.style.getPropertyValue(item[0]), priority:video.style.getPropertyPriority(item[0])};
                     video.style.setProperty(item[0], item[1], "important");
+                    // Keep the browser's canonical spelling (e.g. scale:-1 -1
+                    // becomes scale:-1), also used by the restore ownership check.
+                    property.applied = video.style.getPropertyValue(item[0]);
+                    engineFit.properties.push(property);
                 });
+                // Sites can rewrite object-fit/transform after fullscreenchange,
+                // on resize, or while switching quality. Watch only this video.
+                engineStyleObserver = new MutationObserver(function () {
+                    if (!engineFit || !engineMode) return;
+                    engineStyleObserver.disconnect();
+                    engineFit.properties.forEach(function (property) {
+                        if (video.style.getPropertyValue(property.name) !== property.applied ||
+                            video.style.getPropertyPriority(property.name) !== "important") {
+                            video.style.setProperty(property.name, property.applied, "important");
+                        }
+                    });
+                    if (video.controls) video.controls = false;
+                    engineStyleObserver.observe(video, {attributes:true, attributeFilter:["style", "class", "controls"]});
+                });
+                engineStyleObserver.observe(video, {attributes:true, attributeFilter:["style", "class", "controls"]});
                 engineSource = source;
                 engineFacebookId = facebookId;
                 hadControls = controls;
                 video.controls = false;
                 ready = true;
-                if (wasPaused) suspendVideo(video);
-                else { resumeByUser(video); video.play().catch(function () {}); }
+                if (wasPaused) { if (!video.paused) suspendVideo(video); }
+                else if (video.paused) { resumeByUser(video); video.play().catch(function () {}); }
                 events.forEach(function (event) { video.addEventListener(event, pushState); });
                 timer = setInterval(pushState, 500);
-                send(snapshot({ t: "takeover", ok: true, fs: true, mode: "engine" }));
+                send(snapshot({ t: "takeover", ok: true, fs: true, mode: "engine",
+                    path: capturePath, pageMs: Date.now() - captureStarted }));
                 return "ok";
             } catch (_) {
                 video.controls = controls;
@@ -435,7 +502,7 @@ function upgridPlayerMain(requestId, token) {
                         button.remove(); engineTrigger = null;
                         if (currentId !== id || (video.currentSrc || video.src) !== source ||
                             (facebookId && facebookIdentity(video)?.id !== facebookId)) return;
-                        engineTakeover(wasPaused, false).then(function (result) {
+                        engineTakeover(video.paused, false).then(function (result) {
                             if (result !== "ok" && currentId === id) send({t:"takeover",ok:false,reason:"embedded_stream"});
                         });
                     });
@@ -501,23 +568,41 @@ function upgridPlayerMain(requestId, token) {
             }
             if (msg.cmd === "release") {
                 returnStream(null, msg.resume !== false);
-                release(!msg.silent);
+                release(!msg.silent, msg.resume === true);
                 return Promise.resolve();
             }
             if (msg.cmd === "takeover") return takeover();
             if (msg.cmd === "engine_takeover") return engineTakeover(msg.paused);
             if (!active || !ready) return;
             switch (msg.cmd) {
+                case "scale":
+                    if (engineMode && engineFit && ["contain", "cover", "fill"].includes(msg.mode)) {
+                        scaleMode = msg.mode;
+                        engineFit.properties.find(property => property.name === "object-fit").applied = scaleMode;
+                        active.style.setProperty("object-fit", scaleMode, "important");
+                    }
+                    break;
+                case "mirror":
+                    if (engineMode && engineFit && typeof msg.horizontal === "boolean" && typeof msg.vertical === "boolean") {
+                        mirrorX = msg.horizontal; mirrorY = msg.vertical;
+                        // Gecko's fullscreen UA rule forces transform:none. The
+                        // individual scale property mirrors this video in its own
+                        // top layer without touching the page or fullscreen policy.
+                        var mirrorScale = mirrorX || mirrorY ? (mirrorX ? -1 : 1) + " " + (mirrorY ? -1 : 1) : "none";
+                        active.style.setProperty("scale", mirrorScale, "important");
+                        engineFit.properties.find(property => property.name === "scale").applied = active.style.getPropertyValue("scale");
+                    }
+                    break;
                 case "pause": suspendVideo(active); break;
                 case "toggle":
                     if (active.paused || active.ended) { resumeByUser(active); active.play().catch(function () {}); } else suspendVideo(active);
                     break;
                 case "seekBy":
-                    var next = (active.currentTime || 0) + (msg.delta || 0);
-                    active.currentTime = Math.max(0, isFinite(active.duration) ? Math.min(active.duration, next) : next);
+                    if (Number.isFinite(msg.delta)) seekVideo((Number.isFinite(active.currentTime) ? active.currentTime : 0) + msg.delta);
                     break;
                 case "seekTo":
-                    if (isFinite(active.duration) && active.duration > 0) active.currentTime = active.duration * Math.max(0, Math.min(1, msg.frac || 0));
+                    if (Number.isFinite(active.duration) && active.duration > 0 && Number.isFinite(msg.frac))
+                        seekVideo(active.duration * Math.max(0, Math.min(1, msg.frac)));
                     break;
                 case "loop": active.loop = !active.loop; break;
             }
@@ -525,18 +610,23 @@ function upgridPlayerMain(requestId, token) {
         });
         window.addEventListener("pagehide", function () { returnStream(null, false); release(true); });
         window.addEventListener("fullscreenchange", function () {
-            if (engineMode && active && !isVideoFullscreen(active)) release(true);
+            if (engineMode && active && !isVideoFullscreen(active)) release(true, true);
         });
-        window.__upgridPagePlayer = function (id, key) {
+        window.__upgridPagePlayer = function (id, key, preferred, engineFirst) {
             if (currentId !== id) release(false);
             currentId = id;
             currentToken = key;
-            candidate = pickVideo();
+            captureStarted = Date.now();
+            capturePath = preferred ? "cached" : "scan";
+            scaleMode = "contain";
+            mirrorX = mirrorY = false;
+            candidate = preferred || pickVideo();
             if (!candidate) return Promise.resolve(null);
+            if (engineFirst) return engineTakeover();
             var rect = candidate.getBoundingClientRect();
             return send({ t: "candidate", playing: !candidate.paused && !candidate.ended && candidate.readyState >= 2,
                 area: rect.width * rect.height });
         };
     }
-    return window.__upgridPagePlayer(requestId, token);
+    return window.__upgridPagePlayer(requestId, token, preferredVideo, openEngine);
 }

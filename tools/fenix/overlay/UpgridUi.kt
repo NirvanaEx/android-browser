@@ -1,5 +1,6 @@
 package org.mozilla.fenix.upgrid
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -70,9 +71,12 @@ fun UpgridAdblockSwitch() {
     var addon by remember { mutableStateOf<Addon?>(null) }
     var busy by remember { mutableStateOf(false) }
     LaunchedEffect(addons) { addon = runCatching { addons.getAddonByID(UpgridAdblock.ID) }.getOrNull() }
-    Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+    Row(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceBright)
+        .padding(horizontal = 16.dp, vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
-        Text(stringResource(R.string.upgrid_adblock), style = MaterialTheme.typography.bodyLarge)
+        Text(stringResource(R.string.upgrid_adblock),
+            modifier = Modifier.weight(1f).padding(end = 16.dp),
+            color = MaterialTheme.colorScheme.onSurface, style = MaterialTheme.typography.bodyLarge)
         Switch(checked = addon?.isEnabled() == true, enabled = addon != null && !busy, onCheckedChange = { enabled ->
             val current = addon ?: return@Switch
             busy = true

@@ -28,7 +28,7 @@ python3 tools/fenix/apply-overlay.py ~/.cache/upgrid/firefox-155.0.1 --check
 
 The overlay reuses the player JavaScript, Kotlin bridge, controls and resources from `app/`. It adds a small Fenix lifecycle adapter and copies resources with an `upgrid_` prefix. Hooks connect it to Fenix's existing component container and browser view. It creates no additional engine or runtime.
 
-The prototype package is `com.upgrid.browser.next.debug`, separate from the old app and Firefox. It has a compact Upgrid home/menu, a player action in the top address bar, and Fenix's top tab strip on displays with a smallest width of at least 600dp. Player mode transfers bound HTTP(S) sources to Media3, trying available alternatives before using the selected video's real Gecko fullscreen with Upgrid controls. This keeps non-transferable MSE/DRM sessions in the existing engine; some cases need one additional page tap for fullscreen activation. Back returns the position and pause state to the unchanged page. See [player design](../../docs/native-player.md) for limits. The menu includes an AdBlock switch and the standard extension manager. Telemetry is disabled before Glean initialization. Data migration and unsigned extension installation remain unverified.
+The prototype package is `com.upgrid.browser.next.debug`, separate from the old app and Firefox. It has a compact Upgrid home/menu, bookmark at the address field's right edge, player and manual translation actions in the toolbar, and Fenix's top tab strip on displays with a smallest width of at least 600dp. Desktop mode defaults off, including tablets; existing explicit choices remain. Page loads do not open translation offers. Since 0.6.2, player mode first uses the selected video's real Gecko fullscreen with Upgrid controls, retaining its decoder, buffer and source. Some cases need one additional page tap for fullscreen activation. Media3 is a bounded fallback when fullscreen cannot be used. Since 0.6.5, ordinary entry and return preserve playback, including a manual pause; backgrounding or switching tabs still pauses. See [player design](../../docs/native-player.md) for limits. The menu includes an AdBlock switch and the standard extension manager. Telemetry is disabled before Glean initialization. HTML bookmark import is available from the bookmarks menu; see [import limits](../../docs/browser-import.md). Unsigned extension installation remains unverified.
 
 `UpgridAdblock` installs uBlock Origin 1.74.0 from the pinned AMO URL at first launch, after Fenix registers its extension delegate. It uses AddonManager so installation participates in the existing store and update machinery. The small WebExtensionSupport patch accepts an explicit set of automatically granted IDs; only uBO is passed in this build. Other extensions retain normal install, optional-permission and update prompts. Existing disabled uBO is left disabled. No XPI is bundled; network/install failures require a later launch to retry. The AMO listing was checked on 2026-09-07: https://addons.mozilla.org/api/v5/addons/addon/ublock-origin/.
 
@@ -49,10 +49,23 @@ shared UID or Firefox version numbering. Check the final APK's package, signer a
 before installing it as an upgrade. Release output is in `outputs/apk/release/`; only use ARM64.
 Keep the matching `outputs/mapping/release/` files with each candidate for crash analysis.
 The automatic VPS crash collector remains enabled when configured.
-The first R8 pass uses a 6 GB JVM heap and one Gradle worker; allow roughly 10 GB RAM
-for WSL. `UPGRID_OPTIMIZED_HEAP` overrides the heap without changing saved Gradle
-properties. The 4 GB debug-build heap caused continuous full GC during the initial
-release build and is insufficient for this checkout's whole-program optimization.
+All build modes use a 4 GB JVM heap, at most 1 GB metaspace and one Gradle worker,
+including the optimized R8 pass. The wrapper supplies these limits even when an
+older saved Gradle configuration allows more memory or workers. The former
+6 GB R8 heap and `UPGRID_OPTIMIZED_HEAP` override belong to an earlier experiment;
+they are no longer used on the user's 16 GB workstation. A slow build or an OOM
+must not automatically increase the limits.
+
+After Kotlin compilation or unit tests, stop the idle Gradle daemon belonging to
+the Upgrid Gradle home before starting the optimized build. In the 0.6.6 check,
+the reused daemon exhausted the 4 GB heap in repeated full GC; a fresh daemon
+reused the compiled outputs and completed R8 with the same limits. Do not run
+the emulator alongside this optimization pass.
+
+The agreed WSL profile is 6 GB RAM, 4 CPU and 8 GB swap. Apply global WSL changes
+and restart it only at a safe boundary after active builds finish. Start the
+Android emulator with 2048 MB RAM, 2 cores and `BelowNormal` process priority;
+leave an already running emulator alone until its next launch.
 
 The optimized build is a performance candidate, not evidence of an improvement on a physical
 device. Compare identical pages, tab counts and thermal conditions. A translating emulator
@@ -70,6 +83,9 @@ it is not a timing benchmark and does not prove compatibility with a particular 
 node --test tools/tests/player.test.cjs
 python3 tools/tests/fenix_overlay_test.py
 bash tools/fenix/test.sh # after building the Upgrid overlay
+bash tools/fenix/test-ui-response.sh # diagnostics queue and menu regression tests
+bash tools/fenix/test-player-continuity.sh # toolbar, desktop default and manual translation
+bash tools/fenix/test-player-seamless.sh # manual orientation and blocked site rotation while playing
 ```
 
 The Node tests cover discovery without fullscreen, page/style restoration, nested-frame acknowledgement/timeouts, cancellation, playing-video selection, shadow roots and frame/request isolation using a simulated DOM and extension API. The Python tests check function replacement, repeat application and preservation of local edits. Kotlin tests cover the uBO permission boundary alongside existing WebExtensionSupport tests. See `VALIDATION.md` for actual device/emulator checks and limitations.
