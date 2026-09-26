@@ -83,7 +83,7 @@ class UpgridPlayerBridgeTest {
         verify(exactly = 0) { harness.port.postMessage(any()) }
     }
 
-    @Test fun `ready native port takes precedence without sending a second browser action request`() {
+    @Test fun `browser action carries tab input without sending a duplicate native request`() {
         val harness = BridgeHarness()
         harness.finishInstallation()
         var clicks = 0
@@ -91,12 +91,22 @@ class UpgridPlayerBridgeTest {
         harness.messages.captured.onPortConnected(harness.port)
 
         assertTrue(harness.bridge.requestTakeover())
-        assertEquals(0, clicks)
-        assertEquals(listOf("open"), harness.commands.map { it.getString("cmd") })
+        assertEquals(1, clicks)
+        assertTrue(harness.commands.isEmpty())
         assertEquals(listOf("opening"), harness.events.map { it.getString("t") })
     }
 
-    private class BridgeHarness {
+    @Test fun `cached store action remains usable when another Fenix delegate received it first`() {
+        var clicks = 0
+        val harness = BridgeHarness { { clicks++ } }
+        harness.finishInstallation()
+        harness.messages.captured.onPortConnected(harness.port)
+        assertTrue(harness.bridge.requestTakeover())
+        assertEquals(1, clicks)
+        assertTrue(harness.commands.isEmpty())
+    }
+
+    private class BridgeHarness(storedAction: () -> (() -> Unit)? = { null }) {
         private val engine = mockk<Engine>()
         private val extension = mockk<WebExtension>()
         private val installed = slot<(WebExtension) -> Unit>()
@@ -106,7 +116,7 @@ class UpgridPlayerBridgeTest {
         val commands = mutableListOf<JSONObject>()
         val events = mutableListOf<JSONObject>()
         val diagnostics = mutableListOf<Pair<String, Throwable?>>()
-        val bridge = VideoPlayerBridge(engine)
+        val bridge = VideoPlayerBridge(engine, storedAction)
 
         init {
             every { engine.installBuiltInWebExtension(VideoPlayerBridge.EXTENSION_ID,

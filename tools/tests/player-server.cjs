@@ -1,9 +1,10 @@
 const http = require('node:http');
 const fs = require('node:fs');
 const path = require('node:path');
-const files = Object.fromEntries(['player.html', 'iframe.html', 'multiple.html', 'controls.html', 'media-scroll.html', 'native.html', 'engine.html', 'aspect.html', 'tabs.html', 'translation.html'].map(name =>
+const files = Object.fromEntries(['player.html', 'iframe.html', 'multiple.html', 'controls.html', 'media-scroll.html', 'native.html', 'engine.html', 'aspect.html', 'tabs.html', 'translation.html', 'player-workbench.html'].map(name =>
     ['/' + name, path.join(__dirname, 'fixtures', name)]));
 files['/sample.mp4'] = path.resolve(__dirname, '../../build/fenix/sample.mp4');
+files['/sample-poster.png'] = path.join(__dirname, 'fixtures/video-poster.png');
 files['/sample-fragmented.mp4'] = path.resolve(__dirname, '../../build/fenix/sample-fragmented.mp4');
 files['/portrait.mp4'] = path.resolve(__dirname, '../../build/fenix/portrait.mp4');
 files['/square.mp4'] = path.resolve(__dirname, '../../build/fenix/square.mp4');
@@ -81,7 +82,7 @@ http.createServer((req, res) => {
     const file = files[pathname];
     if (!file || !fs.existsSync(file)) { res.writeHead(404); res.end(); return; }
     const size = fs.statSync(file).size;
-    const type = file.endsWith('.mp4') ? 'video/mp4' : 'text/html; charset=utf-8';
+    const type = file.endsWith('.mp4') ? 'video/mp4' : file.endsWith('.png') ? 'image/png' : 'text/html; charset=utf-8';
     const range = req.headers.range?.match(/^bytes=(\d+)-(\d*)$/);
     const start = range ? Number(range[1]) : 0;
     const end = range && range[2] ? Math.min(Number(range[2]), size - 1) : size - 1;

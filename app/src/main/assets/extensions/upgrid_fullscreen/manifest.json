@@ -1,7 +1,7 @@
 {
   "manifest_version": 2,
   "name": "Upgrid Player Helper",
-  "version": "4.6.1",
+  "version": "4.7.0",
   "description": "Keeps the selected video playing with Upgrid fullscreen controls.",
   "applications": {
     "gecko": {

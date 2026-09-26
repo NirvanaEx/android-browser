@@ -21,6 +21,8 @@ function cancelNativeOpen() {
 
 function openFromNative() {
     if (nativeOpenRequest) return;
+    // tab activation events already identify the target in the common case.
+    if (activeTabId !== null) { beginTakeover({ id: activeTabId }); return; }
     var request = { attempt: attempt };
     nativeOpenRequest = request;
     function fail(reason) {
@@ -46,6 +48,9 @@ function finishEngineResult(requestId, result, allowNative) {
     if (result === "awaiting_gesture") {
         clearTimeout(captureTimeout);
         captureTimeout = setTimeout(function () { if (requestId === attempt) resetPlayer(true); }, 30_000);
+        // A bound direct HTTP video can open in the native fallback without
+        // asking the user to find and tap it again. MSE/DRM stays in Gecko.
+        if (allowNative && nativePlayerEnabled) return nativeTakeover(requestId, false, true);
         postToNative({ t: "gesture_required" });
         return;
     }
@@ -67,14 +72,15 @@ function engineFallback(requestId, position, paused, allowNative) {
     }).then(function (result) { return finishEngineResult(requestId, result, allowNative); });
 }
 
-function nativeTakeover(requestId, allowEngine) {
+function nativeTakeover(requestId, allowEngine, keepGesture) {
     var tabId = playerTabId, frameId = playerFrameId;
-    return sendToFrame(tabId, frameId, { cmd: "describe_stream" }, requestId).then(function (stream) {
+    return sendToFrame(tabId, frameId, { cmd: "describe_stream", directOnly:keepGesture === true }, requestId).then(function (stream) {
         if (requestId !== attempt) {
             sendToFrame(tabId, frameId, { cmd: "release", silent: true, resume: false }, requestId);
             return;
         }
         if (!stream || stream.error || !/^https?:\/\//i.test(stream.url || "")) {
+            if (keepGesture) { postToNative({t:"gesture_required"}); return; }
             if (allowEngine && stream && ["embedded_stream", "protected_stream"].includes(stream.error)) {
                 return engineFallback(requestId);
             }
@@ -177,14 +183,36 @@ browser.runtime.onMessage.addListener(function (msg, sender) {
         var hintId = tabId + ":" + frameId;
         videoHints.delete(hintId);
         if (typeof msg.key === "string" && msg.key.length <= 100 && Number.isFinite(msg.area) && msg.area > 0) {
-            videoHints.set(hintId, {tabId:tabId, frameId:frameId, key:msg.key, playing:msg.playing === true, area:msg.area});
+            videoHints.set(hintId, {tabId:tabId, frameId:frameId, key:msg.key, playing:msg.playing === true,
+                audible:msg.audible === true, failed:msg.failed === true, area:msg.area});
             if (videoHints.size > 64) videoHints.delete(videoHints.keys().next().value);
         }
         return;
     }
+    if (msg.t === "site_fullscreen" && enginePlayerPreferred && typeof msg.key === "string" && msg.key.length <= 100) {
+        var epoch = attempt;
+        browser.tabs.query({active:true, currentWindow:true}).then(function (tabs) {
+            if (attempt !== epoch || !(tabs || []).some(tab => tab.id === tabId)) return;
+            if (locked) return;
+            cancelNativeOpen();
+            clearTimeout(captureTimeout);
+            if (playerTabId !== null) sendToFrame(playerTabId, null, {cmd:"release", silent:true, resume:true}, attempt);
+            playerTabId = tabId;
+            playerFrameId = frameId;
+            pending = true;
+            var id = ++attempt;
+            postToNative({t:"opening", origin:"site"});
+            captureTimeout = setTimeout(function () {
+                if (attempt === id && !locked) resetPlayer(true);
+            }, 6000);
+            sendToFrame(tabId, frameId, {cmd:"adopt_fullscreen", key:msg.key}, id)
+                .then(result => finishEngineResult(id, result, false));
+        }).catch(function () {});
+        return;
+    }
     if (msg.t === "candidate") {
         if (!pending || msg.requestId !== attempt || tabId !== playerTabId) return Promise.resolve(null);
-        return Promise.resolve({ frameId: frameId, playing: msg.playing === true, area: Number(msg.area) || 0 });
+        return Promise.resolve({ frameId: frameId, playing: msg.playing === true, audible:msg.audible === true, failed:msg.failed === true, area: Number(msg.area) || 0 });
     }
     if (msg.t === "takeover" && !msg.ok && msg.requestId === attempt && tabId === playerTabId &&
         frameId === playerFrameId && (pending || locked)) {
@@ -235,7 +263,7 @@ function beginTakeover(tab) {
         .then(function (results) {
             if (currentAttempt !== attempt || locked) return;
             var candidates = (results || []).filter(function (item) { return item && Number.isInteger(item.frameId) && item.area > 0; });
-            candidates.sort(function (a, b) { return Number(b.playing) - Number(a.playing) || b.area - a.area || a.frameId - b.frameId; });
+            candidates.sort(function (a, b) { return Number(b.playing) - Number(a.playing) || Number(a.failed) - Number(b.failed) || Number(b.audible) - Number(a.audible) || b.area - a.area || a.frameId - b.frameId; });
             if (!candidates.length) {
                 resetPlayer(false);
                 postToNative({ t: "takeover", ok: false, reason: "no_video" });
@@ -258,7 +286,7 @@ function beginTakeover(tab) {
             postToNative({ t: "takeover", ok: false, reason: "no_video" });
         }); }
     var hints = Array.from(videoHints.values()).filter(hint => hint.tabId === tab.id);
-    hints.sort((a, b) => Number(b.playing) - Number(a.playing) || b.area - a.area || a.frameId - b.frameId);
+    hints.sort((a, b) => Number(b.playing) - Number(a.playing) || Number(a.failed) - Number(b.failed) || Number(b.audible) - Number(a.audible) || b.area - a.area || a.frameId - b.frameId);
     if (enginePlayerPreferred && hints.length) {
         var hint = hints[0];
         playerFrameId = hint.frameId;
@@ -278,6 +306,7 @@ function beginTakeover(tab) {
 browser.browserAction.onClicked.addListener(beginTakeover);
 
 browser.tabs.onRemoved.addListener(function (tabId) {
+    if (activeTabId === tabId) activeTabId = null;
     for (var [key, hint] of videoHints) if (hint.tabId === tabId) videoHints.delete(key);
     if (tabId === playerTabId) resetPlayer(true);
 });

@@ -51,6 +51,7 @@ class UpgridPlayerFeature(
         when (event.optString("t")) {
             "opening" -> if (started && opening == null) {
                 holdOrientation()
+                back.isEnabled = true
                 opening = ProgressBar(activity).also {
                     it.contentDescription = activity.getString(R.string.upgrid_player_open)
                     val size = (48 * activity.resources.displayMetrics.density).toInt()
@@ -89,6 +90,7 @@ class UpgridPlayerFeature(
             "takeover" -> if (event.optBoolean("ok") && event.optString("mode") == "engine") {
                 if (started) showEngine(event) else bridge.sendCommand("release")
             } else if (!event.optBoolean("ok") && started) {
+                back.isEnabled = false
                 restoreOrientation()
                 message(when (event.optString("reason")) {
                     "embedded_stream", "protected_stream" -> R.string.upgrid_player_native_unsupported
@@ -99,7 +101,7 @@ class UpgridPlayerFeature(
             "state" -> engineControls?.renderState(event)
             "gesture_required" -> if (started) Toast.makeText(activity,
                 R.string.upgrid_player_engine_tap, Toast.LENGTH_LONG).show()
-            "released" -> { player?.close(false); player = null; hideEngine(); restoreOrientation() }
+            "released" -> { player?.close(false); player = null; hideEngine(); back.isEnabled = false; restoreOrientation() }
         }
     }
 
@@ -197,6 +199,9 @@ class UpgridPlayerFeature(
 
     private fun exitToPage() {
         bridge.sendCommand("release") { put("resume", started) }
+        hideOpening()
+        back.isEnabled = false
+        restoreOrientation()
         hideEngine()
     }
 
@@ -222,6 +227,7 @@ class UpgridPlayerFeature(
     }
     override fun onStop(owner: LifecycleOwner) {
         started = false
+        back.isEnabled = false
         parent.removeCallbacks(warmControls)
         hideOpening()
         messageDialog?.dismiss()
@@ -233,6 +239,7 @@ class UpgridPlayerFeature(
     }
     override fun onDestroy(owner: LifecycleOwner) {
         destroyed = true
+        back.isEnabled = false
         parent.removeCallbacks(warmControls)
         player?.close(false)
         player = null

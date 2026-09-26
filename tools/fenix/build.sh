@@ -42,7 +42,9 @@ if [[ "${1:-baseline}" != baseline ]]; then
 else
     ./mach build
 fi
-gradle_args=("-Dorg.gradle.jvmargs=$build_jvm_args" --max-workers=1)
+# mach already prepends GRADLE_FLAGS. Passing --max-workers again is rejected
+# by Gradle 9.7, even when the two values are identical.
+gradle_args=()
 if [[ "${UPGRID_BUILD_VERBOSE:-0}" == 1 ]]; then
     gradle_args+=(--info)
 fi
@@ -50,4 +52,4 @@ build_task=fenix:assembleDebug
 if [[ "${1:-baseline}" == optimized ]]; then
     build_task=fenix:assembleRelease
 fi
-./mach gradle "$build_task" --console=plain -PdisableLeakCanary "${gradle_args[@]}"
+./mach gradle "$build_task" --console=plain "${gradle_args[@]}"
