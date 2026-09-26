@@ -75,9 +75,12 @@ def generate(checkout):
         text = text.replace("com.upgrid.browser.databinding.ViewFullscreenControlsBinding",
                             "org.mozilla.fenix.databinding.UpgridViewFullscreenControlsBinding")
         text = re.sub(r"\bViewFullscreenControlsBinding\b", "UpgridViewFullscreenControlsBinding", text)
+        text = text.replace("R.layout.view_native_player", "R.layout.upgrid_view_native_player")
         add(f"{APP}/src/main/java/org/mozilla/fenix/upgrid/{name}", kotlin_resources(text))
     add(f"{APP}/src/main/res/layout/upgrid_view_fullscreen_controls.xml",
         xml_resources((local / "res/layout/view_fullscreen_controls.xml").read_text(encoding="utf-8")))
+    add(f"{APP}/src/main/res/layout/upgrid_view_native_player.xml",
+        xml_resources((local / "res/layout/view_native_player.xml").read_text(encoding="utf-8")))
     add(f"{APP}/src/main/java/org/mozilla/fenix/upgrid/UpgridPlayerFeature.kt",
         (HERE / "overlay/UpgridPlayerFeature.kt").read_text(encoding="utf-8"))
     add(f"{APP}/src/main/java/org/mozilla/fenix/upgrid/UpgridAdblock.kt",
@@ -86,6 +89,16 @@ def generate(checkout):
         (HERE / "overlay/UpgridUi.kt").read_text(encoding="utf-8"))
     add(f"{APP}/src/main/java/org/mozilla/fenix/upgrid/UpgridDiagnostics.kt",
         (HERE / "overlay/UpgridDiagnostics.kt").read_text(encoding="utf-8"))
+    add(f"{APP}/src/test/java/org/mozilla/fenix/upgrid/UpgridDiagnosticsTest.kt",
+        (HERE / "overlay/UpgridDiagnosticsTest.kt").read_text(encoding="utf-8"))
+    add(f"{APP}/src/test/java/org/mozilla/fenix/upgrid/UpgridMenuTest.kt",
+        (HERE / "overlay/UpgridMenuTest.kt").read_text(encoding="utf-8"))
+    add(f"{APP}/src/test/java/org/mozilla/fenix/upgrid/UpgridPlayerOrientationTest.kt",
+        (HERE / "overlay/UpgridPlayerOrientationTest.kt").read_text(encoding="utf-8"))
+    add(f"{APP}/src/test/java/org/mozilla/fenix/upgrid/UpgridPlayerControlsTest.kt",
+        (HERE / "overlay/UpgridPlayerControlsTest.kt").read_text(encoding="utf-8"))
+    add(f"{APP}/src/test/java/org/mozilla/fenix/upgrid/UpgridPlayerBridgeTest.kt",
+        (HERE / "overlay/UpgridPlayerBridgeTest.kt").read_text(encoding="utf-8"))
     add(f"{APP}/src/main/res/drawable/ic_splash_logo.xml",
         (local / "res/drawable/ic_launcher_foreground.xml").read_text(encoding="utf-8"))
     add(f"{SUPPORT}/src/test/java/mozilla/components/support/webextensions/UpgridPermissionTest.kt",
@@ -128,10 +141,11 @@ def generate(checkout):
     <foreground android:drawable="@drawable/upgrid_ic_launcher_foreground" />
 </adaptive-icon>
 ''')
-    for name in ("manifest.json", "background.js", "player.js", "lifecycle.js"):
+    for name in ("manifest.json", "background.js", "player.js", "lifecycle.js", "preload.js"):
         add(f"{APP}/src/main/assets/extensions/upgrid_fullscreen/{name}",
             (local / f"assets/extensions/upgrid_fullscreen/{name}").read_text(encoding="utf-8")
-            .replace("var nativePlayerEnabled = false;", "var nativePlayerEnabled = true;"))
+            .replace("var nativePlayerEnabled = false;", "var nativePlayerEnabled = true;")
+            .replace("var enginePlayerPreferred = false;", "var enginePlayerPreferred = true;"))
 
     components = f"{APP}/src/main/java/org/mozilla/fenix/components/Components.kt"
     add(components, replace_once(original(components), "    val useCases by lazyMonitored {", """    val upgridPlayer by lazyMonitored {
@@ -150,6 +164,12 @@ def generate(checkout):
     }
 
     val upgridPlayer by lazyMonitored {"""))
+    add(f"{APP}/src/main/java/org/mozilla/fenix/upgrid/UpgridTabMemory.kt",
+        (HERE / "overlay/UpgridTabMemory.kt").read_text(encoding="utf-8"))
+    add(f"{APP}/src/test/java/org/mozilla/fenix/upgrid/UpgridTabMemoryTest.kt",
+        (HERE / "overlay/UpgridTabMemoryTest.kt").read_text(encoding="utf-8"))
+    add(f"{APP}/src/test/java/org/mozilla/fenix/upgrid/UpgridTabsTest.kt",
+        (HERE / "overlay/UpgridTabsTest.kt").read_text(encoding="utf-8"))
     application = f"{APP}/src/main/java/org/mozilla/fenix/FenixApplication.kt"
     text = replace_once(original(application), "                onUpdatePermissionRequest = components.addonUpdater::onUpdatePermissionRequest,", """                onUpdatePermissionRequest = components.addonUpdater::onUpdatePermissionRequest,
                 autoGrantedExtensionIds = setOf(org.mozilla.fenix.upgrid.UpgridAdblock.ID),""")
@@ -157,6 +177,14 @@ def generate(checkout):
         } catch (e: UnsupportedOperationException) {
             logger.error("Failed to initialize web extension support", e)""", """            )
             components.upgridAdblock.ensureInstalled()
+            android.os.Handler(android.os.Looper.getMainLooper()).post {
+                // Initialize the single bridge after extension support, before a
+                // first page needs the player. No browser view is attached here.
+                components.upgridPlayer
+                androidx.lifecycle.ProcessLifecycleOwner.get().lifecycle.addObserver(
+                    org.mozilla.fenix.upgrid.UpgridTabMemory(components.core.store),
+                )
+            }
         } catch (e: UnsupportedOperationException) {
             logger.error("Failed to initialize web extension support", e)""")
     add(application, text)
@@ -173,6 +201,10 @@ def generate(checkout):
     add(application, text)
     text = replace_once(files[application].decode("utf-8"), "        setDayNightTheme()", """        components.settings.apply {
             shouldUseBottomToolbar = false
+            importBookmarksFeatureFlagEnabled = true
+            // New tab actions create a real, restorable about:home tab immediately.
+            // Apply on upgrades too; the upstream default depends on remote experiments.
+            enableHomepageAsNewTab = true
             shouldUseExpandedToolbar = false
             isTabStripEnabled = resources.configuration.smallestScreenWidthDp >= 600
             microsurveyFeatureEnabled = false
@@ -261,7 +293,8 @@ def generate(checkout):
                     this, binding.browserLayout, requireComponents.upgridPlayer,
                     onVisibilityChanged = { visible ->
                         upgridPlayerVisible = visible
-                        if (visible) expandBrowserView() else collapseBrowserView()
+                        // The real Gecko fullscreen observer alone owns toolbar geometry.
+                        // Resizing here as well caused two layouts during one transition.
                         binding.swipeRefresh.isEnabled = !visible && shouldPullToRefreshBeEnabled(false)
                         (view as? SwipeGestureLayout)?.isSwipeEnabled = !visible
                     },
@@ -274,7 +307,42 @@ def generate(checkout):
                         "if (upgridPlayerVisible || fullScreenFeature.get()?.isFullScreen == true) return 0 to 0")
     text = text.replace("val shouldToolbarsBeHidden = isFullscreen || !webAppToolbarShouldBeVisible",
                         "val shouldToolbarsBeHidden = upgridPlayerVisible || isFullscreen || !webAppToolbarShouldBeVisible")
+    text = replace_once(text, """            feature = MediaSessionFullscreenFeature(
+                requireActivity(),
+                context.components.core.store,
+                customTabSessionId,
+            ),""", """            feature = MediaSessionFullscreenFeature(
+                requireActivity(),
+                context.components.core.store,
+                customTabSessionId,
+                autoRotate = false,
+            ),""")
+    text = replace_once(text, """            feature = ScreenOrientationFeature(
+                engine = requireComponents.core.engine,
+                activity = requireActivity(),
+            ),""", """            feature = ScreenOrientationFeature(
+                engine = requireComponents.core.engine,
+                activity = requireActivity(),
+                allowOrientationChange = { upgridPlayerFeature?.isActive != true },
+            ),""")
     add(fragment, text)
+
+    media = "mobile/android/android-components/components/feature/media/src/main/java/mozilla/components/feature/media/fullscreen/MediaSessionFullscreenFeature.kt"
+    text = replace_once(original(media), "    private val mainDispatcher: CoroutineDispatcher = Dispatchers.Main,",
+        "    private val mainDispatcher: CoroutineDispatcher = Dispatchers.Main,\n    private val autoRotate: Boolean = true,")
+    text = replace_once(text, "                    activity.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_USER",
+        "                    if (autoRotate) activity.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_USER")
+    text = replace_once(text, "                if (store.state.findCustomTabOrSelectedTab(tabId)?.id == state.id) {",
+        "                if (autoRotate && store.state.findCustomTabOrSelectedTab(tabId)?.id == state.id) {")
+    add(media, text)
+    orientation = "mobile/android/android-components/components/feature/session/src/main/java/mozilla/components/feature/session/ScreenOrientationFeature.kt"
+    text = replace_once(original(orientation), "    private val buildVersionProvider: () -> Int = { Build.VERSION.SDK_INT },",
+        "    private val buildVersionProvider: () -> Int = { Build.VERSION.SDK_INT },\n    private val allowOrientationChange: () -> Boolean = { true },")
+    text = replace_once(text, "    override fun onOrientationLock(requestedOrientation: Int): LockResult {",
+        "    override fun onOrientationLock(requestedOrientation: Int): LockResult {\n        if (!allowOrientationChange()) return LockResult.NOT_SUPPORTED")
+    text = replace_once(text, "    override fun onOrientationUnlock() {",
+        "    override fun onOrientationUnlock() {\n        if (!allowOrientationChange()) return")
+    add(orientation, text)
 
     toolbar = f"{APP}/src/main/java/org/mozilla/fenix/components/toolbar/BrowserToolbarMiddleware.kt"
     text = original(toolbar)
@@ -298,13 +366,62 @@ def generate(checkout):
             buildAction(ToolbarAction.TabCounter, Source.AddressBar.BrowserEnd),
             buildAction(ToolbarAction.Menu, Source.AddressBar.BrowserEnd),
         )""")
-    text = replace_body(text, "private fun buildEndPageActions()", "        return emptyList()")
+    text = replace_once(text, "    private fun updateEndPageActions(store: Store<BrowserToolbarState, BrowserToolbarAction>) =",
+                        "    private var upgridBookmarkJob: kotlinx.coroutines.Job? = null\n\n    private fun updateEndPageActions(store: Store<BrowserToolbarState, BrowserToolbarAction>) =")
+    start = text.index("    private fun updateEndPageActions(")
+    end = text.index("    /**", start)
+    text = text[:start] + """    private fun updateEndPageActions(store: Store<BrowserToolbarState, BrowserToolbarAction>) {
+        upgridBookmarkJob?.cancel()
+        upgridBookmarkJob = scope.launch {
+            val tab = browserStore.state.selectedTab
+            val actions = buildEndPageActions()
+            if (browserStore.state.selectedTab?.id == tab?.id &&
+                browserStore.state.selectedTab?.content?.url == tab?.content?.url) {
+                store.dispatch(PageActionsEndUpdated(actions))
+            }
+        }
+    }
+
+""" + text[end:]
+    text = replace_once(text, "private fun buildEndPageActions()", "private suspend fun buildEndPageActions()")
+    text = replace_body(text, "private suspend fun buildEndPageActions()", """        return listOf(buildAction(getBookmarkAction(), Source.AddressBar.PageEnd))""")
+    text = replace_once(text, """                updateCurrentPageOrigin(store)
+                updateEndBrowserActions(store)""", """                updateCurrentPageOrigin(store)
+                updateEndPageActions(store)
+                updateEndBrowserActions(store)""")
+    text = replace_once(text, "            }.collect { isBookmarked ->", """            }.collect { isBookmarked ->
+                updateEndPageActions(store)""")
+    text = replace_once(text, """                    if (ShortcutType.fromValue(settings.activeSimpleToolbarShortcutKey) == ShortcutType.TRANSLATE) {
+                        updateEndBrowserActions(store)
+                    }""", "                    updateEndBrowserActions(store)")
+    text = replace_once(text, """            buildAction(ToolbarAction.TabCounter, Source.AddressBar.BrowserEnd),""", """            buildAction(ToolbarAction.Translate, Source.AddressBar.BrowserEnd),
+            buildAction(ToolbarAction.TabCounter, Source.AddressBar.BrowserEnd),""")
     text = replace_body(text, "private suspend fun buildNavigationActions()", "        return emptyList()")
     add(toolbar, text)
+    toolbar_test = f"{APP}/src/test/java/org/mozilla/fenix/components/toolbar/BrowserToolbarMiddlewareTest.kt"
+    add(toolbar_test, replace_once(original(toolbar_test), "class BrowserToolbarMiddlewareTest {",
+        "class BrowserToolbarMiddlewareTest {\n" + (HERE / "overlay/UpgridToolbarTests.body.kt").read_text(encoding="utf-8")))
 
     menu_dialog = f"{APP}/src/main/java/org/mozilla/fenix/components/menu/MenuDialogFragment.kt"
     add(menu_dialog, replace_once(original(menu_dialog), "        Events.toolbarMenuVisible.record(NoExtras())", """        org.mozilla.fenix.upgrid.UpgridDiagnostics.get(requireContext()).breadcrumb("menu_open")
         Events.toolbarMenuVisible.record(NoExtras())"""))
+    add(menu_dialog, replace_once(files[menu_dialog].decode("utf-8"),
+        "            mainDispatcher = Dispatchers.Main,", """            mainDispatcher = Dispatchers.Main,
+            upgridCompactMenu = args.accesspoint != MenuAccessPoint.External,"""))
+    menu_middleware = f"{APP}/src/main/java/org/mozilla/fenix/components/menu/middleware/MenuDialogMiddleware.kt"
+    text = replace_once(original(menu_middleware),
+        "    private val mainDispatcher: CoroutineDispatcher = Dispatchers.Main,", """    private val mainDispatcher: CoroutineDispatcher = Dispatchers.Main,
+    private val upgridCompactMenu: Boolean = false,""")
+    text = replace_once(text, """        setupBookmarkState(store)
+        setupPinnedState(store)
+        setupExtensionState(store)
+        setupPageSummarizationState(store)""", """        setupBookmarkState(store)
+        // Upgrid's main menu has no shortcut or summarization actions. Avoid
+        // their storage/engine work on every opening; keep custom tabs unchanged.
+        if (!upgridCompactMenu) setupPinnedState(store)
+        setupExtensionState(store)
+        if (!upgridCompactMenu) setupPageSummarizationState(store)""")
+    add(menu_middleware, text)
 
     home = f"{APP}/src/main/java/org/mozilla/fenix/home/ui/Homepage.kt"
     add(home, replace_body(original(home), "internal fun Homepage(", """    org.mozilla.fenix.upgrid.UpgridHomepage(
@@ -313,6 +430,62 @@ def generate(checkout):
         onPrivateMode = { interactor.onPrivateModeButtonClicked(if (state.browsingMode.isPrivate) BrowsingMode.Normal else BrowsingMode.Private) },
         modifier = modifier,
     )"""))
+    request_interceptor = f"{APP}/src/main/java/org/mozilla/fenix/AppRequestInterceptor.kt"
+    text = replace_body(original(request_interceptor),
+        "private fun interceptAboutHomeRequest(uri: String)", """        // A request can come from an unselected empty tab or an old queued load.
+        // AboutHomeBinding owns home navigation from the selected tab's state;
+        // routing here can cover a newly loaded website with the home screen.
+        return uri == ABOUT_HOME_URL""")
+    text = replace_once(text, "Intercepts [uri] request to [ABOUT_HOME_URL] and navigates to the homepage.",
+        "Recognizes [ABOUT_HOME_URL]; selected-tab state owns homepage navigation.")
+    add(request_interceptor, text)
+    about_home = f"{APP}/src/main/java/org/mozilla/fenix/AboutHomeBinding.kt"
+    text = replace_once(original(about_home), "    browserStore: BrowserStore,", "    private val browserStore: BrowserStore,")
+    text = replace_once(text, "            .map { it.selectedTab?.content?.url }",
+        "            .map { it.selectedTab?.let { tab -> tab.id to tab.content.url } }")
+    text = replace_once(text, "    override suspend fun onState(flow: Flow<BrowserState>) {", """    override fun stop() {
+        super.stop()
+        org.mozilla.fenix.upgrid.UpgridHomeNavigation.clear(browserStore)
+    }
+
+    override suspend fun onState(flow: Flow<BrowserState>) {""")
+    text = replace_once(text, "            .collect { url ->", """            .collect { selection ->
+                val url = selection?.second
+                val showHome = org.mozilla.fenix.upgrid.UpgridHomeNavigation.shouldShowHome(browserStore)""")
+    text = replace_once(text, "                if (url == ABOUT_HOME_URL &&", """                if (url == ABOUT_HOME_URL &&
+                    // Check both fresh state and a load still awaiting Gecko's location callback.
+                    showHome &&""")
+    add(about_home, text)
+    add(f"{APP}/src/main/java/org/mozilla/fenix/upgrid/UpgridHomeNavigation.kt",
+        (HERE / "overlay/UpgridHomeNavigation.kt").read_text(encoding="utf-8"))
+    browser_use_cases = f"{APP}/src/main/java/org/mozilla/fenix/components/usecases/FenixBrowserUseCases.kt"
+    text = replace_once(original(browser_use_cases), "    private val profiler: Profiler?,", """    private val profiler: Profiler?,
+    private val onLoadStarted: (String) -> Unit = {},""")
+    text = replace_once(text, "        val startTime = profiler?.getProfilerTime()", """        // Browser navigation may already be queued while content.url is still about:home.
+        if (!newTab) onLoadStarted(searchTermOrURL)
+        val startTime = profiler?.getProfilerTime()""")
+    text = replace_once(text, """    fun navigateToHomepage() {
+        loadUrlUseCase.invoke(url = ABOUT_HOME_URL)""", """    fun navigateToHomepage() {
+        onLoadStarted(ABOUT_HOME_URL)
+        loadUrlUseCase.invoke(url = ABOUT_HOME_URL)""")
+    add(browser_use_cases, text)
+    use_cases = f"{APP}/src/main/java/org/mozilla/fenix/components/UseCases.kt"
+    text = replace_once(original(use_cases), "            homepageTitle = context.getString(R.string.tab_tray_homepage_tab),", """            homepageTitle = context.getString(R.string.tab_tray_homepage_tab),
+            onLoadStarted = { input -> org.mozilla.fenix.upgrid.UpgridHomeNavigation.onLoadStarted(store.value, input) },""")
+    add(use_cases, text)
+    interceptor_test = f"{APP}/src/test/java/org/mozilla/fenix/AppRequestInterceptorTest.kt"
+    text = original(interceptor_test)
+    text = replace_once(text,
+        "fun `GIVEN request to ABOUT_HOME WHEN request is intercepted THEN return a null interception response and navigate to the homepage`",
+        "fun `GIVEN request to ABOUT_HOME WHEN request is intercepted THEN allow load and leave navigation to selected tab state`")
+    text = replace_once(text, """        verify {
+            navigationController.navigate(NavGraphDirections.actionGlobalHome())
+        }""", """        verify(exactly = 0) {
+            navigationController.navigate(NavGraphDirections.actionGlobalHome())
+        }""")
+    add(interceptor_test, text)
+    add(f"{APP}/src/test/java/org/mozilla/fenix/upgrid/UpgridHomeRoutingTest.kt",
+        (HERE / "overlay/UpgridHomeRoutingTest.kt").read_text(encoding="utf-8"))
     menu = f"{APP}/src/main/java/org/mozilla/fenix/components/menu/compose/MainMenu.kt"
     add(menu, replace_body(original(menu), "fun MainMenu(", (HERE / "overlay/MainMenu.body.kt").read_text(encoding="utf-8")))
 
@@ -323,12 +496,39 @@ def generate(checkout):
                         "        default = appContext.resources.configuration.smallestScreenWidthDp >= 600,")
     text = replace_once(text, "default = { FxNimbus.features.defaultBottomToolbar.value().enabled },", "default = { false },")
     text = replace_once(text, "default = { FxNimbus.features.defaultExpandedToolbar.value().enabled },", "default = { false },")
+    text = replace_once(text, """        appContext.getPreferenceKey(R.string.pref_key_translations_offer),
+        default = true,""", """        appContext.getPreferenceKey(R.string.pref_key_translations_offer),
+        default = false,""")
     text = replace_body(text, "fun shouldShowOnboarding(", "        return false")
     text = replace_body(text, "fun shouldShowSetAsDefaultPrompt(", "        return false")
     text = replace_once(text, """        appContext.getPreferenceKey(R.string.pref_key_telemetry),
         default = true,""", """        appContext.getPreferenceKey(R.string.pref_key_telemetry),
         default = false,""")
     add(settings, text)
+    desktop = f"{APP}/src/main/java/org/mozilla/fenix/browser/desktopmode/DesktopModeRepository.kt"
+    add(desktop, replace_once(original(desktop), "        context.isLargeScreenSize()", "        false"))
+    translations = f"{APP}/src/main/java/org/mozilla/fenix/browser/TranslationsBinding.kt"
+    # Manual toolbar navigation remains intact, including its errors. Page-load
+    # offers are acknowledged but never open a dialog over the user's page.
+    text = replace_once(original(translations), """                    offerToTranslateCurrentPage()
+                }
+
+                // Trigger automatic popup""", """                    // Upgrid opens translation only from the toolbar.
+                }
+
+                // Trigger automatic popup""")
+    add(translations, text)
+    translations_test = f"{APP}/src/test/java/org/mozilla/fenix/browser/TranslationsBindingTest.kt"
+    text = original(translations_test)
+    test_start = text.index("fun `GIVEN translationState WHEN translation state isOfferTranslate is true")
+    test_end = text.index("    @Test", test_start)
+    text = text[:test_start] + replace_once(text[test_start:test_end],
+        "assertEquals(1, onShowTranslationsDialogCount)", "assertEquals(0, onShowTranslationsDialogCount)") + text[test_end:]
+    text = replace_once(text, """            verify { binding.recordTranslationStartTelemetry() }
+            verify(atLeast = 1) { appStore.dispatch(SnackbarAction.SnackbarDismissed) }
+            verify { navController.navigate(expectedNavigation) }""", """            verify(exactly = 0) { binding.recordTranslationStartTelemetry() }
+            verify(exactly = 0) { navController.navigate(expectedNavigation) }""")
+    add(translations_test, text)
     settings_ui = f"{APP}/src/main/java/org/mozilla/fenix/settings/SettingsFragment.kt"
     text = replace_once(original(settings_ui), "        creatingFragment = false", """        listOf(
             R.string.pref_key_sign_in, R.string.pref_key_account_category,
@@ -342,6 +542,13 @@ def generate(checkout):
         ).forEach { key -> findPreference<Preference>(getString(key))?.isVisible = false }
         creatingFragment = false""")
     add(settings_ui, text)
+    # Framework tertiary_text_dark is fixed gray and does not follow the app's
+    # light/dark/private palette. Use the same semantic color as the form labels.
+    search_form = f"{APP}/src/main/res/layout/fragment_save_search_engine.xml"
+    text = original(search_form)
+    if text.count("@android:color/tertiary_text_dark") != 2:
+        raise ValueError("Search engine form helper colors changed upstream")
+    add(search_form, text.replace("@android:color/tertiary_text_dark", "?attr/colorOnSurfaceVariant"))
     build = f"{APP}/build.gradle"
     text = replace_once(original(build), 'applicationId "org.mozilla"',
                         'applicationId "com.upgrid.browser.next"')

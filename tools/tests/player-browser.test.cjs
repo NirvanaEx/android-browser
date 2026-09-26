@@ -6,12 +6,67 @@ const { firefox } = require(process.env.UPGRID_PLAYWRIGHT_MODULE || 'playwright'
 const launchOptions = { headless: true, ...(process.env.UPGRID_FIREFOX_BINARY ? { executablePath: process.env.UPGRID_FIREFOX_BINARY } : {}) };
 const source = readFileSync(resolve(__dirname, process.env.UPGRID_PLAYER_SOURCE || '../../app/src/main/assets/extensions/upgrid_fullscreen/player.js'), 'utf8');
 const lifecycle = readFileSync(resolve(__dirname, '../../app/src/main/assets/extensions/upgrid_fullscreen/lifecycle.js'), 'utf8');
+const preload = readFileSync(resolve(__dirname, '../../app/src/main/assets/extensions/upgrid_fullscreen/preload.js'), 'utf8');
+
+test('Firefox: cached fullscreen avoids DOM enumeration and all scale modes preserve playback', async () => {
+    const browser = await firefox.launch(launchOptions);
+    try {
+        const page = await browser.newPage({viewport:{width:576,height:1000}});
+        await page.goto('http://127.0.0.1:8766/aspect.html');
+        await page.addScriptTag({content:`window.handlers=[];window.playerEvents=[];window.browser={runtime:{
+            sendMessage:msg=>{playerEvents.push(msg);return Promise.resolve();},
+            onMessage:{addListener:fn=>handlers.push(fn)}}};
+            window.command=msg=>{for(const fn of handlers){const value=fn(msg);if(value!==undefined)return value;}};` + source + preload});
+        await page.getByRole('button',{name:'Play',exact:true}).click();
+        await page.waitForFunction(() => playerEvents.some(event => event.t === 'video_hint' && event.playing));
+        await page.evaluate(() => {
+            window.beforeSource=video.currentSrc;window.beforeTime=video.currentTime;window.pauses=0;window.loads=0;
+            video.addEventListener('pause',()=>window.pauses++);video.addEventListener('loadstart',()=>window.loads++);
+            window.originalQuery=document.querySelectorAll;
+            document.querySelectorAll=()=>{throw Error('Unexpected full DOM search');};
+            const button=document.createElement('button');button.id='cached';button.textContent='Cached player';
+            button.onclick=()=>{const hint=playerEvents.filter(event=>event.t==='video_hint').at(-1);
+                window.openResult=command({cmd:'fast_takeover',key:hint.key,requestId:5,token:'cached'});};
+            document.body.prepend(button);
+        });
+        await page.getByRole('button',{name:'Cached player'}).click();
+        await page.waitForFunction(() => document.fullscreenElement === video);
+        await page.evaluate(() => { document.querySelectorAll=originalQuery; });
+        assert.equal(await page.evaluate(() => openResult), 'ok');
+        for (const mode of ['cover','fill','contain']) {
+            await page.evaluate(mode => command({cmd:'scale',requestId:5,mode}), mode);
+            await page.waitForFunction(mode => getComputedStyle(video).objectFit === mode, mode);
+            await page.evaluate(() => video.style.setProperty('object-fit','none','important'));
+            await page.waitForFunction(mode => getComputedStyle(video).objectFit === mode, mode);
+        }
+        for (const [horizontal, vertical, scale] of [[true,false,'-1 1'],
+            [false,true,'1 -1'],[true,true,'-1']]) {
+            await page.evaluate(([horizontal,vertical])=>command({cmd:'mirror',requestId:5,horizontal,vertical}),[horizontal,vertical]);
+            await page.waitForFunction(scale=>getComputedStyle(video).scale===scale,scale);
+            await page.evaluate(()=>video.style.setProperty('scale','3','important'));
+            await page.waitForFunction(scale=>getComputedStyle(video).scale===scale,scale);
+            assert.deepEqual(await page.evaluate(()=>{
+                const state=playerEvents.filter(e=>e.t==='state').at(-1);
+                return [state.mirrorX,state.mirrorY,state.videoWidth,state.videoHeight];
+            }),[horizontal,vertical,640,360]);
+        }
+        await page.evaluate(()=>command({cmd:'mirror',requestId:5,horizontal:false,vertical:false}));
+        await page.waitForFunction(()=>getComputedStyle(video).scale==='none');
+        await page.waitForFunction(() => video.currentTime > beforeTime + 0.5);
+        assert.deepEqual(await page.evaluate(() => ({pauses:window.pauses,loads:window.loads,
+            same:video.currentSrc===beforeSource,paused:video.paused})), {pauses:0,loads:0,same:true,paused:false});
+        await page.evaluate(() => command({cmd:'release',requestId:5,resume:false}));
+        await page.waitForFunction(() => !document.fullscreenElement && video.paused);
+        assert.equal(await page.evaluate(() => getComputedStyle(video).objectFit), 'fill');
+        assert.equal(await page.evaluate(() => getComputedStyle(video).scale), 'none');
+    } finally { await browser.close(); }
+});
 
 test('Firefox: real blob and MSE fullscreen use the video top layer and restore paused, unchanged DOM', async () => {
     const browser = await firefox.launch(launchOptions);
     try {
-        for (const kind of ['blob', 'mse']) {
-            const page = await browser.newPage({ viewport: { width: 576, height: 1000 } });
+        for (const [kind, viewport] of [['blob', {width:576,height:1000}], ['mse', {width:1000,height:576}]]) {
+            const page = await browser.newPage({ viewport });
             await page.goto('http://127.0.0.1:8766/engine.html');
             await page.addScriptTag({ content: `window.browser = {runtime:{
                 sendMessage: msg => {window.playerEvents.push(msg);return Promise.resolve({frameId:0,playing:true,area:100});},
@@ -36,13 +91,61 @@ test('Firefox: real blob and MSE fullscreen use the video top layer and restore 
                 controls: video.controls, paused: video.paused,
                 fillsScreen: Math.round(video.getBoundingClientRect().width) === innerWidth && Math.round(video.getBoundingClientRect().height) === innerHeight,
             })), { fullscreen:true, same:true, fit:'contain', position:'50% 50%', controls:false, paused:true, fillsScreen:true });
+            await page.evaluate(() => {
+                video.style.setProperty('object-fit', 'fill', 'important');
+                video.style.setProperty('transform', 'scaleX(2)', 'important');
+                video.controls = true;
+            });
+            await page.waitForFunction(() => getComputedStyle(video).objectFit === 'contain' &&
+                getComputedStyle(video).transform === 'none' && !video.controls);
             await page.evaluate(() => playerCommand({cmd:'seekBy',delta:5,requestId:1}));
             assert.equal(await page.evaluate(() => video.currentTime), 15);
             await page.evaluate(() => playerCommand({cmd:'release',resume:false,requestId:1}));
             await page.waitForFunction(() => !document.fullscreenElement);
-            assert.equal(await page.evaluate(() => video.paused && video.controls && video.parentElement === originalParent && video.getAttribute('style') === originalStyle), true);
+            assert.deepEqual(await page.evaluate(() => ({paused:video.paused,controls:video.controls,
+                sameParent:video.parentElement===originalParent,style:video.getAttribute('style'),originalStyle})),
+                await page.evaluate(()=>({paused:true,controls:true,sameParent:true,style:originalStyle,originalStyle})));
             await page.close();
         }
+    } finally { await browser.close(); }
+});
+
+test('Firefox: engine entry and return keep decoded playback without new media requests or pause', async () => {
+    const browser = await firefox.launch(launchOptions);
+    try {
+        const page = await browser.newPage();
+        let requests = 0;
+        page.on('request', request => { if (request.url().includes('sample.mp4')) requests++; });
+        await page.goto('http://127.0.0.1:8766/engine.html');
+        await page.addScriptTag({content:`window.browser={runtime:{
+            sendMessage:()=>Promise.resolve({frameId:0,playing:true,area:100}),
+            onMessage:{addListener:fn=>{window.playerCommand=fn;}}
+        }};` + source});
+        await page.click('#blob');
+        await page.waitForFunction(() => !video.paused && video.currentTime > 0.3);
+        await page.evaluate(async () => {
+            window.pauseEvents = 0; window.loadEvents = 0;
+            video.addEventListener('pause', () => pauseEvents++);
+            video.addEventListener('loadstart', () => loadEvents++);
+            window.beforeSource = video.currentSrc; window.beforeTime = video.currentTime;
+            await upgridPlayerMain(1, 'continuity');
+        });
+        const requestsBefore = requests;
+        await page.click('#fullscreen');
+        await page.waitForFunction(() => document.fullscreenElement === video && video.currentTime > beforeTime + 0.3);
+        assert.deepEqual(await page.evaluate(() => ({paused:video.paused, pauses:pauseEvents,
+            loads:loadEvents, sameSource:video.currentSrc === beforeSource})),
+            {paused:false,pauses:0,loads:0,sameSource:true});
+        assert.equal(requests, requestsBefore);
+        await page.evaluate(() => {
+            window.exitTime = video.currentTime;
+            return playerCommand({cmd:'release',resume:true,requestId:1});
+        });
+        await page.waitForFunction(() => !document.fullscreenElement && video.currentTime > exitTime + 0.3);
+        assert.deepEqual(await page.evaluate(() => ({paused:video.paused, pauses:pauseEvents,
+            loads:loadEvents, sameSource:video.currentSrc === beforeSource})),
+            {paused:false,pauses:0,loads:0,sameSource:true});
+        assert.equal(requests, requestsBefore);
     } finally { await browser.close(); }
 });
 

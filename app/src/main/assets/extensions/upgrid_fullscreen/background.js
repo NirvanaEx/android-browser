@@ -8,10 +8,53 @@ var attempt = 0;
 var captureTimeout = null;
 // The Fenix overlay enables the native Media3 screen. Legacy keeps its old UI.
 var nativePlayerEnabled = false;
+var enginePlayerPreferred = false;
 var activeTabId = null;
 var returningStream = null;
+var videoHints = new Map();
+var nativeOpenRequest = null;
 
-function engineFallback(requestId, position, paused) {
+function cancelNativeOpen() {
+    if (nativeOpenRequest) clearTimeout(nativeOpenRequest.timeout);
+    nativeOpenRequest = null;
+}
+
+function openFromNative() {
+    if (nativeOpenRequest) return;
+    var request = { attempt: attempt };
+    nativeOpenRequest = request;
+    function fail(reason) {
+        if (nativeOpenRequest !== request || request.attempt !== attempt) return;
+        cancelNativeOpen();
+        postToNative({t:"takeover", ok:false, reason:reason});
+    }
+    request.timeout = setTimeout(function () { fail("player_failed"); }, 6000);
+    // This command comes from the browser's toolbar tap through the connected
+    // native port. It does not manufacture page activation: Gecko still decides
+    // whether the selected video may enter fullscreen.
+    browser.tabs.query({active:true, currentWindow:true}).then(function (tabs) {
+        if (nativeOpenRequest !== request || request.attempt !== attempt) return;
+        var tab = (tabs || []).find(function (item) { return Number.isInteger(item.id); });
+        if (!tab) { fail("no_video"); return; }
+        cancelNativeOpen();
+        beginTakeover(tab);
+    }).catch(function () { fail("player_failed"); });
+}
+
+function finishEngineResult(requestId, result, allowNative) {
+    if (requestId !== attempt || result === "ok") return;
+    if (result === "awaiting_gesture") {
+        clearTimeout(captureTimeout);
+        captureTimeout = setTimeout(function () { if (requestId === attempt) resetPlayer(true); }, 30_000);
+        postToNative({ t: "gesture_required" });
+        return;
+    }
+    if (allowNative && result !== "stale" && result !== "cancelled") return nativeTakeover(requestId, false);
+    resetPlayer(false);
+    postToNative({ t: "takeover", ok: false, reason: "embedded_stream" });
+}
+
+function engineFallback(requestId, position, paused, allowNative) {
     if (requestId !== attempt || playerTabId === null || playerFrameId === null) return;
     var tabId = playerTabId, frameId = playerFrameId;
     // Return position without starting page audio; the engine then owns playback.
@@ -21,16 +64,29 @@ function engineFallback(requestId, position, paused) {
         if (requestId !== attempt) return;
         if (restored !== "ok") return "stale";
         return sendToFrame(tabId, frameId, { cmd: "engine_takeover", paused: paused }, requestId);
-    }).then(function (result) {
-        if (requestId !== attempt || result === "ok") return;
-        if (result === "awaiting_gesture") {
-            clearTimeout(captureTimeout);
-            captureTimeout = setTimeout(function () { if (requestId === attempt) resetPlayer(true); }, 30_000);
-            postToNative({ t: "gesture_required" });
+    }).then(function (result) { return finishEngineResult(requestId, result, allowNative); });
+}
+
+function nativeTakeover(requestId, allowEngine) {
+    var tabId = playerTabId, frameId = playerFrameId;
+    return sendToFrame(tabId, frameId, { cmd: "describe_stream" }, requestId).then(function (stream) {
+        if (requestId !== attempt) {
+            sendToFrame(tabId, frameId, { cmd: "release", silent: true, resume: false }, requestId);
             return;
         }
-        resetPlayer(false);
-        postToNative({ t: "takeover", ok: false, reason: "embedded_stream" });
+        if (!stream || stream.error || !/^https?:\/\//i.test(stream.url || "")) {
+            if (allowEngine && stream && ["embedded_stream", "protected_stream"].includes(stream.error)) {
+                return engineFallback(requestId);
+            }
+            resetPlayer(false);
+            postToNative({ t: "takeover", ok: false, reason: stream && stream.error || "player_failed" });
+            return;
+        }
+        locked = true;
+        pending = false;
+        clearTimeout(captureTimeout);
+        captureTimeout = null;
+        postToNative(Object.assign({}, stream, { t: "stream", requestId: requestId }));
     });
 }
 
@@ -41,6 +97,7 @@ function sendToFrame(tabId, frameId, message, requestId) {
 }
 
 function resetPlayer(report, resume) {
+    cancelNativeOpen();
     var oldTab = playerTabId;
     var oldAttempt = attempt;
     clearTimeout(captureTimeout);
@@ -61,6 +118,7 @@ function ensurePort() {
         port = browser.runtime.connectNative("upgridPlayer");
         port.onMessage.addListener(function (msg) {
             if (!msg || !msg.cmd) return;
+            if (msg.cmd === "open") { openFromNative(); return; }
             if (msg.cmd === "suspend") {
                 // Native close precedes lifecycle cancellation on this port.
                 // Pause immediately, but let its in-flight position return finish.
@@ -91,7 +149,7 @@ function ensurePort() {
             }
             if (msg.cmd === "release") {
                 if (returningStream && returningStream.requestId === attempt) return;
-                resetPlayer(true); return;
+                resetPlayer(true, msg.resume === true); return;
             }
             if (!locked) return;
             sendToFrame(playerTabId, playerFrameId, msg);
@@ -115,6 +173,15 @@ browser.runtime.onMessage.addListener(function (msg, sender) {
     if (!msg || !msg.t || !sender || !sender.tab) return;
     var tabId = sender.tab.id;
     var frameId = sender.frameId === undefined ? 0 : sender.frameId;
+    if (msg.t === "video_hint") {
+        var hintId = tabId + ":" + frameId;
+        videoHints.delete(hintId);
+        if (typeof msg.key === "string" && msg.key.length <= 100 && Number.isFinite(msg.area) && msg.area > 0) {
+            videoHints.set(hintId, {tabId:tabId, frameId:frameId, key:msg.key, playing:msg.playing === true, area:msg.area});
+            if (videoHints.size > 64) videoHints.delete(videoHints.keys().next().value);
+        }
+        return;
+    }
     if (msg.t === "candidate") {
         if (!pending || msg.requestId !== attempt || tabId !== playerTabId) return Promise.resolve(null);
         return Promise.resolve({ frameId: frameId, playing: msg.playing === true, area: Number(msg.area) || 0 });
@@ -143,8 +210,9 @@ browser.runtime.onMessage.addListener(function (msg, sender) {
     postToNative(msg);
 });
 
-browser.browserAction.onClicked.addListener(function (tab) {
+function beginTakeover(tab) {
     if (!tab || tab.id === undefined) return;
+    cancelNativeOpen();
     if (playerTabId === tab.id && (pending || locked)) return;
     if (playerTabId !== null) resetPlayer(true);
     var currentAttempt = ++attempt;
@@ -159,7 +227,7 @@ browser.browserAction.onClicked.addListener(function (tab) {
         postToNative({ t: "takeover", ok: false, reason: "player_failed" });
     }, 6000);
     var token = String(currentAttempt) + "-" + Math.random().toString(36).slice(2);
-    browser.tabs.executeScript(tab.id, {
+    function discover() { return browser.tabs.executeScript(tab.id, {
         code: "(" + upgridPlayerMain.toString() + ")(" + currentAttempt + "," + JSON.stringify(token) + ");",
         allFrames: true,
         matchAboutBlank: true,
@@ -174,26 +242,9 @@ browser.browserAction.onClicked.addListener(function (tab) {
                 return;
             }
             playerFrameId = candidates[0].frameId;
+            if (enginePlayerPreferred) return engineFallback(currentAttempt, undefined, undefined, true);
             if (nativePlayerEnabled) {
-                return sendToFrame(tab.id, playerFrameId, { cmd: "describe_stream" }, currentAttempt).then(function (stream) {
-                    if (currentAttempt !== attempt) {
-                        sendToFrame(tab.id, candidates[0].frameId, { cmd: "release", silent: true }, currentAttempt);
-                        return;
-                    }
-                    if (!stream || stream.error || !/^https?:\/\//i.test(stream.url || "")) {
-                        if (stream && ["embedded_stream", "protected_stream"].includes(stream.error)) {
-                            return engineFallback(currentAttempt);
-                        }
-                        resetPlayer(false);
-                        postToNative({ t: "takeover", ok: false, reason: stream && stream.error || "player_failed" });
-                        return;
-                    }
-                    locked = true;
-                    pending = false;
-                    clearTimeout(captureTimeout);
-                    captureTimeout = null;
-                    postToNative(Object.assign({}, stream, { t: "stream", requestId: currentAttempt }));
-                });
+                return nativeTakeover(currentAttempt, true);
             }
             return sendToFrame(tab.id, playerFrameId, { cmd: "takeover" }, currentAttempt).then(function (result) {
                 if (currentAttempt !== attempt || locked || result === "ok") return;
@@ -205,18 +256,43 @@ browser.browserAction.onClicked.addListener(function (tab) {
             if (currentAttempt !== attempt || locked) return;
             resetPlayer(false);
             postToNative({ t: "takeover", ok: false, reason: "no_video" });
-        });
-});
+        }); }
+    var hints = Array.from(videoHints.values()).filter(hint => hint.tabId === tab.id);
+    hints.sort((a, b) => Number(b.playing) - Number(a.playing) || b.area - a.area || a.frameId - b.frameId);
+    if (enginePlayerPreferred && hints.length) {
+        var hint = hints[0];
+        playerFrameId = hint.frameId;
+        sendToFrame(tab.id, hint.frameId, {cmd:"fast_takeover", key:hint.key, token:token}, currentAttempt)
+            .then(function (result) {
+                if (currentAttempt !== attempt || locked) return;
+                if (result === "miss" || result === undefined) {
+                    videoHints.delete(tab.id + ":" + hint.frameId);
+                    playerFrameId = null;
+                    return discover();
+                }
+                return finishEngineResult(currentAttempt, result, true);
+            });
+    } else discover();
+}
+
+browser.browserAction.onClicked.addListener(beginTakeover);
 
 browser.tabs.onRemoved.addListener(function (tabId) {
+    for (var [key, hint] of videoHints) if (hint.tabId === tabId) videoHints.delete(key);
     if (tabId === playerTabId) resetPlayer(true);
 });
 browser.tabs.onUpdated.addListener(function (tabId, change) {
+    if (change.status === "loading") for (var [key, hint] of videoHints) if (hint.tabId === tabId) videoHints.delete(key);
     if (tabId === playerTabId && change.status === "loading") resetPlayer(true);
 });
 browser.tabs.onActivated.addListener(function (info) {
+    cancelNativeOpen();
     if (activeTabId !== null && info.tabId !== activeTabId)
         sendToFrame(activeTabId, null, { cmd: "suspend_page" });
     activeTabId = info.tabId;
     if (playerTabId !== null && info.tabId !== playerTabId) resetPlayer(true);
 });
+
+// The built-in extension API queues this connection until Android registers its
+// handler. Prepare transport before the first gesture; never open video here.
+ensurePort();

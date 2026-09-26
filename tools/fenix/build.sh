@@ -19,7 +19,11 @@ if [[ -d "$host_tools/usr/bin" ]]; then
     export PATH="$host_tools/usr/bin:$PATH"
 fi
 export MOZCONFIG="$script_dir/mozconfig"
-export GRADLE_FLAGS="${GRADLE_FLAGS:-} -PdisableLeakCanary"
+# Keep the user's 16 GB workstation responsive, including for full R8 builds.
+# These limits intentionally apply over older saved Gradle properties. Do not
+# increase them automatically after an OOM or a slow optimization pass.
+build_jvm_args="-Xmx4g -Xms512m -XX:MaxMetaspaceSize=1g -XX:ActiveProcessorCount=4 -XX:+UseParallelGC"
+export GRADLE_FLAGS="${GRADLE_FLAGS:-} -PdisableLeakCanary --max-workers=1 '-Dorg.gradle.jvmargs=$build_jvm_args'"
 export GRADLE_USER_HOME=${UPGRID_GRADLE_HOME:-"$HOME/.cache/upgrid/gradle"}
 diagnostic_config=${UPGRID_DIAGNOSTICS_CONFIG:-"$script_dir/../../build/fenix/diagnostics-config.json"}
 if [[ -f "$diagnostic_config" ]]; then
@@ -38,15 +42,12 @@ if [[ "${1:-baseline}" != baseline ]]; then
 else
     ./mach build
 fi
-gradle_args=()
+gradle_args=("-Dorg.gradle.jvmargs=$build_jvm_args" --max-workers=1)
 if [[ "${UPGRID_BUILD_VERBOSE:-0}" == 1 ]]; then
     gradle_args+=(--info)
 fi
 build_task=fenix:assembleDebug
 if [[ "${1:-baseline}" == optimized ]]; then
     build_task=fenix:assembleRelease
-    # R8's whole-program pass needs more heap than incremental debug compilation.
-    # Serialize lint/compile workers so they do not compete with that pass.
-    gradle_args+=("-Dorg.gradle.jvmargs=-Xmx${UPGRID_OPTIMIZED_HEAP:-6g} -Xms512m -XX:MaxMetaspaceSize=2g -XX:+UseParallelGC" --max-workers=1)
 fi
 ./mach gradle "$build_task" --console=plain -PdisableLeakCanary "${gradle_args[@]}"

@@ -14,6 +14,13 @@ import org.xmlpull.v1.XmlSerializer;
 /** Shell-only test helper; never packaged in the browser. */
 public final class Snapshot {
     public static void main(String[] args) throws Exception {
+        if (args.length < 1 || args.length > 2) {
+            throw new IllegalArgumentException("Usage: Snapshot <output.xml> [settleMilliseconds: 0..2000]");
+        }
+        int settleMilliseconds = args.length == 2 ? Integer.parseInt(args[1]) : 0;
+        if (settleMilliseconds < 0 || settleMilliseconds > 2000) {
+            throw new IllegalArgumentException("settleMilliseconds must be between 0 and 2000");
+        }
         HandlerThread thread = new HandlerThread("upgrid-ui-snapshot");
         thread.start();
         Object connection = Class.forName("android.app.UiAutomationConnection").getConstructor().newInstance();
@@ -24,6 +31,9 @@ public final class Snapshot {
             AccessibilityServiceInfo info = ui.getServiceInfo();
             info.flags |= AccessibilityServiceInfo.FLAG_REPORT_VIEW_IDS;
             ui.setServiceInfo(info);
+            // Gecko may publish its virtual HTML children after the native
+            // toolbar root is already available to a new accessibility client.
+            if (settleMilliseconds > 0) SystemClock.sleep(settleMilliseconds);
             AccessibilityNodeInfo root = null;
             for (int attempt = 0; root == null && attempt < 30; attempt++) {
                 SystemClock.sleep(100);

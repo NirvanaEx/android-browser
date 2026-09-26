@@ -7,6 +7,7 @@ param(
     [switch]$CheckMenu,
     [switch]$AllowSlowEmulatorLaunch,
     [switch]$RootedEmulator,
+    [switch]$UseSnapshotProbe,
     [string]$OutputName = 'startup-smoke'
 )
 $ErrorActionPreference = 'Stop'
@@ -19,6 +20,74 @@ $repo = (Resolve-Path (Join-Path $PSScriptRoot '../..')).Path
 $output = Join-Path $repo "build/fenix/$OutputName"
 New-Item -ItemType Directory -Force -Path $output | Out-Null
 $package = 'com.upgrid.browser.next.debug'
+if ($UseSnapshotProbe) {
+    $snapshotJar = Join-Path $repo 'build/fenix/android-ui/snapshot.jar'
+    if (!(Test-Path $snapshotJar)) { throw 'Build tools/tests/android-ui/build.ps1 first.' }
+    & $Adb -s $Serial push $snapshotJar /data/local/tmp/upgrid-snapshot.jar 2>&1 | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw 'Cannot install UI snapshot probe.' }
+}
+function Invoke-SmokeAdb([string[]]$arguments, [int]$timeoutMilliseconds = 15000) {
+    if ($timeoutMilliseconds -le 0) { throw 'UI inspection deadline expired.' }
+    $command = [System.Diagnostics.Process]::new()
+    $command.StartInfo.FileName = $Adb
+    $command.StartInfo.UseShellExecute = $false
+    $command.StartInfo.CreateNoWindow = $true
+    $command.StartInfo.RedirectStandardOutput = $true
+    $command.StartInfo.RedirectStandardError = $true
+    foreach ($argument in (@('-s', $Serial) + $arguments)) { $command.StartInfo.ArgumentList.Add($argument) }
+    try {
+        [void]$command.Start()
+        $stdout = $command.StandardOutput.ReadToEndAsync()
+        $stderr = $command.StandardError.ReadToEndAsync()
+        if (!$command.WaitForExit($timeoutMilliseconds)) {
+            # Stop only this owned adb client, never the server or the application.
+            $command.Kill()
+            throw "UI command exceeded ${timeoutMilliseconds}ms: $($arguments -join ' ')"
+        }
+        $result = $stdout.GetAwaiter().GetResult() + $stderr.GetAwaiter().GetResult()
+        if ($command.ExitCode -ne 0) { throw "UI command failed: $result" }
+        return $result
+    } finally {
+        $command.Dispose()
+    }
+}
+function Invoke-SmokeTap([int]$x, [int]$y) {
+    if ($UseSnapshotProbe) {
+        # One real DOWN/UP pair with the helper's 35ms hold; never retry the action.
+        $touch = Invoke-SmokeAdb @('shell', "CLASSPATH=/data/local/tmp/upgrid-snapshot.jar app_process /system/bin com.upgrid.uitest.Touch $x $y 1")
+        if ($touch -notmatch 'TOUCH_OK') { throw "Touch injection failed: $touch" }
+    } else {
+        Invoke-SmokeAdb @('shell', 'input', 'tap', "$x", "$y") | Out-Null
+    }
+}
+function Save-UiSnapshot([string]$remotePath, [string]$localPath, [int]$timeoutMilliseconds = 15000) {
+    $snapshotClock = [System.Diagnostics.Stopwatch]::StartNew()
+    if ($UseSnapshotProbe) {
+        # Uses the same Android accessibility tree without waiting for an idle animation loop.
+        $dump = Invoke-SmokeAdb @('shell', "CLASSPATH=/data/local/tmp/upgrid-snapshot.jar app_process /system/bin com.upgrid.uitest.Snapshot $remotePath 1500") $timeoutMilliseconds
+        if ($dump -notmatch 'SNAPSHOT_OK') { throw "Cannot inspect UI: $dump" }
+    } else {
+        $dump = Invoke-SmokeAdb @('shell', 'uiautomator', 'dump', $remotePath) $timeoutMilliseconds
+        if ($dump -notmatch 'dumped to:') { throw "Cannot inspect UI: $dump" }
+    }
+    $remaining = $timeoutMilliseconds - [int]$snapshotClock.ElapsedMilliseconds
+    Invoke-SmokeAdb @('pull', $remotePath, $localPath) $remaining | Out-Null
+}
+function Wait-UiMarker([string]$remotePath, [string]$localPath, [string]$markerXPath, [string]$description, [int]$timeoutMilliseconds = 15000) {
+    $waitClock = [System.Diagnostics.Stopwatch]::StartNew()
+    while ($waitClock.ElapsedMilliseconds -lt $timeoutMilliseconds) {
+        $remaining = $timeoutMilliseconds - [int]$waitClock.ElapsedMilliseconds
+        Save-UiSnapshot $remotePath $localPath $remaining
+        [xml]$markerUi = Get-Content -LiteralPath $localPath -Raw
+        $markerLabels = ($markerUi.SelectNodes('//node') | ForEach-Object { $_.text; $_.GetAttribute('content-desc') }) -join "`n"
+        if ($markerLabels -match '(?i)crashed|send a report|isn.t responding') { throw "Crash/ANR dialog while waiting for $description." }
+        if ($waitClock.ElapsedMilliseconds -ge $timeoutMilliseconds) { break }
+        if ($markerUi.SelectSingleNode($markerXPath)) { return ,$markerUi }
+        $remaining = $timeoutMilliseconds - [int]$waitClock.ElapsedMilliseconds
+        if ($remaining -gt 0) { Start-Sleep -Milliseconds ([Math]::Min(250, $remaining)) }
+    }
+    throw "Timed out after ${timeoutMilliseconds}ms waiting for $description; last snapshot: $localPath"
+}
 for ($attempt = 1; $attempt -le $Attempts; $attempt++) {
     & $Adb -s $Serial shell am force-stop $package | Out-Null
     & $Adb -s $Serial logcat -c
@@ -45,9 +114,7 @@ for ($attempt = 1; $attempt -le $Attempts; $attempt++) {
         if (($activities -join "`n") -notmatch '(?:ResumedActivity|topResumedActivity).*org.mozilla.fenix.HomeActivity') {
             throw "HomeActivity is not in the foreground after launch $attempt."
         }
-        $dump = & $Adb -s $Serial shell uiautomator dump /sdcard/upgrid-startup-smoke.xml 2>&1
-        if ($LASTEXITCODE -ne 0 -or "$dump" -notmatch 'dumped to:') { throw 'Cannot inspect current startup UI.' }
-        & $Adb -s $Serial pull /sdcard/upgrid-startup-smoke.xml "$output/ui-$attempt.xml" 2>&1 | Out-Null
+        Save-UiSnapshot /sdcard/upgrid-startup-smoke.xml "$output/ui-$attempt.xml"
         [xml]$ui = Get-Content "$output/ui-$attempt.xml"
         $labels = ($ui.SelectNodes('//node') | ForEach-Object { $_.text; $_.GetAttribute('content-desc') }) -join "`n"
         if ($labels -match '(?i)crashed|send a report|isn.t responding') { throw "Crash/ANR dialog on launch $attempt." }
@@ -55,33 +122,21 @@ for ($attempt = 1; $attempt -le $Attempts; $attempt++) {
         if ($BrowserTabTitle) {
             $counter = $ui.SelectNodes('//node') | Where-Object { $_.GetAttribute('content-desc') -match '^Non-private Tabs Open:' } | Select-Object -First 1
             if (!$counter -or $counter.bounds -notmatch '^\[(\d+),(\d+)\]\[(\d+),(\d+)\]$') { throw 'Cannot locate tab counter.' }
-            & $Adb -s $Serial shell input tap ([int](([int]$Matches[1] + [int]$Matches[3]) / 2)) ([int](([int]$Matches[2] + [int]$Matches[4]) / 2))
-            Start-Sleep -Seconds 1
-            $dump = & $Adb -s $Serial shell uiautomator dump /sdcard/upgrid-tabs-smoke.xml 2>&1
-            if ($LASTEXITCODE -ne 0 -or "$dump" -notmatch 'dumped to:') { throw 'Cannot inspect tabs tray.' }
-            & $Adb -s $Serial pull /sdcard/upgrid-tabs-smoke.xml "$output/tabs-$attempt.xml" 2>&1 | Out-Null
-            [xml]$tabsUi = Get-Content "$output/tabs-$attempt.xml"
+            Invoke-SmokeTap ([int](([int]$Matches[1] + [int]$Matches[3]) / 2)) ([int](([int]$Matches[2] + [int]$Matches[4]) / 2))
+            # A title in the top tab strip is not evidence that the tray opened.
+            [xml]$tabsUi = Wait-UiMarker /sdcard/upgrid-tabs-smoke.xml "$output/tabs-$attempt.xml" '//node[@content-desc="Open tabs menu"]' 'tabs tray'
             $tab = $tabsUi.SelectNodes('//node') | Where-Object { $_.text -eq $BrowserTabTitle } | Select-Object -First 1
             if (!$tab -or $tab.bounds -notmatch '^\[(\d+),(\d+)\]\[(\d+),(\d+)\]$') { throw "Saved tab $BrowserTabTitle is not in the tray." }
-            & $Adb -s $Serial shell input tap ([int](([int]$Matches[1] + [int]$Matches[3]) / 2)) ([int](([int]$Matches[2] + [int]$Matches[4]) / 2))
-            Start-Sleep -Seconds 3
-            $dump = & $Adb -s $Serial shell uiautomator dump /sdcard/upgrid-browser-smoke.xml 2>&1
-            if ($LASTEXITCODE -ne 0 -or "$dump" -notmatch 'dumped to:') { throw 'Cannot inspect restored browser page.' }
-            & $Adb -s $Serial pull /sdcard/upgrid-browser-smoke.xml "$output/browser-$attempt.xml" 2>&1 | Out-Null
-            $ui = [xml](Get-Content "$output/browser-$attempt.xml")
-            if (!$ui.SelectSingleNode('//node[@content-desc="Open video in player"]')) { throw 'Browser toolbar missing on restored page.' }
+            Invoke-SmokeTap ([int](([int]$Matches[1] + [int]$Matches[3]) / 2)) ([int](([int]$Matches[2] + [int]$Matches[4]) / 2))
+            $ui = Wait-UiMarker /sdcard/upgrid-browser-smoke.xml "$output/browser-$attempt.xml" '//node[@content-desc="Open video in player"]' 'restored browser toolbar'
         }
         if ($CheckMenu) {
             $menu = $ui.SelectSingleNode('//node[@content-desc="Menu" or @content-desc="More options"]')
             if (!$menu -or $menu.bounds -notmatch '^\[(\d+),(\d+)\]\[(\d+),(\d+)\]$') { throw 'Cannot locate menu button.' }
             $menuX = [int](([int]$Matches[1] + [int]$Matches[3]) / 2)
             $menuY = [int](([int]$Matches[2] + [int]$Matches[4]) / 2)
-            & $Adb -s $Serial shell input tap $menuX $menuY
-            Start-Sleep -Seconds 3
-            $dump = & $Adb -s $Serial shell uiautomator dump /sdcard/upgrid-menu-smoke.xml 2>&1
-            if ($LASTEXITCODE -ne 0 -or "$dump" -notmatch 'dumped to:') { throw 'Cannot inspect opened menu.' }
-            & $Adb -s $Serial pull /sdcard/upgrid-menu-smoke.xml "$output/menu-$attempt.xml" 2>&1 | Out-Null
-            [xml]$menuUi = Get-Content "$output/menu-$attempt.xml"
+            Invoke-SmokeTap $menuX $menuY
+            [xml]$menuUi = Wait-UiMarker /sdcard/upgrid-menu-smoke.xml "$output/menu-$attempt.xml" '//node[@content-desc="History"]' 'application menu'
             foreach ($item in @('History', 'Bookmarks', 'Downloads', 'Settings')) {
                 if (!$menuUi.SelectSingleNode("//node[@content-desc='$item']")) { throw "Menu item $item missing." }
             }

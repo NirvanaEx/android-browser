@@ -1,3 +1,14 @@
 <!doctype html><meta name="viewport" content="width=device-width,initial-scale=1"><title>Iframe player check</title>
 <style>body{margin:0;background:#ddd;font:18px sans-serif}header{padding:24px;background:#833;color:white}section{transform:translateZ(0);overflow:hidden;margin:20px}iframe{width:100%;height:260px;border:0}</style>
-<header>OUTER FRAME — must disappear</header><section><iframe src="http://localhost:8766/player.html"></iframe></section><p>Player must fill the outer page too.</p>
+<header>OUTER FRAME — must disappear</header><section><iframe id="frame" src="http://localhost:8766/player.html"></iframe></section><p>Player must fill the outer page too.</p>
+<script>
+if(new URLSearchParams(location.search).has('nat')) {
+ frame.src='http://10.0.2.2:8767/aspect.html?probe=1';
+ frame.style.height='620px';
+ frame.setAttribute('allow', "fullscreen 'none'");
+}
+if(new URLSearchParams(location.search).has('failure')) {
+ frame.src='http://localhost:8766/aspect.html?probe=1&failure=1';
+ frame.style.height='620px';
+}
+</script>

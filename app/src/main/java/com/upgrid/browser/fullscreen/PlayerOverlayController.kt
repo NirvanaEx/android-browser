@@ -5,6 +5,7 @@ import android.graphics.Color
 import android.media.AudioManager
 import android.view.GestureDetector
 import android.view.MotionEvent
+import android.view.View
 import android.view.ViewConfiguration
 import android.view.Window
 import android.widget.SeekBar
@@ -49,6 +50,12 @@ class PlayerOverlayController(
     /** Last duration reported by the page, seconds. Drives the drag-preview
      *  time label; the page itself resolves fractions on real seeks. */
     private var durationSec = 0.0
+    private var videoWidth = 0.0
+    private var videoHeight = 0.0
+    private var scaleMode = "contain"
+    private val positionControls = View.OnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
+        positionBottomBar()
+    }
 
     private enum class Drag { NONE, VOLUME, BRIGHTNESS }
     private var drag = Drag.NONE
@@ -66,6 +73,8 @@ class PlayerOverlayController(
         wireButtons()
         wireSeekBar()
         wireGestures()
+        binding.root.addOnLayoutChangeListener(positionControls)
+        binding.fsBottomBar.addOnLayoutChangeListener(positionControls)
     }
 
     // --- Public surface (driven by MainActivity) ---------------------------
@@ -80,6 +89,11 @@ class PlayerOverlayController(
             binding.fsSeekFlashRight.isVisible = false
             binding.fsGestureIndicator.isVisible = false
         } else {
+            userSeeking = false
+            durationSec = 0.0
+            videoWidth = 0.0
+            videoHeight = 0.0
+            binding.fsBottomBar.translationY = 0f
             window.attributes = window.attributes.apply { screenBrightness = originalBrightness }
         }
     }
@@ -91,13 +105,24 @@ class PlayerOverlayController(
         binding.fsSeekFlashRight.removeCallbacks(hideFlashRight)
         binding.fsGestureIndicator.removeCallbacks(hideIndicator)
         binding.root.setOnTouchListener(null)
+        binding.root.removeOnLayoutChangeListener(positionControls)
+        binding.fsBottomBar.removeOnLayoutChangeListener(positionControls)
+        binding.fsBottomBar.translationY = 0f
         window.attributes = window.attributes.apply { screenBrightness = originalBrightness }
     }
 
     /** Render a "state"/"takeover" snapshot from the content script. */
     fun renderState(s: JSONObject) {
-        val pos = s.optDouble("pos", 0.0)
-        durationSec = s.optDouble("dur", 0.0)
+        // Media duration may be Infinity while live, and bridge JSON can carry
+        // null for a non-finite position. Never pass either into roundToInt().
+        val pos = finiteMediaTime(s.optDouble("pos", 0.0))
+        durationSec = finiteMediaTime(s.optDouble("dur", 0.0))
+        videoWidth = finiteMediaTime(s.optDouble("videoWidth", 0.0))
+        videoHeight = finiteMediaTime(s.optDouble("videoHeight", 0.0))
+        scaleMode = s.optString("scale", "contain")
+        binding.fsSeek.isEnabled = durationSec > 0.0
+        if (durationSec <= 0.0) userSeeking = false
+        positionBottomBar()
         val playing = !(s.optBoolean("paused", true) || s.optBoolean("ended", false))
 
         binding.fsPlayPause.setImageResource(
@@ -112,7 +137,7 @@ class PlayerOverlayController(
 
         if (!userSeeking) {
             binding.fsSeek.progress =
-                if (durationSec > 0) ((pos / durationSec) * SEEK_MAX).roundToInt() else 0
+                if (durationSec > 0) ((pos / durationSec).coerceIn(0.0, 1.0) * SEEK_MAX).roundToInt() else 0
             binding.fsTime.text = formatTimePair(pos)
         }
     }
@@ -148,7 +173,7 @@ class PlayerOverlayController(
     private fun wireSeekBar() {
         binding.fsSeek.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
             override fun onStartTrackingTouch(seekBar: SeekBar?) {
-                userSeeking = true
+                userSeeking = durationSec > 0.0
             }
 
             override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
@@ -160,8 +185,12 @@ class PlayerOverlayController(
             }
 
             override fun onStopTrackingTouch(seekBar: SeekBar?) {
+                if (!userSeeking || durationSec <= 0.0) {
+                    userSeeking = false
+                    return
+                }
                 userSeeking = false
-                val frac = (seekBar?.progress ?: 0).toDouble() / SEEK_MAX
+                val frac = ((seekBar?.progress ?: 0).toDouble() / SEEK_MAX).coerceIn(0.0, 1.0)
                 bridge.sendCommand("seekTo") { put("frac", frac) }
             }
         })
@@ -211,10 +240,12 @@ class PlayerOverlayController(
 
                     // Dragging ~70% of the overlay height sweeps the full range.
                     val range = binding.root.height * 0.7f
+                    if (range <= 0f) return false
                     val frac = totalDy / range
                     when (drag) {
                         Drag.VOLUME -> {
                             val max = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
+                            if (max <= 0) return true
                             val vol = (dragStartVolume + frac * max).roundToInt().coerceIn(0, max)
                             audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, vol, 0)
                             showIndicator(
@@ -254,6 +285,7 @@ class PlayerOverlayController(
     }
 
     private fun seekBy(deltaSeconds: Int) {
+        if (durationSec <= 0.0) return
         bridge.sendCommand("seekBy") { put("delta", deltaSeconds) }
         val ctx = binding.root.context
         if (deltaSeconds < 0) {
@@ -284,6 +316,17 @@ class PlayerOverlayController(
         barsHidden = hidden
         binding.fsTopBar.isVisible = !hidden
         binding.fsBottomBar.isVisible = !hidden
+        if (!hidden) positionBottomBar()
+    }
+
+    /** Keep the seek row next to a letterboxed portrait frame, including after rotation. */
+    private fun positionBottomBar() {
+        val root = binding.root
+        val bar = binding.fsBottomBar
+        if (!root.isVisible || root.height <= 0 || bar.height <= 0) return
+        val top = playerControlsTop(root.width, root.height, videoWidth, videoHeight,
+            bar.height, scaleMode == "contain")
+        bar.translationY = (top - bar.top).toFloat()
     }
 
     private fun formatTimePair(posSec: Double): String =
@@ -303,4 +346,22 @@ class PlayerOverlayController(
         const val INDICATOR_LINGER_MS = 500L
         val ACCENT = Color.parseColor("#FFC536")
     }
+}
+
+internal fun finiteMediaTime(value: Double): Double = value.takeIf { it.isFinite() && it >= 0.0 } ?: 0.0
+
+/** Pixel position of the controls below a centered contain frame; other modes stay at the bottom. */
+internal fun playerControlsTop(
+    viewportWidth: Int,
+    viewportHeight: Int,
+    videoWidth: Double,
+    videoHeight: Double,
+    controlsHeight: Int,
+    fit: Boolean,
+): Int {
+    val bottom = (viewportHeight - controlsHeight).coerceAtLeast(0)
+    if (!fit || viewportWidth <= 0 || viewportHeight <= viewportWidth ||
+        !videoWidth.isFinite() || !videoHeight.isFinite() || videoWidth <= 0.0 || videoHeight <= 0.0) return bottom
+    val displayedHeight = minOf(viewportHeight.toDouble(), viewportWidth.toDouble() / videoWidth * videoHeight)
+    return ((viewportHeight + displayedHeight) / 2.0).roundToInt().coerceIn(0, bottom)
 }

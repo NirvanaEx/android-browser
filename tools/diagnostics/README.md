@@ -10,6 +10,14 @@ Sources: early uncaught Java/Kotlin exceptions; Fenix/Gecko crash callbacks; And
 
 Reports are fsynced into the app's private no-backup directory, capped at 128 queued reports. Nonfatal repeats are limited to one per signature per minute. HTTPS uploads run off the UI thread; a report is removed only after the server acknowledges its exact ID. Local receipts prevent a delivered crash from being reconstructed and resent with a different body after restart. Permanent malformed/conflicting requests are quarantined locally (up to 16); network/auth/rate-limit failures remain queued. Foreground retries run every 30 seconds; WorkManager supplies a connected-network fallback at a minimum 15-minute interval. Force-stopping the app can defer background work until the next launch.
 
+Since 0.6.1, storage and installation identity are lazy: normal construction and
+UI callbacks do no disk IO. Nonfatal stack/JSON work runs in the bounded IO queue
+(at most 64 pending tasks); event time and breadcrumbs are captured before queueing.
+Breadcrumb bursts coalesce into one write after 250 ms. A hard process kill can
+lose that last unflushed breadcrumb snapshot; caught crashes still synchronously
+persist the report with the current in-memory breadcrumbs. Crash durability and
+the HTTPS acknowledgement/offline retry protocol are unchanged.
+
 The custom collector is the only Fenix crash reporting service in this build. Mozilla/Sentry crash uploads are not enabled by the user's request to send diagnostics to their own VPS. Ordinary Mozilla telemetry remains disabled.
 
 At the 128-report queue limit, the oldest queued report is evicted to keep storage bounded. Delivery is therefore best-effort during very long outages or error storms; acknowledgements govern normal successful removal, not quota eviction.

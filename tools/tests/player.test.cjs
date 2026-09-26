@@ -152,19 +152,25 @@ function element(css = '') {
             const values = this.declarations(); values.set(name, value + (priority ? '!important' : ''));
             this.cssText = [...values].map(([key, val]) => key + ':' + val + ';').join('');
         },
+        removeProperty(name) {
+            const values = this.declarations(); values.delete(name);
+            this.cssText = [...values].map(([key, val]) => key + ':' + val + ';').join('');
+        },
     };
     return { style, children: [], parentElement: null, isConnected: true,
         getAttribute: function () { return this.style.cssText || null; },
         setAttribute: function (_, value) { this.style.cssText = value; },
         removeAttribute: function () { this.style.cssText = ''; }, contains: () => false };
 }
-function harness({ nested = false, width = 640, shadow = false, now = () => 0 } = {}) {
+function harness({ nested = false, width = 640, shadow = false, now = () => 0, preloaded = false } = {}) {
     const messages = [], timers = new Map(), intervals = new Map(), listeners = {}, observers = [];
-    let timerId = 0, command, fullscreenRequests = 0;
+    let timerId = 0, fullscreenRequests = 0;
+    const commands = [], documentListeners = {};
+    const command = msg => { for (const handler of commands) { const result = handler(msg); if (result !== undefined) return result; } };
     const root = element('background:white;'), parent = element('transform:translateZ(0);overflow:hidden;');
     const sibling = element('color:red;');
     const video = Object.assign(element('object-fit:cover;'), {
-        controls: true, isConnected: true, paused: false, ended: false, readyState: 4,
+        tagName: 'VIDEO', controls: true, isConnected: true, paused: false, ended: false, readyState: 4,
         currentTime: 8, duration: 100, parentElement: parent, currentSrc: 'https://cdn.example/video.mp4',
         getBoundingClientRect: () => ({ width, height: 360 }),
         addEventListener() {}, removeEventListener() {},
@@ -174,6 +180,7 @@ function harness({ nested = false, width = 640, shadow = false, now = () => 0 } 
     parent.children = [video, sibling]; parent.parentElement = root; root.children = [parent];
     const shadowRoot = { querySelectorAll: s => s === 'video' ? [video] : [] };
     const document = { URL: 'https://example.com/watch?id=private', baseURI: 'https://example.com/', title: 'Video',
+        addEventListener: (type, fn) => { documentListeners[type] = fn; },
         documentElement: root, fullscreenElement: null, fullscreenEnabled: false, createElement: () => element(),
         querySelectorAll: s => s === 'video' ? (shadow ? [] : [video]) : (shadow ? [{ shadowRoot }] : [video]),
     };
@@ -183,6 +190,7 @@ function harness({ nested = false, width = 640, shadow = false, now = () => 0 } 
     window.top = nested ? {} : window;
     window.parent = nested ? { postMessage: msg => posted.push(msg) } : window;
     const context = vm.createContext({ document, window, Promise, Map, isFinite, URL, Date: { now }, navigator: { userAgent: 'Test' },
+        getComputedStyle: window.getComputedStyle,
         MutationObserver: class {
             constructor(callback) { this.callback = callback; this.nodes = new Set(); observers.push(this); }
             observe(node) { this.nodes.add(node); }
@@ -192,20 +200,148 @@ function harness({ nested = false, width = 640, shadow = false, now = () => 0 } 
         setInterval: fn => { intervals.set(++timerId, fn); return timerId; }, clearInterval: id => intervals.delete(id),
         browser: { runtime: {
             sendMessage: msg => { messages.push(msg); return Promise.resolve(msg.t === 'candidate' ? { frameId: 2, playing: msg.playing, area: msg.area } : null); },
-            onMessage: { addListener: fn => { command = fn; } },
+            onMessage: { addListener: fn => { commands.push(fn); } },
         } },
     });
     vm.runInContext(source, context);
+    if (preloaded) vm.runInContext(readFileSync(resolve(__dirname, '../../app/src/main/assets/extensions/upgrid_fullscreen/preload.js'), 'utf8'), context);
     return { video, parent, sibling, root, window, document, timers, intervals, messages, posted, observers,
         mutate: () => observers.filter(observer => observer.nodes.size).forEach(observer => observer.callback()),
         probe: (id = 1) => context.upgridPlayerMain(id, 'test-token'),
         command: msg => command({ requestId: 1, ...msg }),
+        documentEvent: (type, target = video) => documentListeners[type]({type, isTrusted:true, composedPath:() => [target]}),
         confirmParent: (extra = {}) => listeners.message({ source: window.parent,
             data: { upgrid: 'expanded', requestId: 1, token: 'test-token', ok: true, ...extra } }),
         event: name => listeners[name](),
         get fullscreenRequests() { return fullscreenRequests; },
     };
 }
+
+test('preloaded playing video opens without a DOM scan or source reload', async () => {
+    const h = harness({preloaded:true});
+    h.document.querySelectorAll = () => { throw new Error('Fast opening must not enumerate the DOM'); };
+    h.documentEvent('playing');
+    const hint = h.messages.at(-1);
+    assert.equal(hint.t, 'video_hint');
+    assert.equal(JSON.stringify(hint).includes('https:'), false, 'candidate hints must contain no URLs');
+    h.video.requestFullscreen = async () => { h.document.fullscreenElement = h.video; };
+    assert.equal(await h.command({cmd:'fast_takeover', key:hint.key, token:'fast'}), 'ok');
+    assert.equal(h.video.currentTime, 8);
+    assert.equal(h.video.paused, false);
+    assert.equal(h.messages.at(-1).path, 'cached');
+});
+
+for (const change of ['source', 'detached', 'hidden', 'key']) test(`cached hint rejects ${change} before fullscreen`, async () => {
+    const h = harness({preloaded:true}); h.documentEvent('playing');
+    const key = h.messages.at(-1).key;
+    if (change === 'source') h.video.currentSrc = 'https://cdn.example/different.mp4';
+    if (change === 'detached') h.video.isConnected = false;
+    if (change === 'hidden') h.document.hidden = true;
+    assert.equal(await h.command({cmd:'fast_takeover',key:change === 'key' ? key+'wrong' : key,token:'fast'}), 'miss');
+    assert.equal(h.fullscreenRequests, 0);
+    assert.equal(h.video.paused, false);
+});
+
+test('all three scale modes survive site rewrites and restore the original video style', async () => {
+    const h = harness();
+    h.video.requestFullscreen = async () => { h.document.fullscreenElement = h.video; };
+    h.document.exitFullscreen = async () => { h.document.fullscreenElement = null; };
+    await h.probe(); await h.command({cmd:'engine_takeover'});
+    for (const mode of ['cover','fill','contain']) {
+        await h.command({cmd:'scale',mode});
+        h.video.style.setProperty('object-fit', 'none'); h.mutate();
+        assert.equal(h.video.style.getPropertyValue('object-fit'), mode);
+        assert.equal(h.video.currentTime, 8);
+        assert.equal(h.video.paused, false);
+    }
+    await h.command({cmd:'scale',mode:'invalid'});
+    assert.equal(h.video.style.getPropertyValue('object-fit'), 'contain');
+    await h.command({cmd:'release',resume:false});
+    assert.equal(h.video.style.cssText, 'object-fit:cover;');
+});
+
+test('Gecko mirror controls apply only to video, survive site rewrites and restore its original transform', async () => {
+    const h = harness();
+    h.video.style.setProperty('transform', 'translateX(12px)');
+    h.video.style.setProperty('transform-origin', '0px 0px');
+    h.video.videoWidth = 1920; h.video.videoHeight = 1080;
+    const original = h.video.style.cssText;
+    h.video.requestFullscreen = async () => { h.document.fullscreenElement = h.video; };
+    h.document.exitFullscreen = async () => { h.document.fullscreenElement = null; };
+    await h.probe(); await h.command({cmd:'engine_takeover'});
+    for (const [horizontal, vertical, scale] of [[true,false,'-1 1'],[true,true,'-1 -1'],[false,true,'1 -1'],[false,false,'none']]) {
+        await h.command({cmd:'mirror',horizontal,vertical});
+        h.video.style.setProperty('scale','5'); h.mutate();
+        assert.equal(h.video.style.getPropertyValue('scale'), scale);
+        assert.equal(h.video.style.getPropertyValue('transform-origin'), '50% 50%');
+        assert.equal(h.messages.at(-1).mirrorX, horizontal);
+        assert.equal(h.messages.at(-1).mirrorY, vertical);
+        assert.equal(h.messages.at(-1).videoWidth, 1920);
+        assert.equal(h.messages.at(-1).videoHeight, 1080);
+    }
+    assert.equal(h.parent.style.cssText, 'transform:translateZ(0);overflow:hidden;');
+    await h.command({cmd:'release',resume:true});
+    assert.equal(h.video.style.cssText, original);
+});
+
+test('already fullscreen video opens Upgrid controls without another activation or playback command', async () => {
+    const h = harness(); h.document.fullscreenElement = h.video;
+    h.video.play = h.video.pause = h.video.requestFullscreen = () => { throw Error('Redundant playback/fullscreen request'); };
+    await h.probe();
+    assert.equal(await h.command({cmd:'engine_takeover'}), 'ok');
+    assert.equal(h.messages.at(-1).mode, 'engine');
+});
+
+test('seek rejects nonfinite inputs and clamps MSE gaps while setter failure keeps the player open', async () => {
+    const h = harness();
+    h.video.requestFullscreen = async () => { h.document.fullscreenElement = h.video; };
+    await h.probe(); await h.command({cmd:'engine_takeover'});
+    for (const msg of [{cmd:'seekBy',delta:Infinity},{cmd:'seekTo',frac:NaN},{cmd:'seekTo',frac:'0.5'}]) await h.command(msg);
+    assert.equal(h.video.currentTime, 8);
+    h.video.seekable = {length:2,start:i=>[10,40][i],end:i=>[20,60][i]};
+    await h.command({cmd:'seekTo',frac:0.28}); assert.equal(h.video.currentTime,20);
+    await h.command({cmd:'seekTo',frac:0.34}); assert.equal(h.video.currentTime,40);
+    Object.defineProperty(h.video,'currentTime',{get:()=>NaN,set:()=>{throw Error('Media state changed');}});
+    await h.command({cmd:'seekBy',delta:5});
+    assert.equal(h.messages.at(-1).pos,0);
+    assert.equal(h.messages.some(event=>event.t==='released'),false);
+    assert.equal(h.intervals.size,1);
+});
+
+test('transient missing media source can recover, but new sources and prolonged errors release capture', async () => {
+    let now = 0;
+    const h = harness({now:()=>now});
+    h.video.requestFullscreen = async () => { h.document.fullscreenElement = h.video; };
+    h.document.exitFullscreen = async () => { h.document.fullscreenElement = null; };
+    const tick = () => [...h.intervals.values()].forEach(fn=>fn());
+    await h.probe(); await h.command({cmd:'engine_takeover'});
+    const originalSource = h.video.currentSrc;
+    h.video.currentSrc = ''; tick(); now = 1000; tick();
+    assert.equal(h.messages.at(-1).recovering,true);
+    assert.equal(h.intervals.size,1);
+    h.video.currentSrc = originalSource; tick();
+    assert.equal(h.messages.at(-1).recovering,false);
+    h.video.currentSrc = 'https://cdn.example/another.mp4';
+    await h.command({cmd:'seekBy',delta:5});
+    assert.equal(h.video.currentTime,8,'an old seek must not move a replacement source');
+    assert.equal(h.intervals.size,0);
+    await h.probe(2); await h.command({cmd:'engine_takeover',requestId:2});
+    h.video.error = {code:2}; tick(); now = 3499; tick();
+    assert.equal(h.intervals.size,1);
+    now = 3500; tick();
+    assert.equal(h.intervals.size,0);
+});
+
+test('a MediaStream video with no URL is not mistaken for a disappearing source', async () => {
+    let now = 0;
+    const h = harness({now:()=>now}); h.video.currentSrc = ''; h.video.src = '';
+    h.video.srcObject = {}; h.video.duration = Infinity;
+    h.video.requestFullscreen = async () => { h.document.fullscreenElement = h.video; };
+    await h.probe(); await h.command({cmd:'engine_takeover'});
+    for (const time of [0,1000,3000,10000]) { now=time; [...h.intervals.values()].forEach(fn=>fn()); }
+    assert.equal(h.intervals.size,1);
+    assert.equal(h.messages.at(-1).recovering,false);
+});
 
 test('discovery does not modify or fullscreen the video', async () => {
     const h = harness();
@@ -315,36 +451,207 @@ test('removed video and pagehide stop monitoring and release the page', async ()
     assert.equal(h.intervals.size, 0); assert.equal(h.messages.at(-1).t, 'released');
 });
 
-function relayHarness(native = false, streamResponse = { url: 'https://cdn.example/video.mp4', pos: 8 }, engineResponse = 'failed', returnResponse = 'ok') {
-    const hooks = {}, events = [], commands = [], executions = [], timers = new Map();
-    let timerId = 0;
+function relayHarness(native = false, streamResponse = { url: 'https://cdn.example/video.mp4', pos: 8 }, engineResponse = 'failed', returnResponse = 'ok', preferEngine = false, activeTabs = [{id:7}]) {
+    const hooks = {}, events = [], commands = [], executions = [], queries = [], timers = new Map();
+    let timerId = 0, connections = 0;
     const hook = name => ({ addListener: fn => { hooks[name] = fn; } });
     const context = vm.createContext({
         setTimeout: fn => { timers.set(++timerId, fn); return timerId; }, clearTimeout: id => timers.delete(id),
-        browser: { runtime: { onMessage: hook('message'), connectNative: () => ({
+        browser: { runtime: { onMessage: hook('message'), connectNative: () => (connections++, {
             onMessage: hook('command'), onDisconnect: hook('disconnect'), postMessage: msg => events.push(msg),
         }) }, browserAction: { onClicked: hook('click') }, tabs: {
             onRemoved: hook('remove'), onUpdated: hook('update'), onActivated: hook('activate'),
+            query: options => { queries.push(options); return Promise.resolve(activeTabs); },
             sendMessage: (tab, msg, options) => { commands.push({ tab, msg, options });
-                return Promise.resolve(msg.cmd === 'describe_stream' ? streamResponse : msg.cmd === 'engine_takeover' ? engineResponse : msg.cmd === 'return_stream' ? returnResponse : 'ok'); },
+                return Promise.resolve(msg.cmd === 'describe_stream' ? streamResponse : ['engine_takeover','fast_takeover'].includes(msg.cmd) ? engineResponse : msg.cmd === 'return_stream' ? returnResponse : 'ok'); },
             executeScript: (tab, options) => new Promise((resolve, reject) => { executions.push({ tab, options, resolve, reject }); }),
         } },
     });
     vm.runInContext(source, context);
     vm.runInContext(readFileSync(resolve(__dirname, '../../app/src/main/assets/extensions/upgrid_fullscreen/background.js'), 'utf8'), context);
     context.nativePlayerEnabled = native;
-    return { hooks, events, commands, executions, timers,
+    context.enginePlayerPreferred = preferEngine;
+    return { hooks, events, commands, executions, queries, timers,
+        get connections() { return connections; },
         message: (msg, tab = 7, frame = 2) => hooks.message({ requestId: context.attempt, ...msg }, { tab: { id: tab }, frameId: frame }),
         get requestId() { return context.attempt; }, click: (tab = 7) => hooks.click({ id: tab }),
         async select(candidates = [{ frameId: 2, playing: true, area: 100 }]) { executions.at(-1).resolve(candidates); await flush(); },
     };
 }
+
+test('transport is prepared before a gesture without touching playback and reconnects on demand', () => {
+    const h = relayHarness();
+    assert.equal(h.connections, 1);
+    assert.equal(h.commands.length, 0);
+    assert.equal(h.executions.length, 0);
+    assert.equal(h.events.length, 0);
+    h.hooks.disconnect();
+    assert.equal(h.connections, 1, 'no reconnect timer in the background');
+    h.click();
+    assert.equal(h.connections, 2);
+});
+
+test('cold connected native transport opens the selected video without an action callback', async () => {
+    const h = relayHarness(true, undefined, 'ok', 'ok', true);
+    // Android may never receive a browser-action delegate after extension restore.
+    // A real toolbar tap must still reach the same capture path over its port.
+    delete h.hooks.click;
+    h.hooks.command({cmd:'open'}); h.hooks.command({cmd:'open'});
+    await flush();
+    assert.equal(h.queries.length,1,'coalesce taps while discovering the active tab');
+    assert.equal(h.queries[0].active,true); assert.equal(h.queries[0].currentWindow,true);
+    assert.equal(h.executions.length,1); assert.equal(h.executions[0].tab,7);
+    await h.select();
+    assert.deepEqual(h.commands.map(item=>item.msg.cmd),['engine_takeover']);
+    h.message({t:'takeover',ok:true,mode:'engine'});
+    assert.equal(h.events.at(-1).mode,'engine');
+    assert.equal(h.connections,1);
+    assert.equal(h.timers.size,0);
+});
+
+test('native open retains the validated cached frame and normal activation fallback', async () => {
+    const h = relayHarness(true, undefined, 'awaiting_gesture', 'ok', true);
+    h.message({t:'video_hint',key:'selected',playing:true,area:800});
+    h.hooks.command({cmd:'open'}); await flush();
+    assert.equal(h.executions.length,0);
+    assert.equal(h.commands[0].msg.cmd,'fast_takeover');
+    assert.equal(h.commands[0].msg.key,'selected');
+    assert.equal(h.events.at(-1).t,'gesture_required');
+    assert.equal(h.commands.some(item=>item.msg.cmd==='describe_stream'),false);
+});
+
+for (const cancel of ['release','suspend','activate','disconnect'])
+test(`native active-tab query cannot open a player after ${cancel}`, async () => {
+    let resolveTabs;
+    const tabs = new Promise(resolve=>{resolveTabs=resolve;});
+    const h = relayHarness(true, undefined, 'ok', 'ok', true, tabs);
+    h.hooks.command({cmd:'open'});
+    if (cancel==='activate') h.hooks.activate({tabId:9});
+    else if (cancel==='disconnect') h.hooks.disconnect();
+    else h.hooks.command({cmd:cancel});
+    resolveTabs([{id:7}]); await flush();
+    assert.equal(h.executions.length,0);
+    assert.equal(h.commands.some(item=>['fast_takeover','engine_takeover'].includes(item.msg.cmd)),false);
+    assert.equal(h.timers.size,0);
+});
+
+test('native active-tab query timeout reports failure and ignores its late result', async () => {
+    let resolveTabs;
+    const h = relayHarness(true, undefined, 'ok', 'ok', true,new Promise(resolve=>{resolveTabs=resolve;}));
+    h.hooks.command({cmd:'open'});
+    for (const timeout of [...h.timers.values()]) timeout();
+    assert.equal(h.events.at(-1).reason,'player_failed');
+    resolveTabs([{id:7}]); await flush();
+    assert.equal(h.executions.length,0);
+    h.hooks.command({cmd:'open'}); await flush();
+    assert.equal(h.executions.length,1,'a fresh tap after timeout may retry');
+});
+
+test('native open with no active tab reports a useful failure without scanning another tab', async () => {
+    const h = relayHarness(true, undefined, 'ok', 'ok', true,[]);
+    h.hooks.command({cmd:'open'}); await flush();
+    assert.equal(h.events.at(-1).reason,'no_video');
+    assert.equal(h.executions.length,0);
+    assert.equal(h.timers.size,0);
+});
+
+test('explicit player exit relays playback preservation but lifecycle suspend never does', () => {
+    const h = relayHarness();
+    h.click(); h.hooks.command({cmd:'release',resume:true});
+    assert.equal(h.commands.at(-1).msg.resume, true);
+    h.click(); h.hooks.command({cmd:'release'});
+    assert.equal(h.commands.at(-1).msg.resume, false);
+});
+
+for (const exit of ['button','fullscreen']) for (const paused of [false,true])
+test(`Gecko ${exit} exit retains ${paused ? 'pause' : 'playing'} without any new pause or play call`, async () => {
+    const h = harness();
+    h.video.paused = paused;
+    h.video.requestFullscreen = async () => { h.document.fullscreenElement = h.video; };
+    h.document.exitFullscreen = async () => { h.document.fullscreenElement = null; };
+    await h.probe(); await h.command({cmd:'engine_takeover'});
+    h.video.play = () => { throw new Error('Exit must not call play'); };
+    h.video.pause = () => { throw new Error('Exit must not call pause'); };
+    if (exit === 'button') await h.command({cmd:'release',resume:true});
+    else { h.document.fullscreenElement = null; h.event('fullscreenchange'); }
+    assert.equal(h.video.paused, paused);
+    assert.equal(h.video.currentTime, 8);
+    assert.equal(h.video.controls, true);
+    assert.equal(h.intervals.size, 0);
+});
 test('relay coalesces taps and selects the playing video across all frames', async () => {
     const h = relayHarness(); h.click(); h.click();
     assert.equal(h.executions.length, 1);
     await h.select([{ frameId: 0, playing: false, area: 90000 }, { frameId: 2, playing: true, area: 100 }]);
     assert.equal(h.commands.at(-1).options.frameId, 2);
     assert.equal(h.commands.at(-1).msg.cmd, 'takeover');
+});
+
+test('relay uses the cached frame with one message and no script injection', async () => {
+    const h = relayHarness(true, undefined, 'ok', 'ok', true);
+    h.message({t:'video_hint', key:'frame-video', playing:true,area:800});
+    h.click(); await flush();
+    assert.equal(h.executions.length, 0);
+    assert.deepEqual(h.commands.map(item => item.msg.cmd), ['fast_takeover']);
+    assert.equal(h.commands[0].options.frameId, 2);
+    h.message({t:'takeover',ok:true,mode:'engine',path:'cached'});
+    assert.equal(h.events.at(-1).path, 'cached');
+});
+
+test('paused cached video uses the fast path while a playing hint still takes precedence', async () => {
+    const h = relayHarness(true, undefined, 'ok', 'ok', true);
+    h.message({t:'video_hint',key:'paused',playing:false,area:800});
+    h.click(); await flush();
+    assert.equal(h.executions.length,0);
+    assert.equal(h.commands[0].msg.key,'paused');
+    h.hooks.command({cmd:'release'});
+    h.message({t:'video_hint',key:'playing',playing:true,area:400},7,3);
+    h.click(); await flush();
+    assert.equal(h.commands.at(-1).msg.key,'playing');
+});
+
+test('a stale cache falls back to fresh discovery and never reuses the old frame', async () => {
+    const h = relayHarness(true, undefined, 'miss', 'ok', true);
+    h.message({t:'video_hint', key:'old',playing:true,area:800});
+    h.click(); await flush();
+    assert.equal(h.executions.length, 1);
+    await h.select([{frameId:3,playing:true,area:500}]);
+    assert.equal(h.commands.at(-1).options.frameId, 3);
+});
+
+test('navigation clears cached frame identities', async () => {
+    const h = relayHarness(true, undefined, 'ok', 'ok', true);
+    h.message({t:'video_hint',key:'old',playing:true,area:800});
+    h.hooks.update(7, {status:'loading'}); h.click();
+    assert.equal(h.executions.length, 1);
+    assert.equal(h.commands.length, 0);
+});
+
+test('engine-first opening does not describe, pause or reopen the network stream', async () => {
+    const h = relayHarness(true, undefined, 'ok', 'ok', true);
+    h.click(); await h.select();
+    assert.deepEqual(h.commands.map(x => x.msg.cmd), ['engine_takeover']);
+    h.message({t:'takeover',ok:true,mode:'engine'});
+    assert.equal(h.events.at(-1).mode, 'engine');
+    assert.equal(h.timers.size, 0);
+});
+
+test('engine activation prompt keeps the current video and does not start Media3', async () => {
+    const h = relayHarness(true, undefined, 'awaiting_gesture', 'ok', true);
+    h.click(); await h.select();
+    assert.deepEqual(h.commands.map(x => x.msg.cmd), ['engine_takeover']);
+    assert.equal(h.events.at(-1).t, 'gesture_required');
+    h.hooks.command({cmd:'release'});
+    h.message({t:'takeover',ok:true,mode:'engine'});
+    assert.equal(h.events.some(x => x.ok), false, 'cancelled activation cannot open controls');
+});
+
+test('engine refusal may transfer only the selected video, without a CSS fallback', async () => {
+    const h = relayHarness(true, undefined, 'failed', 'ok', true);
+    h.click(); await h.select();
+    assert.deepEqual(h.commands.map(x => x.msg.cmd), ['engine_takeover', 'describe_stream']);
+    assert.equal(h.events.at(-1).t, 'stream');
+    assert.ok(h.commands.every(x => x.options.frameId === 2));
 });
 
 test('lifecycle cancellation waits for the final native position acknowledgement', async () => {
@@ -516,15 +823,17 @@ test('browser-engine fallback fullscreens only the video without changing page C
     assert.equal(h.messages.at(-1).mode, 'engine');
     assert.equal(h.video.controls, false);
     assert.equal(h.video.paused, false);
-    assert.equal(h.video.style.cssText, 'object-fit:cover;');
+    assert.equal(h.video.style.getPropertyValue('object-fit'), 'contain');
+    assert.equal(h.video.style.getPropertyValue('transform'), 'none');
     assert.equal(h.parent.style.cssText, 'transform:translateZ(0);overflow:hidden;');
-    assert.equal(h.observers.length, 0);
+    assert.equal(h.observers.length, 1);
     await h.command({ cmd: 'pause' });
     assert.equal(h.video.paused, true);
     await h.command({ cmd: 'release', resume: false });
     assert.equal(h.document.fullscreenElement, null);
     assert.equal(h.video.controls, true);
     assert.equal(h.video.paused, true);
+    assert.equal(h.video.style.cssText, 'object-fit:cover;');
 });
 
 test('fullscreen refusal and cancellation never leave a partial player or modify CSS', async () => {

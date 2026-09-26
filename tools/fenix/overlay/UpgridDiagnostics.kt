@@ -35,30 +35,40 @@ import java.io.RandomAccessFile
 import java.net.URL
 import java.util.UUID
 import java.util.concurrent.Executors
+import java.util.concurrent.ScheduledExecutorService
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
 import javax.net.ssl.HttpsURLConnection
 
 /** Bounded technical reports. No browsing URLs, titles, form values or raw logcat. */
-class UpgridDiagnostics private constructor(private val context: Context) : LogSink {
-    private val root = File(context.noBackupFilesDir, "upgrid-diagnostics").apply { mkdirs() }
-    private val queue = File(root, "queue").apply { mkdirs() }
+class UpgridDiagnostics internal constructor(
+    private val context: Context,
+    private val collectionEnabled: Boolean = enabled,
+    private val io: ScheduledExecutorService = Executors.newSingleThreadScheduledExecutor { task ->
+        Thread(task, "UpgridDiagnosticsIO").apply { isDaemon = true }
+    },
+) : LogSink {
+    // Construction and ordinary UI callbacks must not touch storage. Crash capture
+    // can still initialize it synchronously if the process fails before IO starts.
+    private val root by lazy { File(context.noBackupFilesDir, "upgrid-diagnostics").apply { mkdirs() } }
+    private val queue by lazy { File(root, "queue").apply { mkdirs() } }
     private val queueMutex = Any()
-    private val io = Executors.newSingleThreadScheduledExecutor { task -> Thread(task, "UpgridDiagnosticsIO").apply { isDaemon = true } }
     private val recent = ArrayDeque<JSONObject>()
     private val signatures = LinkedHashMap<String, Long>()
     private val started = AtomicBoolean(false)
     private val uploading = AtomicBoolean(false)
     private val fatalRecorded = AtomicBoolean(false)
     private val pendingTasks = java.util.concurrent.atomic.AtomicInteger()
+    private val breadcrumbRevision = AtomicLong()
+    private val breadcrumbWritePending = AtomicBoolean(false)
     private val heartbeat = AtomicLong(SystemClock.uptimeMillis())
     @Volatile private var foreground = 0
-    private val installation: String = runCatching { locked {
+    private val installation: String by lazy { runCatching { locked {
         val file = File(root, "installation")
         file.takeIf { it.isFile }?.readText()?.takeIf { runCatching { UUID.fromString(it) }.isSuccess }
             ?: UUID.randomUUID().toString().also { file.writeText(it) }
-    } }.getOrElse { UUID.randomUUID().toString() }
+    } }.getOrElse { UUID.randomUUID().toString() } }
 
     private fun <T> locked(block: () -> T): T = synchronized(queueMutex) {
         RandomAccessFile(File(root, "queue.lock"), "rw").use { handle ->
@@ -76,16 +86,39 @@ class UpgridDiagnostics private constructor(private val context: Context) : LogS
     }
 
     fun breadcrumb(name: String) {
-        if (!enabled) return
+        if (!collectionEnabled) return
         synchronized(recent) {
             if (recent.size == 40) recent.removeFirst()
             recent.addLast(JSONObject().put("action", label(name)).put("uptime", SystemClock.uptimeMillis()))
         }
-        background { locked { File(root, "breadcrumbs.json").writeText(breadcrumbs().toString()) } }
+        breadcrumbRevision.incrementAndGet()
+        scheduleBreadcrumbWrite()
     }
 
-    private fun breadcrumbs(): JSONArray = synchronized(recent) {
-        if (recent.isNotEmpty()) JSONArray(recent.toList()) else runCatching {
+    private fun scheduleBreadcrumbWrite() {
+        if (!breadcrumbWritePending.compareAndSet(false, true)) return
+        // A navigation can open several fragments in one frame. Persist the newest
+        // bounded snapshot once, instead of queuing a disk write for every callback.
+        io.schedule({
+            val revision = breadcrumbRevision.get()
+            try {
+                val snapshot = breadcrumbs().toString()
+                locked { File(root, "breadcrumbs.json").writeText(snapshot) }
+            } catch (_: Exception) {
+                android.util.Log.w("UpgridDiagnostics", "Breadcrumb persistence failed; browser continues")
+            } finally {
+                breadcrumbWritePending.set(false)
+                if (breadcrumbRevision.get() != revision) scheduleBreadcrumbWrite()
+            }
+        }, 250, TimeUnit.MILLISECONDS)
+    }
+
+    private fun recentBreadcrumbs(): JSONArray = synchronized(recent) { JSONArray(recent.toList()) }
+
+    private fun breadcrumbs(): JSONArray {
+        val snapshot = recentBreadcrumbs()
+        // Never hold the UI's in-memory lock while accessing the filesystem.
+        return if (snapshot.length() > 0) snapshot else runCatching {
             JSONArray(File(root, "breadcrumbs.json").readText())
         }.getOrDefault(JSONArray())
     }
@@ -103,17 +136,18 @@ class UpgridDiagnostics private constructor(private val context: Context) : LogS
     }
 
     private fun report(kind: String, source: String, cause: Throwable? = null, details: JSONObject = JSONObject(),
-                       id: String = UUID.randomUUID().toString(), timestamp: Long = System.currentTimeMillis()): JSONObject =
+                       id: String = UUID.randomUUID().toString(), timestamp: Long = System.currentTimeMillis(),
+                       actions: JSONArray = breadcrumbs()): JSONObject =
         JSONObject().put("schema", 1).put("id", id).put("installation", installation)
             .put("build", BuildConfig.VERSION_NAME).put("timestamp", timestamp).put("kind", kind)
             .put("source", label(source)).put("device", JSONObject()
                 .put("manufacturer", label(Build.MANUFACTURER)).put("model", label(Build.MODEL))
                 .put("android", label(Build.VERSION.RELEASE)).put("sdk", Build.VERSION.SDK_INT)
                 .put("abi", Build.SUPPORTED_ABIS.firstOrNull() ?: "unknown"))
-            .put("exceptions", exceptions(cause)).put("details", details).put("breadcrumbs", breadcrumbs())
+            .put("exceptions", exceptions(cause)).put("details", details).put("breadcrumbs", actions)
 
     private fun enqueue(report: JSONObject) {
-        if (!enabled) return
+        if (!collectionEnabled) return
         if (report.toString().toByteArray(Charsets.UTF_8).size > 90 * 1024) {
             report.put("details", JSONObject().put("truncated", true))
         }
@@ -145,16 +179,21 @@ class UpgridDiagnostics private constructor(private val context: Context) : LogS
     }
 
     fun error(source: String, throwable: Throwable?) {
-        if (!enabled || throwable is java.util.concurrent.CancellationException) return
-        val key = label(source) + (throwable?.javaClass?.name ?: "") + (throwable?.stackTrace?.firstOrNull()?.toString() ?: "")
-        synchronized(signatures) {
+        if (!collectionEnabled || throwable is java.util.concurrent.CancellationException) return
+        val timestamp = System.currentTimeMillis()
+        val actions = recentBreadcrumbs()
+        background {
+            // Stack traversal, JSON construction and installation lookup belong on
+            // IO, even when an Android Components warning originates on the UI thread.
+            val key = label(source) + (throwable?.javaClass?.name ?: "") + (throwable?.stackTrace?.firstOrNull()?.toString() ?: "")
             val now = SystemClock.uptimeMillis()
-            if (now - (signatures[key] ?: -60000L) < 60000) return
-            if (signatures.size >= 128) signatures.remove(signatures.keys.first())
-            signatures[key] = now
+            if (now - (signatures[key] ?: -60000L) >= 60000) {
+                if (signatures.size >= 128) signatures.remove(signatures.keys.first())
+                signatures[key] = now
+                enqueue(report(if (source.startsWith("player_")) "player_error" else "handled_error", source, throwable,
+                    timestamp = timestamp, actions = actions))
+            }
         }
-        val value = report(if (source.startsWith("player_")) "player_error" else "handled_error", source, throwable)
-        background { enqueue(value) }
     }
 
     override fun log(priority: Log.Priority, tag: String?, throwable: Throwable?, message: String) {
@@ -164,7 +203,7 @@ class UpgridDiagnostics private constructor(private val context: Context) : LogS
     }
 
     fun recordCrash(crash: Crash): Boolean {
-        if (!enabled) return false
+        if (!collectionEnabled) return false
         return runCatching {
             val details = JSONObject()
             if (crash is Crash.NativeCodeCrash) {
@@ -220,7 +259,7 @@ class UpgridDiagnostics private constructor(private val context: Context) : LogS
     }
 
     fun start(application: Application, crashReporter: CrashReporter) {
-        if (!enabled || !started.compareAndSet(false, true)) return
+        if (!collectionEnabled || !started.compareAndSet(false, true)) return
         Log.addSink(this)
         application.registerActivityLifecycleCallbacks(object : Application.ActivityLifecycleCallbacks {
             override fun onActivityCreated(activity: Activity, state: Bundle?) {
@@ -306,7 +345,7 @@ class UpgridDiagnostics private constructor(private val context: Context) : LogS
     }
 
     fun flush(): Boolean {
-        if (!enabled || !uploading.compareAndSet(false, true)) return true
+        if (!collectionEnabled || !uploading.compareAndSet(false, true)) return true
         try {
             RandomAccessFile(File(root, "upload.lock"), "rw").use { handle ->
                 val lock = handle.channel.tryLock() ?: return true

@@ -6,6 +6,13 @@
     <string name="player_pause">Pause</string>
     <string name="player_native_back">Return to page</string>
     <string name="player_native_rotate">Rotate video</string>
+    <string name="player_scale">Масштаб видео</string>
+    <string name="player_scale_fit">Вписать — без обрезки</string>
+    <string name="player_scale_cover">Заполнить — с обрезкой</string>
+    <string name="player_scale_stretch">Растянуть — на весь экран</string>
+    <string name="player_mirror">Зеркальное отражение</string>
+    <string name="player_mirror_horizontal">По горизонтали</string>
+    <string name="player_mirror_vertical">По вертикали</string>
     <string name="player_native_mute">Mute</string>
     <string name="player_native_unmute">Unmute</string>
     <string name="player_native_seek_back">−5 s</string>

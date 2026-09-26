@@ -7,6 +7,7 @@ import android.content.res.Configuration
 import android.graphics.Color
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.view.Gravity
 import android.view.GestureDetector
 import android.view.MotionEvent
@@ -21,6 +22,7 @@ import androidx.media3.common.AudioAttributes
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
+import androidx.media3.common.VideoSize
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
@@ -43,12 +45,20 @@ class NativeVideoPlayer(
     private val dialog = Dialog(activity)
     private val handler = Handler(Looper.getMainLooper())
     private val orientation = activity.requestedOrientation
+    private var scaleDialog: android.app.AlertDialog? = null
+    private var mirrorDialog: android.app.AlertDialog? = null
+    private var mirrorHorizontal = false
+    private var mirrorVertical = false
+    private var videoWidth = 0.0
+    private var videoHeight = 0.0
+    private val controlMargins = mutableMapOf<View, Int>()
     private val startPosition = stream.optDouble("pos", 0.0).takeIf { it.isFinite() && it >= 0 } ?: 0.0
     private val originallyPaused = stream.optBoolean("paused")
     private var resumePage = true
     private var released = false
     private var firstFrame = false
     private var sourceIndex = 0
+    private var prepareStartedAt = 0L
     private val sources = stream.optJSONArray("sources")?.let { list ->
         (0 until minOf(list.length(), 4)).mapNotNull { list.optJSONObject(it) }
     }?.takeIf { it.isNotEmpty() } ?: listOf(JSONObject().put("url", stream.optString("url")))
@@ -63,14 +73,14 @@ class NativeVideoPlayer(
             val source = android.net.Uri.parse(stream.getString("url"))
             require(source.scheme in setOf("https", "http") && !source.host.isNullOrBlank() && source.userInfo == null)
             val http = DefaultHttpDataSource.Factory()
-                .setConnectTimeoutMs(10_000).setReadTimeoutMs(15_000)
+                .setConnectTimeoutMs(3_000).setReadTimeoutMs(4_000)
                 .setUserAgent(header(stream.optString("userAgent")))
                 .setDefaultRequestProperties(mapOf("Referer" to header(stream.optString("referrer"))))
             val exo = ExoPlayer.Builder(activity)
                 .setMediaSourceFactory(DefaultMediaSourceFactory(http))
                 .setRenderersFactory(DefaultRenderersFactory(activity).setEnableDecoderFallback(true))
                 .setLoadControl(DefaultLoadControl.Builder().setTargetBufferBytes(24 * 1024 * 1024)
-                    .setBufferDurationsMs(10_000, 30_000, 1_000, 2_000).build())
+                    .setBufferDurationsMs(10_000, 30_000, 250, 1_000).build())
                 .setSeekBackIncrementMs(5_000).setSeekForwardIncrementMs(5_000).build()
             player = exo
             exo.setAudioAttributes(AudioAttributes.DEFAULT, true)
@@ -88,6 +98,11 @@ class NativeVideoPlayer(
                     else dialog.window?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
                 }
                 override fun onPlayerError(error: PlaybackException) = retryOrFail("media3_${error.errorCode}")
+                override fun onVideoSizeChanged(videoSize: VideoSize) {
+                    videoWidth = finiteMediaTime(videoSize.width.toDouble() * videoSize.pixelWidthHeightRatio)
+                    videoHeight = finiteMediaTime(videoSize.height.toDouble())
+                    positionNativeControls()
+                }
             })
             dialog.requestWindowFeature(Window.FEATURE_NO_TITLE)
             dialog.setCanceledOnTouchOutside(false)
@@ -120,12 +135,44 @@ class NativeVideoPlayer(
                 muteButton.setImageResource(if (exo.volume == 0f) android.R.drawable.ic_lock_silent_mode else android.R.drawable.ic_lock_silent_mode_off)
                 muteButton.contentDescription = activity.getString(if (exo.volume == 0f) R.string.player_native_unmute else R.string.player_native_mute)
             }
+            button(R.drawable.ic_player_scale, R.string.player_scale) {
+                val modes = intArrayOf(AspectRatioFrameLayout.RESIZE_MODE_FIT,
+                    AspectRatioFrameLayout.RESIZE_MODE_ZOOM, AspectRatioFrameLayout.RESIZE_MODE_FILL)
+                scaleDialog?.dismiss()
+                scaleDialog = android.app.AlertDialog.Builder(activity)
+                    .setTitle(R.string.player_scale)
+                    .setSingleChoiceItems(arrayOf(activity.getString(R.string.player_scale_fit),
+                        activity.getString(R.string.player_scale_cover), activity.getString(R.string.player_scale_stretch)),
+                        modes.indexOf(playerView?.resizeMode ?: modes[0])) { picker, index ->
+                        playerView?.resizeMode = modes[index]
+                        positionNativeControls()
+                        picker.dismiss()
+                    }.show()
+            }
+            val mirrorButton = button(R.drawable.ic_player_mirror, R.string.player_mirror) {}
+            mirrorButton.setOnClickListener {
+                mirrorDialog?.dismiss()
+                mirrorDialog = android.app.AlertDialog.Builder(activity)
+                    .setTitle(R.string.player_mirror)
+                    .setMultiChoiceItems(arrayOf(activity.getString(R.string.player_mirror_horizontal),
+                        activity.getString(R.string.player_mirror_vertical)),
+                        booleanArrayOf(mirrorHorizontal, mirrorVertical)) { _, index, checked ->
+                        if (index == 0) mirrorHorizontal = checked else mirrorVertical = checked
+                        // Transform just the TextureView, keeping controls and gestures unchanged.
+                        playerView?.videoSurfaceView?.apply {
+                            scaleX = if (mirrorHorizontal) -1f else 1f
+                            scaleY = if (mirrorVertical) -1f else 1f
+                        }
+                        mirrorButton.setColorFilter(if (mirrorHorizontal || mirrorVertical)
+                            Color.rgb(255, 197, 54) else Color.WHITE)
+                    }.setPositiveButton(android.R.string.ok, null).show()
+            }
             button(android.R.drawable.ic_menu_rotate, R.string.player_native_rotate) {
                 activity.requestedOrientation = if (activity.resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE)
-                    ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT else ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+                    ActivityInfo.SCREEN_ORIENTATION_PORTRAIT else ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
             }
             root.addView(bar, LinearLayout.LayoutParams(-1, dp(56)))
-            val view = PlayerView(activity).apply {
+            val view = (activity.layoutInflater.inflate(R.layout.view_native_player, root, false) as PlayerView).apply {
                 player = exo
                 resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
                 setShowBuffering(PlayerView.SHOW_BUFFERING_ALWAYS)
@@ -138,19 +185,48 @@ class NativeVideoPlayer(
                 setShutterBackgroundColor(Color.BLACK)
             }
             playerView = view
+            listOf(androidx.media3.ui.R.id.exo_bottom_bar, androidx.media3.ui.R.id.exo_progress,
+                androidx.media3.ui.R.id.exo_minimal_controls).forEach { id ->
+                view.findViewById<View>(id)?.let { control ->
+                    (control.layoutParams as? FrameLayout.LayoutParams)?.let { params ->
+                        controlMargins[control] = params.bottomMargin
+                    }
+                }
+            }
+            view.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> positionNativeControls() }
             installTapSeeking(view, exo)
             root.addView(view, LinearLayout.LayoutParams(-1, 0, 1f))
             dialog.setContentView(root)
             dialog.setOnDismissListener { dispose() }
+            activity.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LOCKED
             dialog.show()
             dialog.window?.apply {
                 setBackgroundDrawableResource(android.R.color.black)
                 setDimAmount(0f)
                 setLayout(-1, -1)
             }
+            prepareStartedAt = SystemClock.elapsedRealtime()
             prepareSource(startPosition, originallyPaused)
         } catch (_: Exception) {
             fail("native_initialization")
+        }
+    }
+
+    private fun positionNativeControls() {
+        val view = playerView ?: return
+        val progress = view.findViewById<View>(androidx.media3.ui.R.id.exo_progress) ?: return
+        val margin = controlMargins[progress] ?: return
+        if (view.height <= 0 || progress.height <= 0) return
+        val baseTop = view.height - margin - progress.height
+        val top = playerControlsTop(view.width, view.height, videoWidth, videoHeight,
+            view.height - baseTop, view.resizeMode == AspectRatioFrameLayout.RESIZE_MODE_FIT)
+        val offset = (baseTop - top).coerceAtLeast(0)
+        controlMargins.forEach { (control, originalMargin) ->
+            val params = control.layoutParams as? FrameLayout.LayoutParams ?: return@forEach
+            if (params.bottomMargin != originalMargin + offset) {
+                params.bottomMargin = originalMargin + offset
+                control.layoutParams = params
+            }
         }
     }
 
@@ -170,12 +246,13 @@ class NativeVideoPlayer(
             prepare()
         }
         handler.removeCallbacks(timeout)
-        handler.postDelayed(timeout, 15_000)
+        handler.postDelayed(timeout, 3_000)
     }
 
     private fun retryOrFail(code: String) {
         if (released) return
-        if (sourceIndex + 1 < sources.size) {
+        if (sourceIndex + 1 < minOf(sources.size, 2) &&
+            SystemClock.elapsedRealtime() - prepareStartedAt < 6_000) {
             val position = if (firstFrame) (player?.currentPosition ?: 0).coerceAtLeast(0) / 1000.0 else startPosition
             val paused = player?.playWhenReady != true
             sourceIndex++
@@ -252,6 +329,10 @@ class NativeVideoPlayer(
     private fun dispose() {
         if (released) return
         released = true
+        scaleDialog?.dismiss()
+        scaleDialog = null
+        mirrorDialog?.dismiss()
+        mirrorDialog = null
         handler.removeCallbacks(timeout)
         handler.removeCallbacks(hideSeekFeedback)
         val exo = player
@@ -261,6 +342,7 @@ class NativeVideoPlayer(
         exo?.release()
         player = null
         playerView = null
+        controlMargins.clear()
         seekFeedback = null
         activity.requestedOrientation = orientation
         onClosed(position, paused, resumePage)
