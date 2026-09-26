@@ -2,8 +2,8 @@
 
 ## 0.6.8-player-translation — 27.09.2026
 
-**Статус: сборка и автотесты пройдены; пользователь разрешил публикацию как Test
-без завершённой Android-приёмки. Публикация ещё не подтверждена.**
+**Статус: Test опубликован по явному разрешению пользователя.
+Сборка и автотесты пройдены; Android-приёмка остаётся незавершённой.**
 versionCode 15, helper 4.7.0. Артефакты: `build/fenix/player-translation-validation/`.
 
 Подписанный ARM64 release-кандидат собран за **8m 14s**, без `debuggable`. Размер APK: **125,892,003 байт**. Подпись совпадает с 0.6.7; package name, versionName/code и ABI проверены через aapt/apksigner. Встроенные player assets и Gecko translation worker/document побайтно совпадают с экспортированными исходниками; целостность APK проверена.
@@ -11,6 +11,25 @@ versionCode 15, helper 4.7.0. Артефакты: `build/fenix/player-translatio
 APK: `build/fenix/upgrid-next-0.6.8-player-translation-arm64-release.apk`.
 SHA-256: `76d956f600cd348142fdc6863b1cd73db19ab9640fad82a0e30aee1e4d21c90f`.
 Квитанции: `apk.json`, `apk-badging.txt`, `apk-signer.txt`, `player-apk.json`, `translation-apk.json`, `validation-status.json`.
+
+Telegram «Мои приложения»: APK — **message_id 156**, исходники — **157**;
+каталог `app_id=upgrid`, запись **46**, точная версия `0.6.8-player-translation`,
+Build **15**, тип **Test**, Android/main, package `com.upgrid.browser.next.debug`.
+`verify_release.py` прошёл: последняя версия, кнопка скачивания, PNG карточки,
+SHA-256 APK, целостность SQLite и свежий опрос Telegram; ожидающих обновлений 0.
+Отдельно проверен SHA-256 APK и исходников внутри Bot API от UID/GID **101:101**.
+История и настройки доступа сохранены; перед публикацией сделан WAL-aware backup
+в `/srv/backup/apk-relay/upgrid-player-translation-0.6.8/`. В журнале сервиса
+за последние 10 минут проверка не нашла предупреждений/ошибок.
+Квитанции сохранены в папке выпуска: `publication.json`, `verify-release.json`,
+`verify-container-files.json`, `catalog-metadata.json` и полные ответы Telegram.
+Это подтверждает публикацию в канале и доступность через каталог; отдельная
+доставка нового APK в личный чат не выполнялась.
+
+Опубликованный архив исходников соответствует коммиту
+`3a8d64212b1e449ec8fc0de2008ece3cbe58e9f0` и не включает незакоммиченные файлы
+параллельного PC-стенда. SHA-256 архива:
+`3c804d41c4244436add04465bd5abc969fc9c10f572028ca809c30dc8f89143a`.
 
 - Kotlin/Robolectric/Compose: **93/93 PASS**, 16 suites, 0 ошибок и пропусков.
   `final-unit.log`, `unit-summary.json`, `unit-results/`. Автоперевод разных языков
