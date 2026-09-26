@@ -443,12 +443,6 @@ def generate(checkout):
     text = replace_once(original(about_home), "    browserStore: BrowserStore,", "    private val browserStore: BrowserStore,")
     text = replace_once(text, "            .map { it.selectedTab?.content?.url }",
         "            .map { it.selectedTab?.let { tab -> tab.id to tab.content.url } }")
-    text = replace_once(text, "    override suspend fun onState(flow: Flow<BrowserState>) {", """    override fun stop() {
-        super.stop()
-        org.mozilla.fenix.upgrid.UpgridHomeNavigation.clear(browserStore)
-    }
-
-    override suspend fun onState(flow: Flow<BrowserState>) {""")
     text = replace_once(text, "            .collect { url ->", """            .collect { selection ->
                 val url = selection?.second
                 val showHome = org.mozilla.fenix.upgrid.UpgridHomeNavigation.shouldShowHome(browserStore)""")
@@ -473,6 +467,54 @@ def generate(checkout):
     text = replace_once(original(use_cases), "            homepageTitle = context.getString(R.string.tab_tray_homepage_tab),", """            homepageTitle = context.getString(R.string.tab_tray_homepage_tab),
             onLoadStarted = { input -> org.mozilla.fenix.upgrid.UpgridHomeNavigation.onLoadStarted(store.value, input) },""")
     add(use_cases, text)
+    # Mark and dispatch the load before entering BrowserFragment. Navigation can
+    # synchronously run observers while Gecko still reports about:home.
+    for path, navigation in (
+        (f"{APP}/src/main/java/org/mozilla/fenix/search/BrowserToolbarSearchMiddleware.kt",
+         "        navController.navigate(\n            NavGraphDirections.actionGlobalBrowser(),\n        )"),
+        (f"{APP}/src/main/java/org/mozilla/fenix/search/FenixSearchMiddleware.kt",
+         "        navController.navigate(R.id.browserFragment)"),
+        (f"{APP}/src/main/java/org/mozilla/fenix/HomeActivity.kt",
+         "        openToBrowser(from, customTabSessionId)"),
+    ):
+        text = files.get(path, original(path).encode("utf-8")).decode("utf-8")
+        call = text.index("fenixBrowserUseCases.loadUrlOrSearch(", text.index(navigation))
+        start = text.rfind(navigation, 0, call)
+        end = text.index("\n        )", call) + len("\n        )")
+        block = text[start:end]
+        text = text[:start] + block.replace(navigation + "\n", "", 1).lstrip("\n") + "\n" + navigation + text[end:]
+        add(path, text)
+    search_test = f"{APP}/src/test/java/org/mozilla/fenix/search/BrowserToolbarSearchMiddlewareTest.kt"
+    text, count = re.subn(
+        r"(        verifyOrder \{\n)(            navController.navigate\(NavGraphDirections.actionGlobalBrowser\(\)\)\n)(            browserUseCases.loadUrlOrSearch\([\s\S]*?            \)\n)",
+        r"\1\3\2", original(search_test))
+    if count != 5:
+        raise ValueError("Search navigation order tests changed")
+    add(search_test, text)
+    linking = "mobile/android/android-components/components/browser/state/src/main/java/mozilla/components/browser/state/engine/middleware/LinkingMiddleware.kt"
+    text = replace_once(original(linking), "    override fun invoke(", """    // A direct URL submission can overtake the queued initial about:home load.
+    // Weak keys retain neither sessions nor browsing data after a tab is closed.
+    private val explicitLoads = java.util.Collections.synchronizedMap(
+        java.util.WeakHashMap<EngineSession, Boolean>(),
+    )
+
+    override fun invoke(""")
+    text = replace_once(text, "        var engineObserver: Pair<String, EngineObserver>? = null", """        if (action is EngineAction.OptimizedLoadUrlTriggeredAction) {
+            store.state.findTabOrCustomTab(action.tabId)?.engineState?.engineSession?.let {
+                explicitLoads[it] = true
+            }
+        }
+        var engineObserver: Pair<String, EngineObserver>? = null""")
+    text = replace_once(text, """    ) = scope.launch {
+        engineSession.loadUrl(""", """    ) = scope.launch {
+        if (url == mozilla.components.concept.engine.utils.ABOUT_HOME_URL &&
+            explicitLoads.remove(engineSession) == true
+        ) {
+            // The newer explicit load already reached this same engine session.
+            return@launch
+        }
+        engineSession.loadUrl(""")
+    add(linking, text)
     interceptor_test = f"{APP}/src/test/java/org/mozilla/fenix/AppRequestInterceptorTest.kt"
     text = original(interceptor_test)
     text = replace_once(text,
@@ -529,6 +571,45 @@ def generate(checkout):
             verify { navController.navigate(expectedNavigation) }""", """            verify(exactly = 0) { binding.recordTranslationStartTelemetry() }
             verify(exactly = 0) { navController.navigate(expectedNavigation) }""")
     add(translations_test, text)
+    translation_worker = "toolkit/components/translations/content/translations-engine.worker.js"
+    text = original(translation_worker)
+    text = replace_once(text, """    return this.#getWorkQueue(innerWindowId).runTask(translationId, () =>
+      this.#syncTranslate(sourceText, isHTML, innerWindowId)
+    );""", """    return this.#getWorkQueue(innerWindowId).runTask(translationId, sourceText, isHTML);""")
+    text = replace_once(text, "    workQueue = new WorkQueue(innerWindowId);", """    workQueue = new UpgridTranslationQueue(batch => this.#syncTranslate(batch, innerWindowId));""")
+    text = replace_body(text, "  #syncTranslate(sourceText, isHTML, innerWindowId)",
+                        (HERE / "overlay/TranslationBatch.body.js").read_text(encoding="utf-8"))
+    text = replace_once(text, "  #syncTranslate(sourceText, isHTML, innerWindowId)",
+                        "  #syncTranslate(batch, innerWindowId)")
+    text = text.replace("@type {Map<number, WorkQueue>}", "@type {Map<number, UpgridTranslationQueue>}")
+    text = text.replace("@returns {WorkQueue}", "@returns {UpgridTranslationQueue}")
+    sync_start = text.index("  #syncTranslate(batch, innerWindowId)")
+    comment_start = text.rfind("  /**", 0, sync_start)
+    text = text[:comment_start] + """  /**
+   * Translate independent fragments together, retaining HTML boundaries.
+   * @param {Array<{sourceText: string, isHTML: boolean}>} batch
+   * @param {number} innerWindowId
+   * @returns {Array<{targetText: string, inferenceMilliseconds: number}>}
+   */
+""" + text[sync_start:]
+    text += "\n" + (HERE / "overlay/UpgridTranslationQueue.js").read_text(encoding="utf-8")
+    add(translation_worker, text)
+    translation_document = "toolkit/components/translations/content/translations-document.sys.mjs"
+    text = original(translation_document)
+    # Supply a bounded group of visible fragments to the batch-capable worker.
+    # Lower priorities, lazy viewport selection, cancellation and cache stay intact.
+    text = replace_once(text, "new AntiStarvationStack(2, 1), // p0 stack",
+                        "new AntiStarvationStack(8, 2), // p0 stack: visible content")
+    text = replace_once(text, "new AntiStarvationStack(2, 1), // p1 stack",
+                        "new AntiStarvationStack(4, 1), // p1 stack")
+    # Apply completed siblings together even near the end of a page. The normal
+    # 25 ms DOM update window is still short enough for captions and live text.
+    text, count = re.subn(
+        r"    if \(this\.#scheduler\.isWithinFinalBatches\(\)\) \{[\s\S]*?    \} else if \(!this\.(#hasPendingUpdate(?:Content|Attributes)Callback)\) \{",
+        r"    if (!this.\1) {", text)
+    if count != 2:
+        raise ValueError("Translation DOM batching integration changed")
+    add(translation_document, text)
     settings_ui = f"{APP}/src/main/java/org/mozilla/fenix/settings/SettingsFragment.kt"
     text = replace_once(original(settings_ui), "        creatingFragment = false", """        listOf(
             R.string.pref_key_sign_in, R.string.pref_key_account_category,

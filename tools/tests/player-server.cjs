@@ -1,7 +1,7 @@
 const http = require('node:http');
 const fs = require('node:fs');
 const path = require('node:path');
-const files = Object.fromEntries(['player.html', 'iframe.html', 'multiple.html', 'controls.html', 'media-scroll.html', 'native.html', 'engine.html', 'aspect.html', 'tabs.html'].map(name =>
+const files = Object.fromEntries(['player.html', 'iframe.html', 'multiple.html', 'controls.html', 'media-scroll.html', 'native.html', 'engine.html', 'aspect.html', 'tabs.html', 'translation.html'].map(name =>
     ['/' + name, path.join(__dirname, 'fixtures', name)]));
 files['/sample.mp4'] = path.resolve(__dirname, '../../build/fenix/sample.mp4');
 files['/sample-fragmented.mp4'] = path.resolve(__dirname, '../../build/fenix/sample-fragmented.mp4');
@@ -11,8 +11,28 @@ files['/failure.mp4'] = files['/sample.mp4'];
 let denyNative = false;
 const probeEvents = [];
 const tabEvents = [];
+const translationEvents = [];
 http.createServer((req, res) => {
     const pathname = new URL(req.url, 'http://localhost').pathname;
+    if (pathname === '/translation-events' && req.method === 'GET') {
+        res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+        res.end(JSON.stringify(translationEvents)); return;
+    }
+    if (pathname === '/translation-events' && req.method === 'POST') {
+        let body = '';
+        req.on('data', chunk => { body += chunk; if (body.length > 2048) req.destroy(); });
+        req.on('end', () => {
+            try {
+                const event = JSON.parse(body);
+                translationEvents.push({ at: Date.now(), run: String(event.run || '').slice(0, 40), translated: Number(event.translated),
+                    total: Number(event.total), sinceLoad: Number(event.sinceLoad), sinceFirst: Number(event.sinceFirst),
+                    excludedIntact: event.excludedIntact === true, inputIntact: event.inputIntact === true });
+                if (translationEvents.length > 1000) translationEvents.shift();
+                res.writeHead(204); res.end();
+            } catch { res.writeHead(400); res.end(); }
+        });
+        return;
+    }
     if (pathname === '/tab-events' && req.method === 'GET') {
         res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
         res.end(JSON.stringify(tabEvents)); return;

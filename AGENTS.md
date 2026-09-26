@@ -4,10 +4,17 @@ Guidance for Codex working on this repository.
 
 ## Выпуск в Telegram «Мои приложения»
 
+- По поручению пользователя от 10.09.2026 все готовые обновления Upgrid после успешной сборки и обязательных проверок автоматически публиковать в канале Telegram «Мои приложения» и индексировать в каталоге под `app_id=upgrid`, без повторного подтверждения. Промежуточные и не прошедшие проверки сборки не публиковать. Это постоянное правило завершения выпуска, а не публикация по расписанию; отправка APK в личный чат отдельно не подразумевается.
 - Перед добавлением или обновлением APK прочитать актуальные `/root/projects/apk-relay/AGENTS.md` и `/root/projects/apk-relay/RELEASING.md` через SSH alias `vps`. Локальная копия инструкции: [RELEASING.md](D:/Projects/CODEX/apk-relay/RELEASING.md).
 - Upgrid и Upgrid Next используют общий `app_id=upgrid`. Выполнить раздел «Обязательное завершение выпуска»: проверить метаданные, SHA-256, последнюю версию и кнопку, доступ Bot API к APK/PNG и свежий опрос Telegram через `verify_release.py`. Сохранить квитанцию проверки в папке выпуска.
 - Успешные сборка, импорт и `systemctl is-active` сами по себе недостаточны. Не объявлять APK отправленным без подтверждённого `message_id`; при импорте дать ссылку на карточку каталога. Обычное обновление не отправляет APK в личный чат самостоятельно.
 - Если меняется бот, выдача большого файла должна проходить в фоновой очереди и сохранять отзывчивость меню; выполнить `test_delivery` по серверной инструкции.
+
+## Ограничения ресурсов рабочего ПК (2026-09-14)
+
+- На ПК пользователя 16 ГБ RAM; сборки не должны мешать обычной работе. Для всех последующих Fenix-сборок использовать один Gradle worker, JVM `-Xmx4g` и `-XX:MaxMetaspaceSize=1g`. Не повышать эти лимиты автоматически из-за медленного R8, полной сборки или нехватки памяти.
+- Согласованный общий профиль WSL: максимум 6 ГБ RAM, 4 CPU и swap 8 ГБ. Изменения глобального профиля и перезапуск WSL выполнять отдельно, только на безопасной границе без работающей сборки.
+- При следующем запуске Android-эмулятора использовать 2048 МБ RAM, 2 ядра и приоритет процесса `BelowNormal`. Не перезапускать текущую сборку или эмулятор только ради применения этих значений.
 
 ## Rebuild in progress (2026-09-07)
 
@@ -25,6 +32,9 @@ The user approved starting a Fenix-based rebuild with a player **inside the brow
 
 ## Native player migration (2026-09-09)
 
+- По уточнению от 11.09.2026 обычный переход в плеер и обратно сохраняет текущее воспроизведение: играющее видео продолжает играть, вручную поставленное на паузу остаётся на паузе. Это заменяет прежнюю принудительную паузу при выходе на страницу. Сворачивание приложения, смена вкладки и отмена из lifecycle по-прежнему приостанавливают видео без автозапуска при возвращении.
+- По уточнению от 10.09.2026 при входе в плеер сохранять текущую ориентацию экрана; поворот только вручную. Не включать поворот по пропорциям видео или по запросу сайта во время работы плеера. Масштаб: «Вписать» по умолчанию, «Заполнить с обрезкой» и «Растянуть» по выбору пользователя; менять только video в настоящем fullscreen, не CSS его родительских блоков. Приоритет — непрерывное воспроизведение и быстрый переход; проверять сохранённый элемент/источник перед использованием быстрого пути.
+- По запросу от 10.09.2026, начиная с 0.6.2, основной путь — уже играющее видео в настоящем fullscreen Gecko с управлением Upgrid. Media3 используется как ограниченный резерв при невозможности fullscreen. Это заменяет прежнее требование Media3-first; не возвращать CSS-растягивание страницы и не ослаблять требования к пользовательской активации fullscreen.
 - 0.6.0 supersedes the earlier universal blob/DRM refusal: try bound native HTTP(S) sources and then the selected video's real Gecko fullscreen with Upgrid controls. Never restore the old CSS cropping fallback. Browser-owned MSE/DRM sessions remain in Gecko; no cookies or license material are exported. When Gecko requires fresh activation, offer a temporary in-page button; do not weaken fullscreen security preferences.
 - Gestures: a double tap on either half seeks ±5 seconds; a single tap toggles controls. Hide permanent rewind/forward buttons. Backgrounding or switching tabs pauses playback; return requires manual Play. Test these on Android, including a fullscreen request after the page's activation has expired.
 

@@ -11,12 +11,15 @@ import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import mozilla.components.browser.state.action.ContentAction
+import mozilla.components.browser.state.action.EngineAction
 import mozilla.components.browser.state.action.TabListAction
+import mozilla.components.browser.state.engine.EngineMiddleware
 import mozilla.components.browser.state.state.BrowserState
 import mozilla.components.browser.state.state.createTab
 import mozilla.components.browser.state.store.BrowserStore
 import mozilla.components.concept.engine.utils.ABOUT_HOME_URL
 import mozilla.components.concept.engine.EngineSession
+import mozilla.components.concept.engine.Engine
 import mozilla.components.compose.browser.toolbar.store.BrowserToolbarAction.CommitUrl
 import mozilla.components.compose.browser.toolbar.store.BrowserToolbarStore
 import mozilla.components.feature.session.SessionUseCases
@@ -65,6 +68,28 @@ class UpgridHomeRoutingTest {
         ))
     }
 
+    @Test fun `queued initial home load cannot overwrite the first submitted address`() = runTest {
+        val session: EngineSession = mockk(relaxed = true)
+        val engine: Engine = mockk(relaxed = true)
+        val requests = mutableListOf<String>()
+        every { session.loadUrl(any(), any(), any(), any(), any(), any()) } answers {
+            requests += firstArg<String>()
+        }
+        val home = createTab(ABOUT_HOME_URL, id = "new-home")
+        val store = BrowserStore(
+            BrowserState(tabs = listOf(home), selectedTabId = home.id),
+            middleware = EngineMiddleware.create(engine, backgroundScope),
+        )
+        // Linking exposes the session now, but queues its initial about:home
+        // load on Main. Submit an address before that queued load executes.
+        store.dispatch(EngineAction.LinkEngineSessionAction(home.id, session, skipLoading = false))
+        assertEquals(session, store.state.tabs.single().engineState.engineSession)
+        SessionUseCases(store).loadUrl(url = pageUrl, originalInput = pageUrl)
+        runCurrent()
+        assertEquals(pageUrl, requests.last())
+        assertEquals(1, requests.count { it == pageUrl })
+    }
+
     @Test fun `real search commit keeps browser open before Gecko acknowledges the new URL`() = runTest {
         val engine: EngineSession = mockk(relaxed = true)
         val selected = createTab(ABOUT_HOME_URL, id = "selected", engineSession = engine)
@@ -72,7 +97,12 @@ class UpgridHomeRoutingTest {
         val store = BrowserStore(BrowserState(tabs = listOf(selected, empty), selectedTabId = selected.id))
         var destination = R.id.homeFragment
         val nav = navigator { destination }
-        every { nav.navigate(NavGraphDirections.actionGlobalBrowser()) } answers { destination = R.id.browserFragment }
+        every { nav.navigate(NavGraphDirections.actionGlobalBrowser()) } answers {
+            // Navigation can synchronously render the selected about:home tab.
+            // The departure must already be registered before opening browser UI.
+            org.junit.Assert.assertFalse(UpgridHomeNavigation.shouldShowHome(store))
+            destination = R.id.browserFragment
+        }
         val dispatcher = StandardTestDispatcher(testScheduler)
         val appStore = AppStore()
         val useCases = FenixBrowserUseCases(
@@ -123,7 +153,7 @@ class UpgridHomeRoutingTest {
         }
     }
 
-    @Test fun `explicit home command and backgrounding clear a pending home departure`() = runTest {
+    @Test fun `backgrounding preserves pending departure but explicit home clears it`() = runTest {
         val tab = createTab(ABOUT_HOME_URL, id = "home")
         val store = BrowserStore(BrowserState(tabs = listOf(tab), selectedTabId = tab.id))
         UpgridHomeNavigation.onLoadStarted(store, pageUrl)
@@ -132,6 +162,16 @@ class UpgridHomeRoutingTest {
         org.junit.Assert.assertTrue(UpgridHomeNavigation.shouldShowHome(store))
         UpgridHomeNavigation.onLoadStarted(store, pageUrl)
         AboutHomeBinding(store, navigator { R.id.homeFragment }).stop()
+        org.junit.Assert.assertFalse(UpgridHomeNavigation.shouldShowHome(store))
+        // A restarted binding must not cover an in-flight load with HomeFragment.
+        val nav = navigator { R.id.browserFragment }
+        AboutHomeBinding(store, nav).onState(flowOf(store.state))
+        verify(exactly = 0) { nav.navigate(NavGraphDirections.actionGlobalHome()) }
+        store.dispatch(ContentAction.UpdateUrlAction(tab.id, pageUrl))
+        runCurrent()
+        org.junit.Assert.assertFalse(UpgridHomeNavigation.shouldShowHome(store))
+        store.dispatch(ContentAction.UpdateUrlAction(tab.id, ABOUT_HOME_URL))
+        runCurrent()
         org.junit.Assert.assertTrue(UpgridHomeNavigation.shouldShowHome(store))
     }
 
@@ -149,6 +189,10 @@ class UpgridHomeRoutingTest {
             store.dispatch(TabListAction.SelectTabAction(second.id))
             runCurrent()
             verify(exactly = 1) { nav.navigate(NavGraphDirections.actionGlobalHome()) }
+            store.dispatch(TabListAction.SelectTabAction(first.id))
+            runCurrent()
+            verify(exactly = 1) { nav.navigate(NavGraphDirections.actionGlobalHome()) }
+            org.junit.Assert.assertFalse(UpgridHomeNavigation.shouldShowHome(store))
         } finally {
             binding.stop()
         }

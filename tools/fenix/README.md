@@ -86,9 +86,17 @@ bash tools/fenix/test.sh # after building the Upgrid overlay
 bash tools/fenix/test-ui-response.sh # diagnostics queue and menu regression tests
 bash tools/fenix/test-player-continuity.sh # toolbar, desktop default and manual translation
 bash tools/fenix/test-player-seamless.sh # manual orientation and blocked site rotation while playing
+bash tools/fenix/test-translation-navigation.sh # first URL/search, lifecycle and translation UI regressions
 ```
 
 The Node tests cover discovery without fullscreen, page/style restoration, nested-frame acknowledgement/timeouts, cancellation, playing-video selection, shadow roots and frame/request isolation using a simulated DOM and extension API. The Python tests check function replacement, repeat application and preservation of local edits. Kotlin tests cover the uBO permission boundary alongside existing WebExtensionSupport tests. See `VALIDATION.md` for actual device/emulator checks and limitations.
+
+For translation batching, run `node --test tools/tests/translation-batch.test.cjs`
+with `UPGRID_TRANSLATION_WORKER` pointing at the generated
+`toolkit/components/translations/content/translations-engine.worker.js`.
+This checks the real worker classes with a fake inference backend; validate the
+actual en→ru model and the packaged `assets/omni.ja` separately. See
+[translation design and fixture](../../docs/page-translation.md).
 
 Local player fixtures are in `tools/tests/fixtures/`. Generate `build/fenix/sample.mp4` (any short synthetic H.264/AAC clip), run `node tools/tests/player-server.cjs`, then `adb reverse tcp:8766 tcp:8766`. Open `http://127.0.0.1:8766/player.html` in the app. The linked cases exercise clipped/transformed ancestors, a cross-origin iframe and competing videos. The server binds only to loopback and serves a fixed file whitelist.
 
