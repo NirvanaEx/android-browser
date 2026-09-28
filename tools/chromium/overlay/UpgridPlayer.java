@@ -92,15 +92,13 @@ public final class UpgridPlayer implements Application.ActivityLifecycleCallback
     private float mStartBrightness;
     private int mStartVolume;
     private int mGestureAxis;
-    private double mScrubStart, mScrubPosition;
-    private boolean mScrubWasPlaying, mScrubResumePending;
-    private int mScrubGeneration;
+    private final UpgridScrubSession mScrub = new UpgridScrubSession();
     private final Runnable mHideGesture =
             () -> {
                 if (mGestureStatus != null) mGestureStatus.setVisibility(View.GONE);
             };
     private JSONObject mState;
-    private boolean mClosed, mSeeking, mControls = true, mHasFullscreen;
+    private boolean mClosed, mControls = true, mHasFullscreen;
     private boolean mLocked;
     private int mFitMode;
     private long mLastResponse;
@@ -197,8 +195,7 @@ public final class UpgridPlayer implements Application.ActivityLifecycleCallback
     private void command(int command, double value) {
         if (mClosed || mContents.isDestroyed()) return;
         if (command == PLAY || command == PAUSE) {
-            ++mScrubGeneration;
-            mScrubResumePending = mScrubWasPlaying = false;
+            mScrub.onPlaybackCommand();
         }
         showControls();
         UpgridPlayerJni.get().control(mContents, command, value, this::receiveCommand);
@@ -337,8 +334,8 @@ public final class UpgridPlayer implements Application.ActivityLifecycleCallback
 
                     @Override
                     public void onProgressChanged(SeekBar bar, int progress, boolean user) {
-                        if (user && mSeeking)
-                            previewScrub(mState.optDouble("duration") * progress / 10000.0);
+                        if (user && mScrub.isActive())
+                            previewScrub(mScrub.duration() * progress / 10000.0);
                     }
 
                     @Override
@@ -480,10 +477,10 @@ public final class UpgridPlayer implements Application.ActivityLifecycleCallback
                                 }
                                 if (mGestureAxis == 3) {
                                     previewScrub(
-                                            mScrubStart
+                                            mScrub.start()
                                                     + (event.getX() - first.getX())
                                                             / Math.max(1, root.getWidth())
-                                                            * mState.optDouble("duration"));
+                                                            * mScrub.duration());
                                     return true;
                                 }
                                 float fraction =
@@ -568,7 +565,6 @@ public final class UpgridPlayer implements Application.ActivityLifecycleCallback
     private Button button(String label, Runnable action) {
         Button button = new Button(mActivity);
         button.setText(label);
-        button.setContentDescription(label);
         button.setTextColor(Color.WHITE);
         button.setTextSize(13);
         button.setAllCaps(false);
@@ -598,50 +594,42 @@ public final class UpgridPlayer implements Application.ActivityLifecycleCallback
     }
 
     private void beginScrub() {
-        if (mClosed || mSeeking || mState.optDouble("duration") <= 0) return;
-        mSeeking = true;
-        mScrubStart = mScrubPosition = mState.optDouble("position");
-        mScrubWasPlaying =
-                mScrubResumePending
-                        || (!mState.optBoolean("paused") && !mState.optBoolean("ended"));
-        mScrubResumePending = false;
-        ++mScrubGeneration;
+        if (mClosed
+                || !mScrub.begin(
+                        !mState.optBoolean("paused") && !mState.optBoolean("ended"),
+                        mState.optDouble("position"),
+                        mState.optDouble("duration"))) return;
         showControls();
-        if (mScrubWasPlaying)
+        if (mScrub.shouldPause())
             UpgridPlayerJni.get().control(mContents, PAUSE, 0, this::receiveCommand);
     }
 
     private void previewScrub(double position) {
-        if (!mSeeking || mClosed) return;
-        double duration = mState.optDouble("duration");
-        mScrubPosition = Math.max(0, Math.min(duration, position));
-        mSeek.setProgress((int) (10000 * mScrubPosition / Math.max(1, duration)));
-        mTime.setText(time(mScrubPosition) + " / " + time(duration));
-        showGestureStatus(time(mScrubPosition));
+        if (!mScrub.isActive() || mClosed) return;
+        mScrub.preview(position);
+        mSeek.setProgress((int) (10000 * mScrub.position() / Math.max(1, mScrub.duration())));
+        mTime.setText(time(mScrub.position()) + " / " + time(mScrub.duration()));
+        showGestureStatus(time(mScrub.position()));
     }
 
     private void finishScrub(boolean commit) {
-        if (!mSeeking || mClosed || mContents.isDestroyed()) return;
-        mSeeking = false;
-        final boolean resume = mScrubWasPlaying;
-        final int generation = mScrubGeneration;
-        mScrubResumePending = resume;
+        if (mClosed || mContents.isDestroyed()) return;
+        UpgridScrubSession.Release release = mScrub.release(commit);
+        if (release == null) return;
         // Seek once at release, then restore playback only after the renderer
         // confirms the same selected source. Cancellation does not change time.
-        if (commit) {
+        if (release.seek) {
             UpgridPlayerJni.get()
                     .control(
                             mContents,
                             SEEK,
-                            mScrubPosition,
+                            release.position,
                             value -> {
-                                if (generation == mScrubGeneration
+                                if (mScrub.isCurrent(release)
                                         && receive(value)
-                                        && resume
-                                        && mScrubResumePending
-                                        && !mSeeking) command(PLAY, 0);
+                                        && mScrub.takeResume(release)) command(PLAY, 0);
                             });
-        } else if (resume) {
+        } else if (mScrub.takeResume(release)) {
             command(PLAY, 0);
         }
         showControls();
@@ -761,11 +749,12 @@ public final class UpgridPlayer implements Application.ActivityLifecycleCallback
         mMute.setText(mState.optBoolean("muted") ? "Без звука" : "Звук");
         mRate.setText(String.format(Locale.ROOT, "%s×", mState.optDouble("rate", 1)));
         mFit.setText(new String[] {"Вписать", "Заполнить", "Растянуть"}[mFitMode]);
-        if (!mSeeking)
+        if (!mScrub.isActive())
             mTime.setText(
                     time(position) + (duration > 0 ? " / " + time(duration) : " · Прямой эфир"));
         mSeek.setEnabled(duration > 0);
-        if (!mSeeking) mSeek.setProgress(duration > 0 ? (int) (10000 * position / duration) : 0);
+        if (!mScrub.isActive())
+            mSeek.setProgress(duration > 0 ? (int) (10000 * position / duration) : 0);
         Window window = mDialog.getWindow();
         if (mState.optBoolean("paused"))
             window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
@@ -794,7 +783,8 @@ public final class UpgridPlayer implements Application.ActivityLifecycleCallback
         mBottom.setVisibility(visible ? View.VISIBLE : View.INVISIBLE);
         mUnlock.setVisibility(mLocked ? View.VISIBLE : View.GONE);
         mHandler.removeCallbacks(mHide);
-        if (visible && !mSeeking && mOptionsDialog == null) mHandler.postDelayed(mHide, 5000);
+        if (visible && !mScrub.isActive() && mOptionsDialog == null)
+            mHandler.postDelayed(mHide, 5000);
     }
 
     private void fail(String message) {
@@ -804,8 +794,7 @@ public final class UpgridPlayer implements Application.ActivityLifecycleCallback
 
     private void close(boolean pause) {
         if (mClosed) return;
-        boolean restoreScrubPlayback =
-                !pause && (mSeeking ? mScrubWasPlaying : mScrubResumePending);
+        boolean restoreScrubPlayback = mScrub.close(pause);
         mClosed = true;
         mHandler.removeCallbacksAndMessages(null);
         mTab.removeObserver(mObserver);

@@ -73,12 +73,16 @@ overlay. Внешний checkout — производная копия, прав
 ```sh
 python3 -m unittest discover -s tools/chromium/tests -v
 node --test tools/chromium/tests/youtube-options.test.cjs
+python3 tools/chromium/tests/test-scrub.py
 python3 tools/chromium/build.py --generate-only
 python3 tools/chromium/build.py --check-integration
 ```
 
 Python и Node проверяют инструменты и изолированную логику адаптера. Это не
-проверка настоящего YouTube. Overlay также добавляет Blink- и Robolectric-тесты
+проверка настоящего YouTube. `test-scrub.py` компилирует исходный `UpgridScrubSession`
+JDK из Chromium checkout и проверяет 8 сценариев сохранения Play/Pause, отмены,
+быстрых повторных жестов и ухода в фон. Android touch dispatch он не проверяет.
+Overlay также добавляет Blink- и Robolectric-тесты
 контролов, смены источника и ручной ориентации; их выполнение требует отдельных
 тестовых сборок Chromium и не входит в `--check-integration`.
 
