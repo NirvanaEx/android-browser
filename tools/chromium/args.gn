@@ -1,0 +1,15 @@
+# Development only. Match Banana's base to reconstruct its media integration.
+target_os = "android"
+target_cpu = "arm64"
+is_debug = true
+is_component_build = false
+is_java_debug = true
+symbol_level = 0
+blink_symbol_level = 0
+v8_symbol_level = 0
+use_remoteexec = false
+use_siso = false
+proprietary_codecs = true
+ffmpeg_branding = "Chrome"
+android_default_version_name = "0.1.0-chromium-dev"
+android_default_version_code = "16"

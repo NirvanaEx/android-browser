@@ -11,6 +11,7 @@ button{background:#304c70;border:0;border-radius:10px}#stage{width:94%;overflow:
 <button id="site-video">Fullscreen video</button><button id="site-container">Fullscreen container</button>
 <button id="blob">Play blob</button><button id="mse">Play MSE</button>
 <button id="switch">Change source</button><button id="remove">Remove video</button>
+<button id="measure">Start comparison window</button><button id="finish">Finish comparison window</button>
 </div>
 <div id="stage"><video id="movie" controls playsinline loop preload="metadata" poster="/sample-poster.png" src="/sample.mp4"></video></div>
 <p id="state">Ready</p>
@@ -18,11 +19,30 @@ button{background:#304c70;border:0;border-radius:10px}#stage{width:94%;overflow:
 const query=new URLSearchParams(location.search),kind=query.get('case')||'direct';
 const movie=document.querySelector('#movie'),stage=document.querySelector('#stage'),actions=document.querySelector('#actions'),state=document.querySelector('#state');
 let pauses=0,loads=0,frames=0;
+let measuring=false,started=0,lastFrame=0,maxFrameGap=0,startFrames=0,startPauses=0,startLoads=0,startQuality=null;
+const quality=()=>typeof movie.getVideoPlaybackQuality==='function'?movie.getVideoPlaybackQuality():null;
 const report=event=>fetch('/probe-events',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
  kind:kind+':'+event,time:movie.currentTime,paused:movie.paused,fullscreen:document.fullscreenElement===movie,
- pauses,loads,scale:getComputedStyle(movie).scale,fit:getComputedStyle(movie).objectFit,videoWidth:movie.videoWidth,videoHeight:movie.videoHeight
+ pauses,loads,scale:getComputedStyle(movie).scale,fit:getComputedStyle(movie).objectFit,videoWidth:movie.videoWidth,videoHeight:movie.videoHeight,
+ measuring,elapsed:started?performance.now()-started:0,frames:frames-startFrames,maxFrameGap,
+ windowPauses:pauses-startPauses,windowLoads:loads-startLoads,
+ totalVideoFrames:startQuality?quality().totalVideoFrames-startQuality.totalVideoFrames:null,
+ droppedVideoFrames:startQuality?quality().droppedVideoFrames-startQuality.droppedVideoFrames:null
 })}).catch(()=>{});
-function frame(){frames++;movie.requestVideoFrameCallback?.(frame)}movie.requestVideoFrameCallback?.(frame);
+function frame(now){
+ frames++;
+ if(measuring&&!movie.paused&&!document.hidden){if(lastFrame)maxFrameGap=Math.max(maxFrameGap,now-lastFrame);lastFrame=now}
+ else lastFrame=0;
+ movie.requestVideoFrameCallback?.(frame)
+}movie.requestVideoFrameCallback?.(frame);
+document.querySelector('#measure').onclick=()=>{
+ measuring=true;started=performance.now();lastFrame=0;maxFrameGap=0;startFrames=frames;
+ startPauses=pauses;startLoads=loads;startQuality=quality();report('measure-start');
+};
+document.querySelector('#finish').onclick=()=>{report('measure-finish');measuring=false;lastFrame=0};
+// A background interval or an intentional seek is not a dropped playback frame.
+for(const event of ['pause','playing','seeking','seeked'])movie.addEventListener(event,()=>lastFrame=0);
+document.addEventListener('visibilitychange',()=>lastFrame=0);
 document.querySelector('#play').onclick=()=>movie.play();
 document.querySelector('#pause').onclick=()=>movie.pause();
 document.querySelector('#site-video').onclick=()=>movie.requestFullscreen().catch(()=>report('fs-denied'));
