@@ -34,6 +34,7 @@ TRACKED = (MOJOM, HEADER, SOURCE, MEDIA_H, MEDIA_CC, MEDIA_TEST, ORIENTATION,
 NEW_FILES = {
     "chrome/browser/android/upgrid_player.cc": "player_android.cc",
     "chrome/android/java/src/org/chromium/chrome/browser/upgrid/UpgridPlayer.java": "UpgridPlayer.java",
+    "chrome/android/java/src/org/chromium/chrome/browser/upgrid/UpgridScrubSession.java": "UpgridScrubSession.java",
 }
 
 
@@ -133,6 +134,9 @@ def render(inputs):
     anchor = '"java/src/org/chromium/chrome/browser/DevToolsServer.java",'
     for path in (JAVA_SOURCES, JAVA_BUILD):
         output[path] = replace_once(output[path], anchor, anchor + '\n      "' + java_path + '",', path)
+    output[JAVA_SOURCES] = replace_once(output[JAVA_SOURCES], '"' + java_path + '",',
+        '"' + java_path + '",\n      "java/src/org/chromium/chrome/browser/upgrid/UpgridScrubSession.java",',
+        JAVA_SOURCES)
     anchor = '"android/devtools_server.cc",'
     output[NATIVE_BUILD] = replace_once(output[NATIVE_BUILD], anchor,
         anchor + '\n      "android/upgrid_player.cc",', NATIVE_BUILD)
