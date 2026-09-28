@@ -69,7 +69,11 @@ http.createServer((req, res) => {
                     paused: event.paused === true, fullscreen: event.fullscreen === true,
                     pauses: Number(event.pauses), loads: Number(event.loads),
                     scale: String(event.scale || '').slice(0,32), fit: String(event.fit || '').slice(0,16),
-                    videoWidth: Number(event.videoWidth) || 0, videoHeight: Number(event.videoHeight) || 0 });
+                    videoWidth: Number(event.videoWidth) || 0, videoHeight: Number(event.videoHeight) || 0,
+                    measuring: event.measuring === true,
+                    ...Object.fromEntries(['elapsed', 'frames', 'maxFrameGap', 'windowPauses', 'windowLoads',
+                        'totalVideoFrames', 'droppedVideoFrames'].map(key => [key,
+                            typeof event[key] === 'number' && Number.isFinite(event[key]) ? event[key] : null])) });
                 if (probeEvents.length > 1000) probeEvents.shift();
                 res.writeHead(204); res.end();
             } catch { res.writeHead(400); res.end(); }
