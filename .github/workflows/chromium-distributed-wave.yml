@@ -16,7 +16,7 @@ jobs:
       fail-fast: false
       max-parallel: 40
       matrix:
-        worker: [0, 1]
+        worker: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39]
     steps:
       - uses: actions/checkout@v4
       - name: Download verified compiler snapshot
@@ -28,7 +28,7 @@ jobs:
       - name: Compile independent CXX actions
         env:
           GH_TOKEN: ${{ github.token }}
-        run: python3 tools/chromium/distributed/wave_worker.py wave-inputs.tar.gz 5ac76f90110dfa31521f96c5b99aec01c53987cb3b10e5058edf7aa4905e2ca2 ${{ matrix.worker }} --limit 4
+        run: python3 tools/chromium/distributed/wave_worker.py wave-inputs.tar.gz 5ac76f90110dfa31521f96c5b99aec01c53987cb3b10e5058edf7aa4905e2ca2 ${{ matrix.worker }} --skip-first ${{ matrix.worker < 2 && 4 || 0 }}
       - name: Transfer completed objects
         if: always()
         env:
@@ -49,3 +49,4 @@ jobs:
             worker.log
           retention-days: 1
           if-no-files-found: warn
+

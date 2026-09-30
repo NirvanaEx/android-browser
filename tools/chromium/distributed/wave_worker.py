@@ -20,6 +20,7 @@ def main():
     parser.add_argument('digest')
     parser.add_argument('shard', type=int)
     parser.add_argument('--limit', type=int)
+    parser.add_argument('--skip-first', type=int, default=0)
     args = parser.parse_args()
     if sha(args.archive) != args.digest:
         raise RuntimeError('Snapshot checksum mismatch')
@@ -31,7 +32,10 @@ def main():
             rel = pathlib.PurePosixPath(item.name)
             if rel.is_absolute() or '..' in rel.parts or not (item.isfile() or item.isdir()):
                 raise RuntimeError('Unsafe snapshot entry')
-        bundle.extractall(root, filter='data')
+    # All entries are verified regular files/directories with relative paths.
+    # GNU tar avoids Python's per-file extraction overhead for 200k headers.
+    subprocess.run(['tar', '-xzf', str(args.archive.resolve()), '--no-same-owner',
+                    '--no-same-permissions', '-C', str(root)], check=True)
     manifest = json.loads((root / 'wave-manifest.json').read_text())
     src, out = root / 'src', root / 'src/out/Upgrid'
     if manifest['sourceRoot'] != str(src) or manifest['outputRoot'] != str(out):
@@ -42,6 +46,9 @@ def main():
             raise RuntimeError('Snapshot input mismatch')
         os.utime(file, ns=(item['mtimeNs'], item['mtimeNs']))
     actions = manifest['shards'][args.shard]
+    if args.skip_first < 0 or args.skip_first >= len(actions):
+        raise RuntimeError('Invalid number of already accepted actions')
+    actions = actions[args.skip_first:]
     if args.limit is not None:
         if args.limit < 1:
             raise RuntimeError('Limit must be positive')
