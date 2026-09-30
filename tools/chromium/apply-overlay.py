@@ -33,10 +33,13 @@ TOOLBAR_JAVA = "chrome/browser/ui/android/toolbar/java/src/org/chromium/chrome/b
 TOOLBAR_BUILD = "chrome/browser/ui/android/toolbar/BUILD.gn"
 MANIFEST = "chrome/android/java/AndroidManifest.xml"
 EXTERNAL_PROVIDERS = "chrome/browser/extensions/external_provider_impl.cc"
+CONTEXT_MENU = "chrome/android/java/src/org/chromium/chrome/browser/contextmenu/ContextMenuMediator.java"
+CONTEXT_MENU_TEST = "chrome/android/junit/src/org/chromium/chrome/browser/contextmenu/ContextMenuMediatorTest.java"
 TRACKED = (MOJOM, HEADER, SOURCE, MEDIA_H, MEDIA_CC, MEDIA_TEST, ORIENTATION,
            REMOTE_CORE, REMOTE_MODULE, JAVA_SOURCES, JAVA_BUILD,
            NATIVE_BUILD, ACTIVITY, MENU, PACKAGE, SCREEN_API, SCREEN_IMPL, SCREEN_TEST, LABEL,
-           TOOLBAR_LAYOUT, TOOLBAR_JAVA, TOOLBAR_BUILD, MANIFEST, EXTERNAL_PROVIDERS)
+           TOOLBAR_LAYOUT, TOOLBAR_JAVA, TOOLBAR_BUILD, MANIFEST, EXTERNAL_PROVIDERS,
+           CONTEXT_MENU, CONTEXT_MENU_TEST)
 NEW_FILES = {
     "chrome/browser/android/upgrid_player.cc": "player_android.cc",
     "chrome/android/java/src/org/chromium/chrome/browser/upgrid/UpgridPlayer.java": "UpgridPlayer.java",
@@ -68,6 +71,21 @@ def fragment(name):
 
 def render(inputs):
     output = dict(inputs)
+    # MenuModelBridge supplies native extension actions without an Android menu ID.
+    # The hierarchy controller already wraps those actions with dialog dismissal.
+    # Replacing them routes ID 0 to ChromeContextMenuPopulator and crashes on tap.
+    output[CONTEXT_MENU] = replace_once(output[CONTEXT_MENU],
+        "            if (item.type == ListItemType.MENU_ITEM\n"
+        "                    || item.type == ContextMenuItemType.CONTEXT_MENU_ITEM_WITH_ICON_BUTTON) {",
+        "            if ((item.type == ListItemType.MENU_ITEM\n"
+        "                            || item.type == ContextMenuItemType.CONTEXT_MENU_ITEM_WITH_ICON_BUTTON)\n"
+        "                    && !hierarchicalMenuController.hasClickListener(item)) {",
+        CONTEXT_MENU)
+    output[CONTEXT_MENU_TEST] = replace_once(output[CONTEXT_MENU_TEST],
+        "    private ModelList getItemList(List<ModelList> items, boolean hasHeader) {",
+        fragment("context_menu_test.java.inc") + "\n"
+        "    private ModelList getItemList(List<ModelList> items, boolean hasHeader) {",
+        CONTEXT_MENU_TEST)
     output[EXTERNAL_PROVIDERS] = replace_once(output[EXTERNAL_PROVIDERS],
         '#include "extensions/common/extension.h"',
         '#include "extensions/common/extension.h"\n'
