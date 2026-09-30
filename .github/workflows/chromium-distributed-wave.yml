@@ -1,0 +1,51 @@
+name: Chromium distributed CXX wave
+on:
+  push:
+    branches: [codex/chromium-distributed]
+    paths: [.github/workflows/chromium-distributed-wave.yml]
+  workflow_dispatch:
+permissions:
+  contents: write
+  checks: write
+jobs:
+  compile:
+    if: github.ref == 'refs/heads/codex/chromium-distributed'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 330
+    strategy:
+      fail-fast: false
+      max-parallel: 40
+      matrix:
+        worker: [0, 1]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download verified compiler snapshot
+        run: curl --fail --location --retry 3 --output wave-inputs.tar.gz https://github.com/NirvanaEx/android-browser/releases/download/chromium-distributed-inputs-20260930/wave1-inputs.tar.gz
+      - name: Create isolated compilation directory
+        run: |
+          test ! -e /home/neyron
+          sudo install -d -o "$(id -u)" -g "$(id -g)" /home/neyron/.cache/upgrid/chromium
+      - name: Compile independent CXX actions
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 tools/chromium/distributed/wave_worker.py wave-inputs.tar.gz 5ac76f90110dfa31521f96c5b99aec01c53987cb3b10e5058edf7aa4905e2ca2 ${{ matrix.worker }} --limit 4
+      - name: Transfer completed objects
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          WORKER: ${{ matrix.worker }}
+        run: |
+          if [ -f objects.tar.gz ]; then
+            asset="objects-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-${WORKER}.tar.gz"
+            mv objects.tar.gz "$asset"
+            gh release upload chromium-distributed-inputs-20260930 "$asset" --repo "$GITHUB_REPOSITORY"
+          fi
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: cxx-result-${{ matrix.worker }}
+          path: |
+            result.json
+            worker.log
+          retention-days: 1
+          if-no-files-found: warn
