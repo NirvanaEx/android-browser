@@ -1,6 +1,7 @@
 """Verify a completed shard and optionally import its objects at a stopped build boundary."""
 import argparse
 import fcntl
+import functools
 import json
 import os
 import pathlib
@@ -10,6 +11,13 @@ import tarfile
 import time
 from ninja_cache import read_deps, append_deps
 from probe_bundle import SRC, OUT, BASE, sha
+
+
+@functools.lru_cache(maxsize=2)
+def snapshot(prefix):
+    receipt = json.loads((BASE / (prefix + '-receipt.json')).read_text())
+    manifest = json.loads((BASE / (prefix + '-manifest.json')).read_text())
+    return receipt, manifest, {item['path']: item for item in manifest['inputs']}
 
 
 def ensure_idle():
@@ -27,14 +35,16 @@ def main():
     parser.add_argument('--run-id', required=True)
     parser.add_argument('--head-sha', required=True)
     parser.add_argument('--apply', action='store_true')
+    parser.add_argument('--snapshot-prefix', default='wave1')
     args = parser.parse_args()
+    if not args.snapshot_prefix.isalnum():
+        raise RuntimeError('Invalid snapshot prefix')
     lock = (OUT / '.upgrid-remote-import.lock').open('a')
     fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
     ensure_idle()
     if not (OUT / '.upgrid-build-owner').exists():
         raise RuntimeError('Unowned build output')
-    receipt = json.loads((BASE / 'wave1-receipt.json').read_text())
-    manifest = json.loads((BASE / 'wave1-manifest.json').read_text())
+    receipt, manifest, input_manifest = snapshot(args.snapshot_prefix)
     with tarfile.open(args.artifact, 'r:gz') as archive:
         report = json.load(archive.extractfile('result.json'))
         if report['snapshotSha256'] != receipt['sha256'] or report['runId'] != args.run_id or report['headSha'] != args.head_sha:
@@ -46,14 +56,13 @@ def main():
         if len(allowed) != len(report['objects']) or not allowed <= expected:
             raise RuntimeError('Unexpected/duplicate outputs')
         allowed |= {'result.json', '.ninja_log', '.ninja_deps'}
-        staging = BASE / 'verified-artifacts' / str(shard)
+        staging = BASE / 'verified-artifacts' / args.run_id / str(shard)
         staging.mkdir(parents=True, exist_ok=True)
         for member in archive.getmembers():
             if member.name not in allowed or not member.isfile():
                 raise RuntimeError('Unexpected artifact member')
         archive.extractall(staging, filter='data')
     _, dependencies = read_deps(staging / '.ninja_deps')
-    input_manifest = {item['path']: item for item in manifest['inputs']}
     verified = set()
     for item in report['objects']:
         if sha(staging / item['path']) != item['sha256'] or item['path'] not in dependencies:
@@ -120,7 +129,7 @@ def main():
         temp_deps.replace(OUT / '.ninja_deps')
         temp_log.replace(OUT / '.ninja_log')
         result.update(applied=True, importedAtNs=time.time_ns(), originalObjectMtimes=old_stats)
-        (backup / f'shard-{shard}-receipt.json').write_text(json.dumps(result, indent=2) + '\n')
+        (backup / f'run-{args.run_id}-shard-{shard}-receipt.json').write_text(json.dumps(result, indent=2) + '\n')
     print(json.dumps(result, indent=2))
 
 

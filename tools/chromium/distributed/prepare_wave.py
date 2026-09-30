@@ -1,4 +1,5 @@
 """Snapshot pending C++ actions and headers; do not build or modify local output."""
+import argparse
 import hashlib
 import json
 import os
@@ -11,9 +12,18 @@ from probe_bundle import SRC, OUT, BASE, sha
 
 
 def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--prefix', default='wave1')
+    parser.add_argument('--pending', default='pending-cxx.json')
+    args = parser.parse_args()
+    if not args.prefix.isalnum() or pathlib.Path(args.pending).name != args.pending:
+        raise RuntimeError('Invalid snapshot name')
+    archive = BASE / (args.prefix + '-inputs.tar.gz')
+    if archive.exists():
+        raise RuntimeError('Preserve existing snapshot')
     if shutil.disk_usage(BASE).free < 25 * 1024**3:
         raise RuntimeError('Insufficient staging space on D')
-    pending = json.loads((BASE / 'pending-cxx.json').read_text())
+    pending = json.loads((BASE / args.pending).read_text())
     files = set()
     for name in read_deps(OUT / '.ninja_deps', paths_only=True)[0]:
         p = pathlib.Path(os.path.normpath(OUT / name))
@@ -87,10 +97,7 @@ def main():
     manifest = {'schema': 1, 'sourceRoot': str(SRC), 'outputRoot': str(OUT),
                 'inputs': inputs, 'shards': shards, 'deferred': deferred,
                 'totalActions': len(actions), 'mode': 'compile-wave', 'jobsPerWorker': 4}
-    archive = BASE / 'wave1-inputs.tar.gz'
-    if archive.exists():
-        raise RuntimeError('Preserve existing snapshot')
-    metadata = BASE / 'wave1-manifest.json'
+    metadata = BASE / (args.prefix + '-manifest.json')
     metadata.write_text(json.dumps(manifest) + '\n')
     with tarfile.open(archive, 'w:gz', compresslevel=1, dereference=True) as output:
         output.add(metadata, arcname='wave-manifest.json')
@@ -102,7 +109,7 @@ def main():
     receipt = {'archive': str(archive), 'sha256': sha(archive), 'bytes': archive.stat().st_size,
                'inputFiles': len(inputs), 'inputBytes': sum(item['size'] for item in inputs),
                'actions': len(actions), 'shards': len(shards), 'deferred': len(deferred)}
-    (BASE / 'wave1-receipt.json').write_text(json.dumps(receipt, indent=2) + '\n')
+    (BASE / (args.prefix + '-receipt.json')).write_text(json.dumps(receipt, indent=2) + '\n')
     print(json.dumps(receipt), flush=True)
 
 

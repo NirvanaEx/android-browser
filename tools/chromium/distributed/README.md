@@ -43,6 +43,21 @@ fail the shard; completed objects are still returned. Never weaken compiler
 checks to force success. This implementation balances fixed shards; it does not
 claim dynamic work stealing. Record observed performance before claiming speedup.
 
+The first full run (36760005966) exposed missing generated headers: it retained
+1,120 successful C++ objects, but all 40 shards stopped after eight errors.
+This is a failed wave, not APK success. Actual account concurrency was 20
+simultaneous jobs. The earlier eight-object pilot was imported successfully.
+
+`continue_wave2.py` waits for verified import of those 1,120 objects, then runs
+the reviewed native-input generation graph (767 pending actions, 764 ACTION
+and three COPY steps, no C++ compilation), with six local Ninja slots. It
+refreshes the original graph's pending commands and builds a new immutable
+snapshot. Only after successful generation, hashing and upload does it dispatch
+40 balanced shards again. Workers attempt all independent objects even when
+some fail; failed compilations remain failures. The supervisor records each
+phase and failures in `distributed-build-state.json`. Do not start a second
+supervisor or compiler while it is active.
+
 ## Accept returned objects
 
 1. Read `distributed-build-state.json` in the feature build folder for the
@@ -50,9 +65,14 @@ claim dynamic work stealing. Record observed performance before claiming speedup
    updated about every five minutes without changing the workflow.
 2. Download the `objects-RUN_ID-ATTEMPT-SHARD.tar.gz` assets belonging to that
    run from the development transfer release into a new D: subdirectory.
+   `collect_wave.py STATE` performs this download with run/head/snapshot checks.
 3. In WSL, run `import_wave.py ARCHIVE --run-id ID --head-sha SHA` first. It
    validates the artifact, output allowlist, hashes, dependencies and current
-   inputs. Then repeat with `--apply` only at an idle build boundary.
+   inputs. Then repeat with `--apply` only at an idle build boundary. For wave 2,
+   pass `--snapshot-prefix wave2`; never validate it against the wave 1 snapshot.
+   `import_downloaded.py DOWNLOAD_RECEIPT --snapshot-prefix wave2` imports
+   downloaded shards serially, verifies before each mutation, and skips shards
+   with matching successful import receipts.
 4. `before-remote-import` contains original logs and replaced objects. Imports
    merge Ninja dependency IDs instead of copying another runner's entire log.
    The merge was tested against the real Ninja: accepted objects stay cached,
