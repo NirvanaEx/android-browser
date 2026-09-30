@@ -17,13 +17,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Download exact compiler inputs
-        run: curl --fail --location --retry 3 --output probe-inputs.tar.gz https://github.com/NirvanaEx/android-browser/releases/download/chromium-distributed-inputs-20260930/probe-inputs.tar.gz
+        run: curl --fail --location --retry 3 --output probe-inputs-v2.tar.gz https://github.com/NirvanaEx/android-browser/releases/download/chromium-distributed-inputs-20260930/probe-inputs-v2.tar.gz
       - name: Create isolated compilation directory
         run: |
           test ! -e /home/neyron
           sudo install -d -o "$(id -u)" -g "$(id -g)" /home/neyron/.cache/upgrid/chromium
       - name: Compile and compare with existing local object
-        run: python3 tools/chromium/distributed/worker.py probe-inputs.tar.gz f2de387b7905a2ec7a15232b0c6920f14f36f40f9899aed4bfa1221d55bedd40 ${{ matrix.worker }}
+        run: python3 tools/chromium/distributed/worker.py probe-inputs-v2.tar.gz 56432d5e65f14f260b03d24bb2a4291089c4e7f750a2c32158c2d3fb509f5031 ${{ matrix.worker }}
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -31,3 +31,4 @@ jobs:
           path: result.json
           retention-days: 1
           if-no-files-found: warn
+
