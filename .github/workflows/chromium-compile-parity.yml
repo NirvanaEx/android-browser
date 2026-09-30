@@ -1,0 +1,33 @@
+name: Chromium remote compiler parity
+on:
+  push:
+    branches: [codex/chromium-distributed]
+    paths: [.github/workflows/chromium-compile-parity.yml]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  compile:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        worker: [0, 1]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download exact compiler inputs
+        run: curl --fail --location --retry 3 --output probe-inputs.tar.gz https://github.com/NirvanaEx/android-browser/releases/download/chromium-distributed-inputs-20260930/probe-inputs.tar.gz
+      - name: Create isolated compilation directory
+        run: |
+          test ! -e /home/neyron
+          sudo install -d -o "$(id -u)" -g "$(id -g)" /home/neyron/.cache/upgrid/chromium
+      - name: Compile and compare with existing local object
+        run: python3 tools/chromium/distributed/worker.py probe-inputs.tar.gz f2de387b7905a2ec7a15232b0c6920f14f36f40f9899aed4bfa1221d55bedd40 ${{ matrix.worker }}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: compiler-parity-${{ matrix.worker }}
+          path: result.json
+          retention-days: 1
+          if-no-files-found: warn
