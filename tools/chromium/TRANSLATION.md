@@ -6,6 +6,27 @@ extension with Google selected. This is not Google's native Chrome component.
 Do not substitute a new Google Translate tab or report prepared settings as a
 working translator.
 
+## Browser menu
+
+The `.7` overlay connects Chromium's existing `translate_id` menu item (including
+its localized label and icon) to the installed TWP extension. The ordinary
+Chromium availability check requires a configured Google API key, so installing
+an extension alone did not expose this menu item.
+
+`UpgridTranslate` checks the current WebContents, the enabled Web Store extension
+ID, its declared `hotkey-toggle-translation` command, granted site access and
+incognito permission. It revalidates at click time and sends the normal
+`commands.onCommand` user-gesture event through EventRouter, which also wakes a
+suspended extension worker. TWP handles the current tab, chosen service, target
+language, original-text restoration and mobile panel. Withheld host permissions
+are not treated as granted. No page script, shortcut ownership, API-key check or
+extension permission is bypassed. The stock translator remains the fallback.
+
+Local Java bridge checks (after building chrome_java and the existing Chromium
+Robolectric dependencies): `python tools/chromium/tests/test-translate.py`.
+These do not establish native event delivery or successful Google requests;
+the real menu tap must still be checked on Android.
+
 ## Setup without another native build
 
 Wait for the current `extensions-dev` APK and install/test its extension support.
@@ -59,6 +80,7 @@ translation on mobile; some always-translate-*site* paths are desktop-only.
    from the settings-import receipt. Do not publish an APK as a complete release
    until translation and the other requested features pass their checks.
 
-Current status: settings generation, upstream import and persistence across a
-simulated extension restart are verified. Extension installation, Google network
-translation, native-menu integration and Android behavior are not verified.
+Current Android evidence: TWP 10.2.5.0 was installed using the ordinary Web Store
+flow, and the user's screenshot shows readable Russian on the English local
+fixture. The `.7` native menu and automatic translation across reload/restart,
+exceptions and failure recovery still require Android acceptance.
