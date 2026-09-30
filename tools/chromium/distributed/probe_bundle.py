@@ -1,15 +1,16 @@
 """Package two previously compiled C++ actions for an isolated remote parity test."""
 import hashlib
 import json
+import os
 import pathlib
 import shlex
 import shutil
 import tarfile
 import urllib.request
 
-SRC = pathlib.Path('/home/neyron/.cache/upgrid/chromium/src')
+SRC = pathlib.Path(os.environ.get('UPGRID_CHROMIUM_ROOT', '/home/neyron/.cache/upgrid/chromium')) / 'src'
 OUT = SRC / 'out/Upgrid'
-BASE = pathlib.Path('/mnt/d/UpgridBuild/distributed-20260930')
+BASE = pathlib.Path(os.environ.get('UPGRID_DISTRIBUTED_STATE', '/mnt/d/UpgridBuild/distributed-20260930'))
 TARGETS = ['obj/third_party/blink/renderer/core/core/frame_console.o',
            'obj/third_party/blink/renderer/core/core/page_scale_constraints_set.o']
 

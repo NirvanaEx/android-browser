@@ -58,6 +58,16 @@ some fail; failed compilations remain failures. The supervisor records each
 phase and failures in `distributed-build-state.json`. Do not start a second
 supervisor or compiler while it is active.
 
+Wave 2 run `36764678861`, revision `1929e127e6758f81ace5cbcd4e868a3a17973294`,
+completed all 14,665 actions successfully; all 40 packages were downloaded.
+`finish_wave2.py` runs in Ubuntu WSL, imports and verifies those objects,
+records the full graph dry-run, then executes the existing extensions-dev
+builder with six local slots. It stops for review if more than 1,000 C++
+actions unexpectedly remain. Its phase/PID/start identity is recorded in the
+same state JSON, with `supervisorHost="Ubuntu WSL"`. Read `finish-wave2.log`
+and `final-build.log` on D; do not start a duplicate importer or compiler.
+A final build receipt still requires APK metadata and Android acceptance.
+
 ## Accept returned objects
 
 1. Read `distributed-build-state.json` in the feature build folder for the

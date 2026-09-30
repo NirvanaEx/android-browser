@@ -1,0 +1,21 @@
+{
+  "application": "Banana Browser",
+  "packageName": "org.triple.banana",
+  "versionName": "20.15 @ 146.0.7680.31.3",
+  "versionCode": 520151463,
+  "apkSha256": "5153173457562b448ded3bdc8b54239b92e841575bc63bbf6c4b508d6c9fc426",
+  "abi": "arm64-v8a",
+  "chromium": {
+    "repository": "https://chromium.googlesource.com/chromium/src.git",
+    "tag": "146.0.7680.31",
+    "commit": "4d3225104176d18430bb7bef9f67394686316c2f",
+    "purpose": "Reference for reverse engineering; not an approved production engine version"
+  },
+  "mediaInterfaces": [
+    "media.mojom.BananaMediaButtonController",
+    "media.mojom.BananaMediaCommandProcessor",
+    "media.mojom.BananaMediaEventDispatcher"
+  ],
+  "reconstructedNativeImplementation": false,
+  "runtimeParityVerified": false
+}

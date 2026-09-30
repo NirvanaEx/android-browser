@@ -1,0 +1,9 @@
+{
+  "repository": "https://chromium.googlesource.com/chromium/src.git",
+  "version": "146.0.7680.31",
+  "commit": "4d3225104176d18430bb7bef9f67394686316c2f",
+  "depotToolsRepository": "https://chromium.googlesource.com/chromium/tools/depot_tools.git",
+  "depotToolsCommit": "41c9bd890277c2f551499d171d215dfdf5dab97d",
+  "channel": "reference-development-only",
+  "productionApproved": false
+}

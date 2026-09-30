@@ -6,7 +6,7 @@ import tempfile
 import unittest
 from ninja_cache import HEADER, append_deps, read_deps
 
-NINJA = '/home/neyron/.cache/upgrid/chromium/src/third_party/ninja/ninja'
+NINJA = os.environ.get('UPGRID_TEST_NINJA', '/home/neyron/.cache/upgrid/chromium/src/third_party/ninja/ninja')
 
 
 class CacheTests(unittest.TestCase):

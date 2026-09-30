@@ -1,0 +1,21 @@
+# Experimental Android extensions configuration, not a release approval.
+# Preserve the phone player's configuration in args.gn until device acceptance.
+target_os = "android"
+target_cpu = "arm64"
+is_debug = false
+is_component_build = false
+is_java_debug = false
+# Optimize without the link-time memory requirements of an official PGO build.
+is_official_build = false
+use_thin_lto = false
+chrome_pgo_phase = 0
+symbol_level = 0
+blink_symbol_level = 0
+v8_symbol_level = 0
+use_remoteexec = false
+use_siso = false
+proprietary_codecs = true
+ffmpeg_branding = "Chrome"
+is_desktop_android = true
+android_override_version_name = "146.0.7680.31-upgrid.4-extensions-test"
+android_override_version_code = "768003107"
