@@ -1,0 +1,50 @@
+name: Chromium distributed build probe
+
+on:
+  push:
+    branches: [codex/chromium-distributed]
+    paths: [.github/workflows/chromium-distributed-probe.yml]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  resources:
+    strategy:
+      fail-fast: false
+      matrix:
+        worker: [0, 1]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Measure resources without deleting installed software
+        env:
+          WORKER_ID: ${{ matrix.worker }}
+        run: |
+          python3 - <<'PY'
+          import json, os, pathlib, shutil, subprocess
+          memory = dict(line.split(':', 1) for line in pathlib.Path('/proc/meminfo').read_text().splitlines())
+          mounts = {}
+          for directory in ['/', '/mnt', '/tmp']:
+              usage = shutil.disk_usage(directory)
+              mounts[directory] = dict(zip(['total', 'used', 'free'], usage))
+          candidates = ['/usr/share/dotnet', '/usr/local/lib/android', '/opt/hostedtoolcache', '/usr/local/.ghcup', '/usr/share/swift', '/opt/ghc']
+          sizes = {}
+          for directory in candidates:
+              if pathlib.Path(directory).exists():
+                  result = subprocess.run(['du', '-sx', '-B1', directory], text=True, capture_output=True)
+                  if result.returncode == 0:
+                      sizes[directory] = int(result.stdout.split()[0])
+          report = {'worker': os.environ['WORKER_ID'], 'cpus': len(os.sched_getaffinity(0)),
+                    'memory': {key: memory[key].strip() for key in ['MemTotal', 'MemAvailable', 'SwapTotal']},
+                    'disks': mounts, 'optionalSoftwareBytes': sizes,
+                    'machine': subprocess.check_output(['uname', '-m'], text=True).strip()}
+          pathlib.Path('resources.json').write_text(json.dumps(report, indent=2) + '\n')
+          print(json.dumps(report, indent=2))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: runner-resources-${{ matrix.worker }}
+          path: resources.json
+          retention-days: 1
