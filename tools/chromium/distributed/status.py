@@ -18,7 +18,8 @@ def main():
     run = api('/actions/runs/' + str(state['runId']))
     if run['head_sha'] != state['headSha']:
         raise RuntimeError('Unexpected workflow revision')
-    jobs = api('/actions/runs/' + str(state['runId']) + '/jobs?per_page=100')['jobs']
+    jobs = [job for job in api('/actions/runs/' + str(state['runId']) + '/jobs?per_page=100')['jobs']
+            if job['name'].startswith('compile (')]
     checks = api('/commits/' + state['headSha'] + '/check-runs?per_page=100')['check_runs']
     progress = {}
     for check in checks:
@@ -26,6 +27,8 @@ def main():
             continue
         item = json.loads(check['output']['summary'])
         if str(item['runId']) == str(state['runId']):
+            if item['snapshotSha256'] != state['inputSha256']:
+                raise RuntimeError('Unexpected progress snapshot')
             progress[item['shard']] = item
     print(json.dumps({'runId': run['id'], 'url': run['html_url'], 'status': run['status'],
         'conclusion': run['conclusion'], 'jobs': dict(collections.Counter(job['status'] for job in jobs)),

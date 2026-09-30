@@ -20,7 +20,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Download verified compiler snapshot
-        run: curl --fail --location --retry 3 --output wave-inputs.tar.gz https://github.com/NirvanaEx/android-browser/releases/download/chromium-distributed-inputs-20260930/wave1-inputs.tar.gz
+        run: curl --fail --location --retry 3 --output wave-inputs.tar.gz https://github.com/NirvanaEx/android-browser/releases/download/chromium-distributed-inputs-20260930/wave2-inputs.tar.gz
       - name: Create isolated compilation directory
         run: |
           test ! -e /home/neyron
@@ -28,7 +28,7 @@ jobs:
       - name: Compile independent CXX actions
         env:
           GH_TOKEN: ${{ github.token }}
-        run: python3 tools/chromium/distributed/wave_worker.py wave-inputs.tar.gz 5ac76f90110dfa31521f96c5b99aec01c53987cb3b10e5058edf7aa4905e2ca2 ${{ matrix.worker }} --skip-first ${{ matrix.worker < 2 && 4 || 0 }}
+        run: python3 tools/chromium/distributed/wave_worker.py wave-inputs.tar.gz 57f590fabd75f7daacd868057838ad38e9a513f81a1771bc3942f66dbca35222 ${{ matrix.worker }}
       - name: Transfer completed objects
         if: always()
         env:

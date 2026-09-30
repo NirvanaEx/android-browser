@@ -101,7 +101,7 @@ def main():
     started = time.monotonic()
     env = {**os.environ, 'NINJA_STATUS': '[%f/%t] '}
     process = subprocess.Popen([str(src / 'third_party/ninja/ninja'), '-f', 'wave.ninja',
-        '-j', str(manifest['jobsPerWorker']), '-k', '8'], cwd=out, env=env, text=True,
+        '-j', str(manifest['jobsPerWorker']), '-k', '0'], cwd=out, env=env, text=True,
         stdout=subprocess.PIPE, stderr=subprocess.STDOUT, start_new_session=True)
     timer = threading.Timer(300 * 60, lambda: process.poll() is None and os.kill(process.pid, signal.SIGINT))
     timer.daemon = True
