@@ -1,0 +1,36 @@
+name: Publish accepted Upgrid cloud APK
+on:
+  workflow_dispatch:
+    inputs:
+      build_tag:
+        description: Draft upgrid-ci-RUN-ATTEMPT containing the tested APK
+        required: true
+        type: string
+permissions:
+  contents: write
+concurrency:
+  group: upgrid-telegram-release
+  cancel-in-progress: false
+jobs:
+  publish:
+    if: github.ref == 'refs/heads/codex/chromium-distributed'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Verify exact Android acceptance and publish through existing relay
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BUILD_TAG: ${{ inputs.build_tag }}
+          UPGRID_RELAY_SSH_KEY: ${{ secrets.UPGRID_RELAY_SSH_KEY }}
+          UPGRID_RELAY_KNOWN_HOSTS: ${{ secrets.UPGRID_RELAY_KNOWN_HOSTS }}
+        run: python3 tools/chromium/ci/release.py --build-tag "$BUILD_TAG"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: telegram-release-verification
+          path: /home/runner/upgrid-state/telegram-release-receipt.json
+          retention-days: 30
+          if-no-files-found: ignore

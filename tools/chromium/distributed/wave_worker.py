@@ -24,7 +24,7 @@ def main():
     args = parser.parse_args()
     if sha(args.archive) != args.digest:
         raise RuntimeError('Snapshot checksum mismatch')
-    root = pathlib.Path('/home/neyron/.cache/upgrid/chromium')
+    root = pathlib.Path(os.environ.get('UPGRID_CHROMIUM_ROOT', '/home/neyron/.cache/upgrid/chromium'))
     if not root.exists() or any(root.iterdir()):
         raise RuntimeError('Expected empty isolated worker root')
     with tarfile.open(args.archive, 'r:gz') as bundle:

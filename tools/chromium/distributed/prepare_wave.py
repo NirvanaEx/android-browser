@@ -15,7 +15,10 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--prefix', default='wave1')
     parser.add_argument('--pending', default='pending-cxx.json')
+    parser.add_argument('--shards', type=int, default=40)
     args = parser.parse_args()
+    if not 1 <= args.shards <= 40:
+        raise RuntimeError('Use between 1 and 40 shards')
     if not args.prefix.isalnum() or pathlib.Path(args.pending).name != args.pending:
         raise RuntimeError('Invalid snapshot name')
     archive = BASE / (args.prefix + '-inputs.tar.gz')
@@ -88,7 +91,7 @@ def main():
         parts = line.split('\t')
         if len(parts) == 5:
             costs[parts[3]] = max(1000, int(parts[1]) - int(parts[0]))
-    shards = [[] for _ in range(40)]
+    shards = [[] for _ in range(args.shards)]
     loads = [0] * len(shards)
     for action in sorted(actions, key=lambda a: costs.get(a['output'], 15000), reverse=True):
         index = min(range(len(shards)), key=lambda n: loads[n])
