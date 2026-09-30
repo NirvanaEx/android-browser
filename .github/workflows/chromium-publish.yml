@@ -1,5 +1,8 @@
 name: Publish accepted Upgrid cloud APK
 on:
+  push:
+    branches: [codex/chromium-distributed]
+    paths: [tools/chromium/ci/acceptance/*.json]
   workflow_dispatch:
     inputs:
       build_tag:
@@ -20,6 +23,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
+          fetch-depth: 0
       - name: Verify exact Android acceptance and publish through existing relay
         env:
           GH_TOKEN: ${{ github.token }}

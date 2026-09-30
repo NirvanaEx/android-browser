@@ -45,6 +45,36 @@ class AcceptanceTests(unittest.TestCase):
             acceptance.validate(self.receipt, self.apk, {**self.upstream, 'commit': 'e'*40})
 
 
+@unittest.skipUnless(sys.platform == 'linux', 'VPS adapter runs on Linux')
+class RelayTests(unittest.TestCase):
+    def test_request_cannot_choose_another_repo_package_or_command_path(self):
+        from relay_adapter import validate_request
+        apk = dict(sha256='a'*64, headSha='b'*40, versionCode=1, bytes=100,
+                   package='com.upgrid.chromium', versionName='test')
+        request = dict(schema=1, repo='NirvanaEx/android-browser', apk=apk,
+                       acceptanceHeadSha='c'*40, tag='upgrid-cloud-build1-'+'a'*12)
+        self.assertEqual(validate_request(request), apk)
+        for field, value in [('repo', 'other/repo'), ('tag', '../../something'),
+                             ('acceptanceHeadSha', 'HEAD;anything')]:
+            with self.subTest(field=field), self.assertRaises(ValueError):
+                validate_request({**request, field: value})
+        with self.assertRaises(ValueError):
+            validate_request({**request, 'apk': {**apk, 'versionName': '../test'}})
+
+    def test_unapproved_release_fails_before_any_send_or_file_download(self):
+        import relay_adapter
+        apk = dict(sha256='a'*64, headSha='b'*40, versionCode=1, bytes=100,
+                   package='com.upgrid.chromium', versionName='test')
+        request = dict(schema=1, repo='NirvanaEx/android-browser', apk=apk, acceptance={},
+                       acceptanceHeadSha='c'*40, tag='upgrid-cloud-build1-'+'a'*12)
+        with patch.object(relay_adapter, 'service_environment', return_value={}), \
+                patch.object(relay_adapter, 'source_json', side_effect=[{}, {'productionApproved': False}]), \
+                patch.object(relay_adapter.subprocess, 'run') as call:
+            with self.assertRaises(ValueError):
+                relay_adapter.dispatch(request)
+            call.assert_not_called()
+
+
 @unittest.skipUnless(sys.platform == 'linux' and shutil.which('ninja'), 'Real Ninja test runs on Linux CI')
 class ImportTests(unittest.TestCase):
     def setUp(self):

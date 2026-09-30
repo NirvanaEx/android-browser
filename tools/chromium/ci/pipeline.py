@@ -91,8 +91,23 @@ def pending_native():
 def prepare(args):
     tag = f"upgrid-ci-{os.environ['GITHUB_RUN_ID']}-{os.environ['GITHUB_RUN_ATTEMPT']}"
     config = configure()
-    if args.cache_tag:
-        restore_workspace(args.cache_tag, 'cache')
+    cache_tag = args.cache_tag
+    if cache_tag == 'auto':
+        cache_tag = ''
+        revision = read(TOOLS / 'upstream.json')['commit']
+        for release in gh_json('releases?per_page=100'):
+            candidate = release['tag_name']
+            if not re.fullmatch(r'upgrid-ci-[0-9]+-[0-9]+', candidate):
+                continue
+            if not {'cache.json', 'apk-verification.json'} <= {asset['name'] for asset in release['assets']}:
+                continue
+            cache = read(download(candidate, 'cache.json', STATE / 'cache-candidates' / candidate))
+            if cache['root'] == str(ROOT) and cache['chromiumRevision'] == revision:
+                cache_tag = candidate
+                break
+    print(json.dumps({'stage': 'prepare', 'restoredCache': cache_tag or None}), flush=True)
+    if cache_tag:
+        restore_workspace(cache_tag, 'cache')
         configure()
     else:
         run(sys.executable, TOOLS / 'prepare.py', '--checkout', ROOT)
@@ -228,7 +243,7 @@ def finalize(args):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('stage', choices=['prepare', 'worker', 'finalize'])
-    parser.add_argument('--cache-tag', default='')
+    parser.add_argument('--cache-tag', default='auto')
     parser.add_argument('--shards', type=int, default=40, choices=range(1, 41))
     parser.add_argument('--tag')
     parser.add_argument('--plan-sha256')

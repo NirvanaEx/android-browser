@@ -127,7 +127,8 @@ def pack_workspace(tag, prefix):
             process.wait()
         process.stdout.close()
     result = {'schema': 1, 'root': str(ROOT), 'chromiumRevision': read(PROJECT / 'tools/chromium/upstream.json')['commit'],
-              'sourceHeadSha': os.environ['GITHUB_SHA'], 'parts': parts}
+              'sourceHeadSha': os.environ['GITHUB_SHA'], 'parts': parts,
+              'expandedBytes': int(subprocess.check_output(['du', '-sb', str(ROOT)], text=True).split()[0])}
     manifest = STATE / f'{prefix}.json'
     write(manifest, result)
     upload(tag, manifest)
@@ -141,7 +142,7 @@ def restore_workspace(tag, prefix, expected_digest=None):
     manifest = read(manifest_path)
     if manifest['root'] != str(ROOT) or manifest['chromiumRevision'] != read(PROJECT / 'tools/chromium/upstream.json')['commit']:
         raise RuntimeError('Incompatible workspace cache')
-    reserve(ROOT)
+    reserve(ROOT, extra=manifest['expandedBytes'] + sum(item['bytes'] for item in manifest['parts']))
     ROOT.mkdir(parents=True, exist_ok=True)
     paths = []
     for item in manifest['parts']:
