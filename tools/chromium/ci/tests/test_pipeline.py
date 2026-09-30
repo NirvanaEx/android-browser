@@ -82,6 +82,7 @@ class ImportTests(unittest.TestCase):
         subprocess.run(['ninja', '-C', str(self.out)], check=True, capture_output=True)
         logs = {parts[3]: parts for line in (self.out/'.ninja_log').read_text().splitlines()
                 if len(parts := line.split('\t')) == 5}
+        log_header = (self.out/'.ninja_log').read_text().splitlines()[0]
         self.archives = []
         for i, action in enumerate(actions):
             name = action['output']
@@ -103,7 +104,7 @@ class ImportTests(unittest.TestCase):
         for action in actions:
             (self.out/action['output']).unlink()
         (self.out/'.ninja_deps').write_bytes(HEADER)
-        (self.out/'.ninja_log').write_text('# ninja log v5\n')
+        (self.out/'.ninja_log').write_text(log_header+'\n')
 
     def invoke(self, archives=None):
         return importer.import_objects(self.archives if archives is None else archives,
