@@ -13,9 +13,25 @@ from acceptance import validate
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--build-tag', required=True)
+    parser.add_argument('--build-tag', default='')
     args = parser.parse_args()
     cloud_only()
+    if not args.build_tag:
+        event = read(os.environ['GITHUB_EVENT_PATH'])
+        before = event.get('before', '')
+        if not re.fullmatch('[0-9a-f]{40}', before) or before == '0'*40:
+            raise RuntimeError('Use an explicit build tag for the first publication')
+        changed = subprocess.check_output(['git', 'diff', '--name-only', '--diff-filter=AM',
+                                           before, os.environ['GITHUB_SHA'], '--',
+                                           'tools/chromium/ci/acceptance/*.json'], text=True).splitlines()
+        if not changed:
+            raise RuntimeError('No new Android acceptance receipt')
+        for name in changed:
+            accepted = read(PROJECT/name)
+            if pathlib.Path(name).stem != accepted.get('sha256'):
+                raise RuntimeError('Acceptance filename does not match APK')
+            run(os.sys.executable, __file__, '--build-tag', accepted['buildTag'])
+        return
     metadata = read(download(args.build_tag, 'apk-verification.json', STATE))
     if not re.fullmatch('[0-9a-f]{64}', metadata['sha256']):
         raise RuntimeError('Invalid APK digest')
@@ -39,21 +55,35 @@ def main():
         raise RuntimeError('Unsafe APK filename')
     apk.rename(target)
     try:
-        # A new accepted release has immutable content. Retry only an existing
-        # matching draft; a prior published release goes straight to relay dedup.
+        # Verify the restricted transport before making anything public.
+        ssh = ['ssh', '-i', str(private), '-o', 'BatchMode=yes', '-o', 'ConnectTimeout=15',
+               '-o', 'StrictHostKeyChecking=yes', '-o', 'UserKnownHostsFile=' + str(known_hosts),
+               'root@193.160.119.15', 'upgrid-ci-release']
+        health = subprocess.run(ssh, input=json.dumps({'operation': 'selfcheck'}), text=True,
+                                capture_output=True, check=True, timeout=30)
+        if not json.loads(health.stdout).get('ready'):
+            raise RuntimeError('Release adapter is not ready')
+        # A new accepted release has immutable content; retries use relay dedup.
         result = subprocess.run(['gh', 'release', 'view', tag, '--repo', REPO, '--json', 'isDraft,assets,targetCommitish'],
                                 capture_output=True, text=True)
         if result.returncode:
             run('gh', 'release', 'create', tag, '--repo', REPO, '--draft', '--target', metadata['headSha'],
                 '--title', 'Upgrid ' + metadata['versionName'], '--notes', 'Android acceptance passed for the attached APK.')
-            run('gh', 'release', 'upload', tag, target, STATE / 'apk-verification.json', '--repo', REPO)
+            write(STATE / 'android-acceptance.json', accepted)
+            run('gh', 'release', 'upload', tag, target, STATE / 'apk-verification.json',
+                STATE / 'android-acceptance.json', '--repo', REPO)
             run('gh', 'release', 'edit', tag, '--repo', REPO, '--draft=false', '--prerelease', '--latest=false')
         elif json.loads(result.stdout)['isDraft']:
             raise RuntimeError('Existing draft may be incomplete; inspect it before retrying publication')
-        request = {'schema': 1, 'repo': REPO, 'tag': tag, 'apk': metadata, 'acceptance': accepted}
-        reply = subprocess.run(['ssh', '-i', str(private), '-o', 'BatchMode=yes', '-o', 'ConnectTimeout=15',
-            '-o', 'StrictHostKeyChecking=yes', '-o', 'UserKnownHostsFile=' + str(known_hosts),
-            'root@193.160.119.15', 'upgrid-ci-release'], input=json.dumps(request),
+        else:
+            published = json.loads(result.stdout)
+            assets = [asset for asset in published['assets'] if asset['name'].endswith('.apk')]
+            if (published['targetCommitish'] != metadata['headSha'] or len(assets) != 1
+                    or assets[0]['name'] != target.name or assets[0]['size'] != metadata['bytes']):
+                raise RuntimeError('Existing release does not match the accepted APK')
+        request = {'schema': 1, 'repo': REPO, 'tag': tag, 'apk': metadata, 'acceptance': accepted,
+                   'acceptanceHeadSha': os.environ['GITHUB_SHA']}
+        reply = subprocess.run(ssh, input=json.dumps(request),
             text=True, capture_output=True, check=True, timeout=1800)
         receipt = json.loads(reply.stdout)
         if not receipt.get('verified') or not receipt.get('message_id'):

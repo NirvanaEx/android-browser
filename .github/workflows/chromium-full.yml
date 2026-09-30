@@ -13,9 +13,9 @@ on:
         options: [build, validate]
         default: build
       cache_tag:
-        description: Successful upgrid-ci-RUN-ATTEMPT cache tag (empty for first build)
+        description: auto selects a completed compatible cache; empty forces a cold build
         type: string
-        default: ''
+        default: auto
       shards:
         description: Number of native compilation shards (1 to 40)
         type: number
