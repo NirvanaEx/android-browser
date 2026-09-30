@@ -22,6 +22,7 @@ JAVA_SOURCES = "chrome/android/chrome_java_sources.gni"
 JAVA_BUILD = "chrome/android/BUILD.gn"
 NATIVE_BUILD = "chrome/browser/BUILD.gn"
 ACTIVITY = "chrome/android/java/src/org/chromium/chrome/browser/ChromeTabbedActivity.java"
+CHROME_ACTIVITY = "chrome/android/java/src/org/chromium/chrome/browser/app/ChromeActivity.java"
 MENU = "chrome/android/java/src/org/chromium/chrome/browser/app/appmenu/AppMenuPropertiesDelegateImpl.java"
 PACKAGE = "chrome/android/chrome_public_apk_tmpl.gni"
 LABEL = "chrome/android/java/res_chromium_base/values/channel_constants.xml"
@@ -35,13 +36,17 @@ MANIFEST = "chrome/android/java/AndroidManifest.xml"
 EXTERNAL_PROVIDERS = "chrome/browser/extensions/external_provider_impl.cc"
 CONTEXT_MENU = "chrome/android/java/src/org/chromium/chrome/browser/contextmenu/ContextMenuMediator.java"
 CONTEXT_MENU_TEST = "chrome/android/junit/src/org/chromium/chrome/browser/contextmenu/ContextMenuMediatorTest.java"
+TOOLBAR_OVERLAY = "chrome/browser/ui/android/toolbar/java/src/org/chromium/chrome/browser/toolbar/top/TopToolbarOverlayMediator.java"
+LINT_CONFIG = "chrome/android/expectations/lint-suppressions.xml"
 TRACKED = (MOJOM, HEADER, SOURCE, MEDIA_H, MEDIA_CC, MEDIA_TEST, ORIENTATION,
            REMOTE_CORE, REMOTE_MODULE, JAVA_SOURCES, JAVA_BUILD,
            NATIVE_BUILD, ACTIVITY, MENU, PACKAGE, SCREEN_API, SCREEN_IMPL, SCREEN_TEST, LABEL,
            TOOLBAR_LAYOUT, TOOLBAR_JAVA, TOOLBAR_BUILD, MANIFEST, EXTERNAL_PROVIDERS,
-           CONTEXT_MENU, CONTEXT_MENU_TEST)
+           CONTEXT_MENU, CONTEXT_MENU_TEST, CHROME_ACTIVITY, TOOLBAR_OVERLAY, LINT_CONFIG)
 NEW_FILES = {
     "chrome/browser/android/upgrid_player.cc": "player_android.cc",
+    "chrome/browser/android/upgrid_translate.cc": "translate_android.cc",
+    "chrome/android/java/src/org/chromium/chrome/browser/upgrid/UpgridTranslate.java": "UpgridTranslate.java",
     "chrome/android/java/src/org/chromium/chrome/browser/upgrid/UpgridPlayer.java": "UpgridPlayer.java",
     "chrome/android/java/src/org/chromium/chrome/browser/upgrid/UpgridScrubSession.java": "UpgridScrubSession.java",
     "chrome/android/java/src/org/chromium/chrome/browser/upgrid/UpgridPlayerCoordinator.java": "UpgridPlayerCoordinator.java",
@@ -71,6 +76,43 @@ def fragment(name):
 
 def render(inputs):
     output = dict(inputs)
+    output[LINT_CONFIG] = replace_once(output[LINT_CONFIG],
+        '  <issue id="UnusedResources">',
+        '  <issue id="UnusedResources">\n'
+        '    <!-- Upgrid launcher is referenced by the generated APK manifest (icon and\n'
+        '         roundIcon); its adaptive XML references the bitmap and monochrome vector.\n'
+        '         Chromium resource-library lint does not retain this manifest root. -->\n'
+        '    <ignore path="**/res_chromium_base/drawable/upgrid_launcher.xml"/>\n'
+        '    <ignore path="**/res_chromium_base/drawable/upgrid_monochrome.xml"/>\n'
+        '    <ignore path="**/res_chromium_base/drawable-nodpi/upgrid_icon.png"/>', LINT_CONFIG)
+    output[TOOLBAR_OVERLAY] = replace_once(output[TOOLBAR_OVERLAY],
+        "    private float mViewportHeight;",
+        "    private float mViewportHeight;\n    private long mUpgridLastDiagnostic;", TOOLBAR_OVERLAY)
+    output[TOOLBAR_OVERLAY] = replace_once(output[TOOLBAR_OVERLAY],
+        "    private void applyContentOffsetToModel(float contentOffset) {",
+        "    private void applyContentOffsetToModel(float contentOffset) {\n"
+        "        long now = android.os.SystemClock.uptimeMillis();\n"
+        "        if (org.chromium.build.BuildConfig.ENABLE_ASSERTS\n"
+        "                && now - mUpgridLastDiagnostic > 500) {\n"
+        "            mUpgridLastDiagnostic = now;\n"
+        '            org.chromium.base.Log.i("UpgridToolbar",\n'
+        '                    "overlay content=%s top=%s height=%s y=%s android=%s refactor=%s",\n'
+        "                    contentOffset, mBrowserControlsStateProvider.getTopControlOffset(),\n"
+        "                    mBrowserControlsStateProvider.getTopControlsHeight(),\n"
+        "                    mModel.get(TopToolbarOverlayProperties.Y_OFFSET),\n"
+        "                    mBrowserControlsStateProvider.getAndroidControlsVisibility(),\n"
+        "                    BrowserControlsUtils.isTopControlsRefactorOffsetEnabled());\n"
+        "        }", TOOLBAR_OVERLAY)
+    output[MENU] = replace_once(output[MENU],
+        "        return currentTab != null && TranslateUtils.canTranslateCurrentTab(currentTab, true);",
+        "        return currentTab != null\n"
+        "                && (org.chromium.chrome.browser.upgrid.UpgridTranslate.canTranslate(currentTab)\n"
+        "                        || TranslateUtils.canTranslateCurrentTab(currentTab, true));", MENU)
+    output[CHROME_ACTIVITY] = replace_once(output[CHROME_ACTIVITY],
+        '            RecordUserAction.record("MobileMenuTranslate");',
+        '            RecordUserAction.record("MobileMenuTranslate");\n'
+        "            if (org.chromium.chrome.browser.upgrid.UpgridTranslate.translate(currentTab)) {\n"
+        "                return true;\n            }", CHROME_ACTIVITY)
     # MenuModelBridge supplies native extension actions without an Android menu ID.
     # The hierarchy controller already wraps those actions with dialog dismissal.
     # Replacing them routes ID 0 to ChromeContextMenuPopulator and crashes on tap.
@@ -184,6 +226,8 @@ def render(inputs):
     anchor = '"java/src/org/chromium/chrome/browser/DevToolsServer.java",'
     for path in (JAVA_SOURCES, JAVA_BUILD):
         output[path] = replace_once(output[path], anchor, anchor + '\n      "' + java_path + '",', path)
+        output[path] = replace_once(output[path], anchor, anchor +
+            '\n      "java/src/org/chromium/chrome/browser/upgrid/UpgridTranslate.java",', path)
     output[JAVA_SOURCES] = replace_once(output[JAVA_SOURCES], '"' + java_path + '",',
         '"' + java_path + '",\n      "java/src/org/chromium/chrome/browser/upgrid/UpgridPlayerCoordinator.java",',
         JAVA_SOURCES)
@@ -195,7 +239,7 @@ def render(inputs):
         JAVA_SOURCES)
     anchor = '"android/devtools_server.cc",'
     output[NATIVE_BUILD] = replace_once(output[NATIVE_BUILD], anchor,
-        anchor + '\n      "android/upgrid_player.cc",', NATIVE_BUILD)
+        anchor + '\n      "android/upgrid_player.cc",\n      "android/upgrid_translate.cc",', NATIVE_BUILD)
     anchor = "        boolean currentTabIsNtp = isTabNtp(currentTab);"
     output[ACTIVITY] = replace_once(output[ACTIVITY], anchor, anchor +
         "\n        if (id == org.chromium.chrome.browser.upgrid.UpgridPlayer.MENU_ID) {\n"
