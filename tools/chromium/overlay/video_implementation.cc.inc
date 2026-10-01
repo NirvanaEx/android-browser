@@ -44,8 +44,22 @@ mojom::blink::UpgridVideoStatePtr LocalFrameMojoHandler::UpgridVideoSnapshot() {
     return nullptr;
   auto& video = *upgrid_video_;
   const bool fullscreen = IsUpgridVideoFullscreen();
+  if (upgrid_presentation_ &&
+      (!upgrid_fullscreen_root_ ||
+       !upgrid_presentation_->IsCurrent(video, *upgrid_fullscreen_root_))) {
+    ClearUpgridVideo(false, false);
+    return nullptr;
+  }
   // Only change controls and scaling once real engine fullscreen is confirmed.
   if (fullscreen && upgrid_open_requested_ && !upgrid_controls_hidden_) {
+    if (upgrid_fullscreen_root_ && upgrid_fullscreen_root_ != &video) {
+      upgrid_presentation_ =
+          UpgridFullscreenPresentation::Create(video, *upgrid_fullscreen_root_);
+      if (!upgrid_presentation_) {
+        ClearUpgridVideo(false, false);
+        return nullptr;
+      }
+    }
     const auto* style = video.InlineStyle();
     upgrid_original_fit_ =
         style ? style->GetPropertyValue(CSSPropertyID::kObjectFit) : String();
@@ -351,6 +365,10 @@ void LocalFrameMojoHandler::ControlUpgridVideo(
 }
 
 void LocalFrameMojoHandler::ClearUpgridVideo(bool pause, bool exit_fullscreen) {
+  if (upgrid_presentation_) {
+    upgrid_presentation_->Close();
+    upgrid_presentation_ = nullptr;
+  }
   if (upgrid_fullscreen_guard_) {
     upgrid_fullscreen_guard_->Cancel();
     upgrid_fullscreen_guard_ = nullptr;
@@ -390,7 +408,9 @@ void LocalFrameMojoHandler::ClearUpgridVideo(bool pause, bool exit_fullscreen) {
                                        upgrid_original_fit_important_);
       }
     }
-    if (exit_fullscreen && upgrid_open_requested_ && same_source &&
+    // Fullscreen belongs to this session even if the site's video source has
+    // just changed. Source identity gates playback commands, not returning UI.
+    if (exit_fullscreen && upgrid_open_requested_ &&
         IsUpgridVideoFullscreen())
       Fullscreen::FullyExitFullscreen(video.GetDocument(), true);
   }
