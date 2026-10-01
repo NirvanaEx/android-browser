@@ -31,6 +31,9 @@ SCREEN_IMPL = "content/public/android/java/src/org/chromium/content/browser/Scre
 SCREEN_TEST = "content/public/android/junit/src/org/chromium/content/browser/ScreenOrientationProviderImplTest.java"
 TOOLBAR_LAYOUT = "chrome/browser/ui/android/toolbar/java/res/layout/toolbar_phone.xml"
 TOOLBAR_JAVA = "chrome/browser/ui/android/toolbar/java/src/org/chromium/chrome/browser/toolbar/top/ToolbarPhone.java"
+TABLET_LAYOUT = "chrome/browser/ui/android/toolbar/java/res/layout/toolbar_tablet.xml"
+TABLET_JAVA = "chrome/browser/ui/android/toolbar/java/src/org/chromium/chrome/browser/toolbar/top/ToolbarTablet.java"
+FULLSCREEN_CSS = "third_party/blink/renderer/core/css/fullscreen.css"
 TOOLBAR_BUILD = "chrome/browser/ui/android/toolbar/BUILD.gn"
 MANIFEST = "chrome/android/java/AndroidManifest.xml"
 EXTERNAL_PROVIDERS = "chrome/browser/extensions/external_provider_impl.cc"
@@ -42,8 +45,10 @@ TRACKED = (MOJOM, HEADER, SOURCE, MEDIA_H, MEDIA_CC, MEDIA_TEST, ORIENTATION,
            REMOTE_CORE, REMOTE_MODULE, JAVA_SOURCES, JAVA_BUILD,
            NATIVE_BUILD, ACTIVITY, MENU, PACKAGE, SCREEN_API, SCREEN_IMPL, SCREEN_TEST, LABEL,
            TOOLBAR_LAYOUT, TOOLBAR_JAVA, TOOLBAR_BUILD, MANIFEST, EXTERNAL_PROVIDERS,
-           CONTEXT_MENU, CONTEXT_MENU_TEST, CHROME_ACTIVITY, TOOLBAR_OVERLAY, LINT_CONFIG)
+           CONTEXT_MENU, CONTEXT_MENU_TEST, CHROME_ACTIVITY, TOOLBAR_OVERLAY, LINT_CONFIG,
+           TABLET_LAYOUT, TABLET_JAVA, FULLSCREEN_CSS)
 NEW_FILES = {
+    "third_party/blink/renderer/core/frame/upgrid_fullscreen_presentation.h": "video_fullscreen_presentation.h",
     "chrome/browser/android/upgrid_player.cc": "player_android.cc",
     "chrome/browser/android/upgrid_translate.cc": "translate_android.cc",
     "chrome/android/java/src/org/chromium/chrome/browser/upgrid/UpgridTranslate.java": "UpgridTranslate.java",
@@ -143,7 +148,7 @@ def render(inputs):
         fragment("video_protocol.mojom.inc") + "\ninterface FullscreenVideoElementHandler {", MOJOM)
     output[MOJOM] += "\ninterface UpgridVideoController {\n" + fragment("video_methods.mojom.inc") + "};\n"
     output[HEADER] = replace_once(output[HEADER], "class Document;",
-        "class Document;\nclass Element;\nclass HTMLVideoElement;\nclass TextTrack;\nclass UpgridFullscreenGuard;", HEADER)
+        "class Document;\nclass Element;\nclass HTMLVideoElement;\nclass TextTrack;\nclass UpgridFullscreenGuard;\nclass UpgridFullscreenPresentation;", HEADER)
     output[HEADER] = replace_once(output[HEADER], "namespace blink {",
         '#include "third_party/blink/renderer/platform/heap/collection_support/heap_vector.h"\n\n'
         "namespace blink {", HEADER)
@@ -165,6 +170,7 @@ def render(inputs):
         '#include "third_party/blink/renderer/core/html_names.h"\n'
         '#include "third_party/blink/renderer/core/style/computed_style.h"\n')
     includes += '#include "third_party/blink/renderer/platform/loader/fetch/resource_request.h"\n'
+    includes += '#include "third_party/blink/renderer/core/frame/upgrid_fullscreen_presentation.h"\n'
     output[SOURCE] = replace_once(output[SOURCE], "namespace blink {", includes + "\nnamespace blink {\n" +
         fragment("video_fullscreen_guard.cc.inc"), SOURCE)
     output[SOURCE] = replace_once(output[SOURCE],
@@ -175,6 +181,7 @@ def render(inputs):
     output[SOURCE] = replace_once(output[SOURCE], "  visitor->Trace(frame_);",
         "  visitor->Trace(frame_);\n  visitor->Trace(upgrid_video_);\n"
         "  visitor->Trace(upgrid_fullscreen_root_);\n"
+        "  visitor->Trace(upgrid_presentation_);\n"
         "  visitor->Trace(upgrid_fullscreen_guard_);\n  visitor->Trace(upgrid_tracks_);\n"
         "  visitor->Trace(upgrid_video_receiver_);", SOURCE)
     output[SOURCE] = replace_once(output[SOURCE], "void LocalFrameMojoHandler::DidDetachFrame() {",
@@ -204,6 +211,14 @@ def render(inputs):
         "      return false;\n  }", MEDIA_CC)
     output[MEDIA_TEST] = replace_once(output[MEDIA_TEST], "}  // namespace blink",
         fragment("video_controls_test.cc.inc") + "\n}  // namespace blink", MEDIA_TEST)
+    output[MEDIA_TEST] = replace_once(output[MEDIA_TEST],
+        '#include "third_party/blink/renderer/core/html/media/html_media_element.h"',
+        '#include "third_party/blink/renderer/core/html/media/html_media_element.h"\n'
+        '#include "third_party/blink/renderer/core/frame/upgrid_fullscreen_presentation.h"', MEDIA_TEST)
+    output[FULLSCREEN_CSS] = replace_once(output[FULLSCREEN_CSS],
+        ":-internal-video-persistent {",
+        ":-internal-video-persistent,\n"
+        ":fullscreen video:-internal-video-persistent-ancestor {", FULLSCREEN_CSS)
     output[MEDIA_TEST] = replace_once(output[MEDIA_TEST],
         '#include "third_party/blink/renderer/core/dom/element.h"',
         '#include "third_party/blink/renderer/core/dom/element.h"\n'
@@ -277,6 +292,45 @@ def render(inputs):
         '            android:layout_gravity="top"\n'
         '            app:tint="@color/default_icon_color_tint_list"/>\n\n'
         '        <include layout="@layout/menu_button"/>', TOOLBAR_LAYOUT)
+    output[TABLET_LAYOUT] = replace_once(output[TABLET_LAYOUT],
+        '        <include layout="@layout/menu_button"/>',
+        '        <org.chromium.ui.widget.ChromeImageButton\n'
+        '            android:id="@+id/upgrid_player_button"\n'
+        '            style="@style/ToolbarHoverableButton.AdaptiveDensity"\n'
+        '            android:src="@drawable/upgrid_player_button"\n'
+        '            android:contentDescription="@string/upgrid_player_button_label"\n'
+        '            android:tooltipText="@string/upgrid_player_button_label"\n'
+        '            app:tint="@color/default_icon_color_tint_list"/>\n\n'
+        '        <include layout="@layout/menu_button"/>', TABLET_LAYOUT)
+    output[TABLET_JAVA] = replace_once(output[TABLET_JAVA],
+        "    private ImageButton mHomeButton;",
+        "    private ImageButton mHomeButton;\n"
+        "    private ImageButton mUpgridPlayerButton;", TABLET_JAVA)
+    output[TABLET_JAVA] = replace_once(output[TABLET_JAVA],
+        "        mHomeButton = findViewById(R.id.home_button);",
+        "        mHomeButton = findViewById(R.id.home_button);\n"
+        "        mUpgridPlayerButton = findViewById(R.id.upgrid_player_button);", TABLET_JAVA)
+    output[TABLET_JAVA] = replace_once(output[TABLET_JAVA],
+        "        ImageViewCompat.setImageTintList(mHomeButton, activityFocusTint);",
+        "        ImageViewCompat.setImageTintList(mHomeButton, activityFocusTint);\n"
+        "        ImageViewCompat.setImageTintList(mUpgridPlayerButton, activityFocusTint);", TABLET_JAVA)
+    output[TABLET_JAVA] = replace_once(output[TABLET_JAVA],
+        "        mHomeButton.setBackgroundResource(toolbarIconRippleId);",
+        "        mHomeButton.setBackgroundResource(toolbarIconRippleId);\n"
+        "        mUpgridPlayerButton.setBackgroundResource(toolbarIconRippleId);", TABLET_JAVA)
+    # Reserve the player's measured width in both tablet allocation passes and
+    # resize callbacks. It stays beside Menu even when optional buttons hide.
+    output[TABLET_JAVA] = replace_once(output[TABLET_JAVA],
+        "        int width = MeasureSpec.getSize(widthMeasureSpec);",
+        "        int width = MeasureSpec.getSize(widthMeasureSpec);\n"
+        "        mUpgridPlayerButton.measure(\n"
+        "                MeasureSpec.makeMeasureSpec(width, MeasureSpec.AT_MOST), heightMeasureSpec);\n"
+        "        width = Math.max(0, width - mUpgridPlayerButton.getMeasuredWidth());", TABLET_JAVA)
+    output[TABLET_JAVA] = replace_once(output[TABLET_JAVA],
+        "                mToolbarWidthConsumers, getWidth(), unspecifiedSpec, unspecifiedSpec);",
+        "                mToolbarWidthConsumers,\n"
+        "                Math.max(0, getWidth() - mUpgridPlayerButton.getMeasuredWidth()),\n"
+        "                unspecifiedSpec, unspecifiedSpec);", TABLET_JAVA)
     output[TOOLBAR_BUILD] = replace_once(output[TOOLBAR_BUILD],
         '    "java/res/layout/toolbar_phone.xml",',
         '    "java/res/drawable/upgrid_player_button.xml",\n'
@@ -375,7 +429,7 @@ def render(inputs):
         "    private ActivityWindowAndroid buildMockWindowForActivity(Activity activity) {",
         fragment("orientation_test.java.inc") + "\n"
         "    private ActivityWindowAndroid buildMockWindowForActivity(Activity activity) {", SCREEN_TEST)
-    result = {name: text if name.endswith(".xml") else
+    result = {name: text if name.endswith((".xml", ".css")) else
               (MARKER.replace("//", "#", 1) if name.endswith((".gn", ".gni")) else MARKER) +
               "\n" + text for name, text in output.items()}
     result.update({name: fragment(source) for name, source in NEW_FILES.items()})

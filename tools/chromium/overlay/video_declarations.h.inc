@@ -21,6 +21,7 @@ void SetUpgridVideoFit(const String& fit);
 WeakMember<HTMLVideoElement> upgrid_video_;
 WeakMember<Element> upgrid_fullscreen_root_;
 Member<UpgridFullscreenGuard> upgrid_fullscreen_guard_;
+Member<UpgridFullscreenPresentation> upgrid_presentation_;
 // Keep at most 32 stable track identities until this player session closes.
 // Commands still validate membership in the selected video's current list.
 HeapVector<Member<TextTrack>> upgrid_tracks_;

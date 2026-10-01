@@ -70,3 +70,85 @@ TEST_P(HTMLMediaElementTest,
   host->remove();
   EXPECT_TRUE(HTMLMediaElement::UpgridMediaCandidates(document).empty());
 }
+
+TEST_P(HTMLMediaElementTest, UpgridPresentationHidesSiteUiAndRestoresIt) {
+  if (GetParam() != MediaTestParam::kVideo)
+    return;
+  Document& document = Media()->GetDocument();
+  document.GetSettings()->SetScriptEnabled(true);
+  auto* root = document.CreateRawElement(html_names::kDivTag);
+  auto* wrapper = document.CreateRawElement(html_names::kDivTag);
+  auto* controls = document.CreateRawElement(html_names::kDivTag);
+  document.body()->AppendChild(root);
+  root->AppendChild(wrapper);
+  wrapper->AppendChild(Media());
+  root->AppendChild(controls);
+  controls->SetInlineStyleProperty(CSSPropertyID::kDisplay, "block", true);
+  SimulateEnterFullscreen(root);
+  Persistent<UpgridFullscreenPresentation> presentation =
+      UpgridFullscreenPresentation::Create(*To<HTMLVideoElement>(Media()), *root);
+  ASSERT_NE(presentation, nullptr);
+  EXPECT_TRUE(presentation->IsCurrent(*To<HTMLVideoElement>(Media()), *root));
+  EXPECT_FALSE(To<HTMLVideoElement>(Media())->IsPersistent());
+  document.View()->UpdateAllLifecyclePhasesForTest();
+  EXPECT_EQ(controls->GetLayoutObject(), nullptr);
+  EXPECT_NE(Media()->GetLayoutObject(), nullptr);
+  auto* late_controls = document.CreateRawElement(html_names::kDivTag);
+  wrapper->AppendChild(late_controls);
+  document.View()->UpdateAllLifecyclePhasesForTest();
+  EXPECT_EQ(late_controls->GetLayoutObject(), nullptr);
+  presentation->Close();
+  presentation->Close();
+  document.View()->UpdateAllLifecyclePhasesForTest();
+  EXPECT_NE(controls->GetLayoutObject(), nullptr);
+  EXPECT_NE(late_controls->GetLayoutObject(), nullptr);
+  EXPECT_FALSE(root->ContainsPersistentVideo());
+  EXPECT_FALSE(wrapper->ContainsPersistentVideo());
+  EXPECT_FALSE(Media()->ContainsPersistentVideo());
+  SimulateExitFullscreen(root);
+}
+
+TEST_P(HTMLMediaElementTest, UpgridPresentationRejectsNoFullscreenAndOtherOwner) {
+  if (GetParam() != MediaTestParam::kVideo)
+    return;
+  Document& document = Media()->GetDocument();
+  document.GetSettings()->SetScriptEnabled(true);
+  auto* root = document.CreateRawElement(html_names::kDivTag);
+  document.body()->AppendChild(root);
+  root->AppendChild(Media());
+  auto* video = To<HTMLVideoElement>(Media());
+  EXPECT_EQ(UpgridFullscreenPresentation::Create(*video, *root), nullptr);
+  SimulateEnterFullscreen(root);
+  root->SetContainsPersistentVideo(true);
+  EXPECT_EQ(UpgridFullscreenPresentation::Create(*video, *root), nullptr);
+  EXPECT_FALSE(video->ContainsPersistentVideo());
+  EXPECT_TRUE(root->ContainsPersistentVideo());
+  root->SetContainsPersistentVideo(false);
+  SimulateExitFullscreen(root);
+}
+
+TEST_P(HTMLMediaElementTest, UpgridPresentationCleansOldShadowPathAfterMove) {
+  if (GetParam() != MediaTestParam::kVideo)
+    return;
+  Document& document = Media()->GetDocument();
+  document.GetSettings()->SetScriptEnabled(true);
+  auto* root = document.CreateRawElement(html_names::kDivTag);
+  auto* host = document.CreateRawElement(html_names::kDivTag);
+  document.body()->AppendChild(root);
+  root->AppendChild(host);
+  auto& shadow = host->AttachShadowRootForTesting(ShadowRootMode::kClosed);
+  shadow.AppendChild(Media());
+  auto* video = To<HTMLVideoElement>(Media());
+  SimulateEnterFullscreen(root);
+  Persistent<UpgridFullscreenPresentation> presentation =
+      UpgridFullscreenPresentation::Create(*video, *root);
+  ASSERT_NE(presentation, nullptr);
+  EXPECT_TRUE(presentation->IsCurrent(*video, *root));
+  root->AppendChild(Media());
+  EXPECT_FALSE(presentation->IsCurrent(*video, *root));
+  presentation->Close();
+  EXPECT_FALSE(host->ContainsPersistentVideo());
+  EXPECT_FALSE(root->ContainsPersistentVideo());
+  EXPECT_FALSE(video->ContainsPersistentVideo());
+  SimulateExitFullscreen(root);
+}

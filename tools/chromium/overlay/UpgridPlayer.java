@@ -45,6 +45,7 @@ import org.json.JSONObject;
 import org.chromium.base.Callback;
 import org.chromium.base.Log;
 import org.chromium.chrome.R;
+import org.chromium.chrome.browser.app.ChromeActivity;
 import org.chromium.chrome.browser.tab.EmptyTabObserver;
 import org.chromium.chrome.browser.tab.Tab;
 import org.chromium.content_public.browser.WebContents;
@@ -206,7 +207,7 @@ public final class UpgridPlayer implements Application.ActivityLifecycleCallback
                 return false;
             }
             if (state.optBoolean("pipRequested")) {
-                close(false);
+                close(false, false);
                 return false;
             }
             if (!state.optBoolean("fullscreen")) {
@@ -896,6 +897,10 @@ public final class UpgridPlayer implements Application.ActivityLifecycleCallback
     }
 
     private void close(boolean pause) {
+        close(pause, true);
+    }
+
+    private void close(boolean pause, boolean exitFullscreen) {
         if (mClosed) return;
         Log.i(TAG, "Closing controls; pause=%b", pause);
         boolean restoreScrubPlayback = mScrub.close(pause);
@@ -914,6 +919,14 @@ public final class UpgridPlayer implements Application.ActivityLifecycleCallback
         if (mDialog != null) mDialog.dismiss();
         if (mOrientationLock != null) mOrientationLock.close();
         if (ACTIVE.get(mActivity) == this) ACTIVE.remove(mActivity);
+        // Renderer release can fail after navigation, source replacement, or a
+        // lost Mojo channel. Browser chrome must still return immediately.
+        // Let Chromium's manager restore controls and notify WebContents, as
+        // it does for the system Back button. PiP owns its separate handoff.
+        if (exitFullscreen && (mHasFullscreen || !mAutomatic)
+                && mActivity instanceof ChromeActivity chromeActivity) {
+            chromeActivity.getFullscreenManager().exitPersistentFullscreenMode();
+        }
     }
 
     @Override
