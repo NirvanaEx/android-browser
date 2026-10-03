@@ -25,11 +25,19 @@ EVIDENCE = Path('android-evidence')
 
 
 def command(*args, **kwargs):
+    kwargs.setdefault('timeout', 180)
     return subprocess.check_output(list(map(str, args)), **kwargs)
 
 
-def adb(*args):
-    return command('adb', *args).decode('utf-8', errors='replace')
+def adb(*args, timeout=45):
+    return command('adb', *args, timeout=timeout).decode('utf-8', errors='replace')
+
+
+def collect_diagnostic(errors, name, operation):
+    try:
+        operation()
+    except Exception as error:
+        errors[name] = repr(error)
 
 
 def digest(path):
@@ -45,7 +53,7 @@ def fetch(tag):
     WORK.mkdir(exist_ok=True)
     EVIDENCE.mkdir(exist_ok=True)
     baseline_dir = WORK / 'baseline'
-    command('gh', 'release', 'download', BASELINE, '--repo', REPO, '--pattern', '*.apk', '--dir', baseline_dir)
+    command('gh', 'release', 'download', BASELINE, '--repo', REPO, '--pattern', '*.apk', '--dir', baseline_dir, timeout=900)
     baseline = next(baseline_dir.glob('*.apk'))
     assert digest(baseline) == BASELINE_SHA, 'Baseline APK digest mismatch'
     if tag == 'baseline':
@@ -55,7 +63,7 @@ def fetch(tag):
         if not re.fullmatch(r'upgrid-ci-[0-9]+-[0-9]+', tag):
             raise ValueError('Unexpected private build tag')
         candidate = WORK / 'candidate'
-        command('gh', 'release', 'download', tag, '--repo', REPO, '--pattern', 'ChromePublic.apk', '--pattern', 'apk-verification.json', '--dir', candidate)
+        command('gh', 'release', 'download', tag, '--repo', REPO, '--pattern', 'ChromePublic.apk', '--pattern', 'apk-verification.json', '--dir', candidate, timeout=900)
         apk = candidate / 'ChromePublic.apk'
         metadata = json.loads((candidate / 'apk-verification.json').read_text())
         assert metadata['package'] == PACKAGE
@@ -153,7 +161,7 @@ def wait_for(fn, timeout=30):
 
 
 def ui():
-    adb('shell', 'uiautomator', 'dump', '/sdcard/upgrid-ui.xml')
+    adb('shell', 'uiautomator', 'dump', '/sdcard/upgrid-ui.xml', timeout=20)
     return ET.fromstring(adb('shell', 'cat', '/sdcard/upgrid-ui.xml'))
 
 
@@ -170,7 +178,7 @@ def tap(label):
 
 
 def screenshot(name):
-    data = command('adb', 'exec-out', 'screencap', '-p')
+    data = command('adb', 'exec-out', 'screencap', '-p', timeout=20)
     (EVIDENCE / (name + '.png')).write_bytes(data)
     return data
 
@@ -207,6 +215,7 @@ def run():
     from PIL import Image, ImageChops, ImageStat
     context = json.loads((EVIDENCE / 'input.json').read_text())
     checks = {}
+    diagnostic_errors = {}
     save('device.json', dict(model=adb('shell', 'getprop', 'ro.product.model').strip(),
                             abis=adb('shell', 'getprop', 'ro.product.cpu.abilist').strip(),
                             android=adb('shell', 'getprop', 'ro.build.version.release').strip(),
@@ -224,14 +233,16 @@ def run():
     adb('shell', 'am', 'set-debug-app', '--persistent', PACKAGE)
     adb('logcat', '-c')
     try:
-        install = adb('install', '-r', context['baselineApk'])
+        print('Android: installing verified baseline APK', flush=True)
+        install = adb('install', '-r', context['baselineApk'], timeout=300)
         assert 'Success' in install, install
         cdp = open_page()
         cdp.js('localStorage.setItem("upgrid-ci","preserve-768003111")')
         time.sleep(2)  # Allow the ordinary tab/session persistence task to run.
         cdp.ws.close()
         adb('shell', 'am', 'force-stop', PACKAGE)
-        install = adb('install', '-r', context['apk'])
+        print('Android: installing candidate and checking saved data', flush=True)
+        install = adb('install', '-r', context['apk'], timeout=300)
         assert 'Success' in install, install
         cdp = launch_saved_tab()
         assert cdp.js('localStorage.getItem("upgrid-ci")') == 'preserve-768003111'
@@ -275,12 +286,13 @@ def run():
 
         for path, paused in [('/direct', False), ('/direct', True), ('/clipped', False), ('/shadow', False)]:
             name = path[1:] + ('_paused' if paused else '_playing')
+            print('Android: checking ' + name, flush=True)
             try:
                 exercise(path, paused)
-                checks[name] = dict(status='passed', evidence=name.replace('_playing', '') + '-state.json')
+                checks[name] = dict(status='passed', evidence=path[1:] + ('-paused' if paused else '') + '-state.json')
             except Exception as error:
                 checks[name] = dict(status='failed', error=str(error))
-                screenshot(name + '-failure')
+                collect_diagnostic(diagnostic_errors, name + '-failure', lambda: screenshot(name + '-failure'))
                 adb('shell', 'input', 'keyevent', 'KEYCODE_BACK')
         if not context['metadata']['baseline']:
             cdp.call('Page.navigate', dict(url='http://127.0.0.1:8766/clipped'))
@@ -303,15 +315,15 @@ def run():
         checks['cold_start_storage'] = dict(status='passed', evidence='cold-start.png')
     except Exception as error:
         checks['harness'] = dict(status='failed', error=repr(error))
-        screenshot('harness-failure')
-        try:
-            (EVIDENCE / 'failure-ui.xml').write_bytes(ET.tostring(ui(), encoding='utf-8'))
-        except Exception:
-            pass
+        collect_diagnostic(diagnostic_errors, 'harness-screenshot', lambda: screenshot('harness-failure'))
+        collect_diagnostic(diagnostic_errors, 'harness-ui', lambda:
+                           (EVIDENCE / 'failure-ui.xml').write_bytes(ET.tostring(ui(), encoding='utf-8')))
     finally:
-        (EVIDENCE / 'logcat.txt').write_text(adb('logcat', '-d'), encoding='utf-8')
+        collect_diagnostic(diagnostic_errors, 'logcat', lambda:
+                           (EVIDENCE / 'logcat.txt').write_text(adb('logcat', '-d', timeout=20), encoding='utf-8'))
         failed = any(item['status'] != 'passed' for item in checks.values())
         save('results.json', dict(apk=context['metadata'], checks=checks, passed=not failed,
+                                 diagnosticErrors=diagnostic_errors,
                                  physicalDevice=False, distributionApproved=False))
         server.shutdown()
     if failed:
