@@ -57,6 +57,28 @@ query batches. Audit `37152774497` completed source restoration/setup/GN in
 the new setup marker. This is a baseline for the source step, not evidence that
 warm setup reuse has been timed on a full subsequent build.
 
+The real-tree audit completed successfully: 8,034 pending host candidates,
+8,178 direct inputs, and 4,316 bootstrap actions. The bootstrap includes 3,650
+CXX and 47 CC actions, 214 generators, 164 archives, 123 assembly actions,
+66 compiler modules, 41 Rust actions and 11 links. Thus the initial single-VM
+barrier drops from 11,729 to 4,316 actions; this is a graph count, not a measured
+63% reduction in total build time. Roughly 4,337 additional host compiler actions
+can move into the early matrix, subject to Ninja's actual post-bootstrap plan.
+
+The audit's old 128-target query loop took 789.4 seconds; byte-budget batching
+was added while it ran and passed separate tests. No second full build was
+started to benchmark the change while `37145804732` was active.
+
+In that active run's now-completed preparation log, Ninja ran from 19:16:21
+to 20:58:18 UTC (about 102 minutes; the earlier 135-minute baseline varies by VM).
+Every action in the new bootstrap cut had completed by 19:44:32, about 28 minutes
+after Ninja started, while competing with other work in the old graph. Snapshot
+creation then finished at 21:06:49 and the prepare job at 21:22:18. A third wave
+with another full workspace transfer/restore would add overhead comparable to
+that remaining bootstrap barrier. It is not enabled without evidence of net
+benefit. A future persistent coordinator could remove those transfers, but is
+not implemented or claimed as validated by this change.
+
 A successful dry plan does not prove a full host wave compiles. Before claiming
 speedup, compare actual setup/bootstrap/matrix/restore/link timings against the
 baseline, including the extra checkpoint transfer. Keep investigating if the
