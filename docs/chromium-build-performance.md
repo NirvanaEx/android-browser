@@ -28,6 +28,7 @@ The subsequent draft-creation failure lost the prepared state in that run.
 | --- | --- | --- |
 | Source setup | Four parallel cache downloads and four gclient sync jobs on GitHub; reuse successful pinned setup from a verified workspace if DEPS, gclient metadata, setup script, pins and tool hashes match | Source/depot HEAD and ownership are still checked, depot bootstrap still runs on each fresh VM, missing/mismatching setup falls back to sync/hooks; local defaults unchanged |
 | Host preparation | Query actual Ninja direct inputs, including implicit/order-only dependencies and validations; build only this dependency cut | Bootstrap tools needed to generate compiler inputs still run here; `mode=plan` measures this cut on real Chromium |
+| Graph planning | Batch dependency queries by the OS argument-byte budget, rather than reloading the complete Ninja graph every 128 targets | Current audit started before this optimization; its planning duration is not representative of the latest implementation |
 | Host compilation | Separate balanced host C/C++ matrix using the existing exact-command, hash-verified object transfer | New matrix needs a full production-sized trial; fixture tests are not a timing result |
 | Android preparation | Restore host checkpoint, validate/import objects, link tools and generate the remaining inputs | Genuine dependencies cannot execute before their inputs; no timestamp tricks |
 | Android compilation | Both C and C++ in the distributed matrix, with matching object/dependency validation | Rust and assembly stay in Ninja until supported input/output transfer is implemented and tested |
@@ -49,6 +50,12 @@ import/invalidation, dependency-cut, archive and regression checks. The separate
 audit run `37152774497` restores the actual Chromium cache and performs a dry
 plan without compiling Chromium. Inspect `cloud-prepare-diagnostics` for
 `host-plan-audit.json`, `host-input-tasks.log` and duration receipts.
+
+Latest implementation check `37154467699` passed after adding bounded large
+query batches. Audit `37152774497` completed source restoration/setup/GN in
+20 minutes 57 seconds (20:49:40–21:10:37 UTC), using the old source seed without
+the new setup marker. This is a baseline for the source step, not evidence that
+warm setup reuse has been timed on a full subsequent build.
 
 A successful dry plan does not prove a full host wave compiles. Before claiming
 speedup, compare actual setup/bootstrap/matrix/restore/link timings against the
