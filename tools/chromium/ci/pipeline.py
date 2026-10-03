@@ -92,26 +92,36 @@ def pending_native():
     return actions
 
 
+def select_cached_workspace(releases, revision):
+    # Prefer completed outputs. If none exist, the immutable prepared workspace
+    # of a failed build still saves fetching the entire Chromium checkout.
+    # It is only a source seed: GN/Ninja regenerate and validate every output.
+    for prefix, required in [('cache', {'cache.json', 'apk-verification.json'}),
+                             ('workspace', {'workspace.json', 'plan.json'})]:
+        for release in releases:
+            candidate = release['tag_name']
+            if not re.fullmatch(r'upgrid-ci-[0-9]+-[0-9]+', candidate):
+                continue
+            if not required <= {asset['name'] for asset in release['assets']}:
+                continue
+            cache = read(download(candidate, prefix + '.json', STATE / 'cache-candidates' / candidate))
+            if cache['root'] == str(ROOT) and cache['chromiumRevision'] == revision:
+                return candidate, prefix
+    return '', 'cache'
+
+
 def prepare(args):
     tag = f"upgrid-ci-{os.environ['GITHUB_RUN_ID']}-{os.environ['GITHUB_RUN_ATTEMPT']}"
     config = configure()
     cache_tag = args.cache_tag
+    cache_prefix = 'cache'
     if cache_tag == 'auto':
-        cache_tag = ''
         revision = read(TOOLS / 'upstream.json')['commit']
-        for release in gh_json('releases?per_page=100'):
-            candidate = release['tag_name']
-            if not re.fullmatch(r'upgrid-ci-[0-9]+-[0-9]+', candidate):
-                continue
-            if not {'cache.json', 'apk-verification.json'} <= {asset['name'] for asset in release['assets']}:
-                continue
-            cache = read(download(candidate, 'cache.json', STATE / 'cache-candidates' / candidate))
-            if cache['root'] == str(ROOT) and cache['chromiumRevision'] == revision:
-                cache_tag = candidate
-                break
-    print(json.dumps({'stage': 'prepare', 'restoredCache': cache_tag or None}), flush=True)
+        cache_tag, cache_prefix = select_cached_workspace(gh_json('releases?per_page=100'), revision)
+    print(json.dumps({'stage': 'prepare', 'restoredCache': cache_tag or None,
+                      'cacheKind': cache_prefix}), flush=True)
     if cache_tag:
-        restore_workspace(cache_tag, 'cache')
+        restore_workspace(cache_tag, cache_prefix)
         configure()
     else:
         run(sys.executable, TOOLS / 'prepare.py', '--checkout', ROOT)

@@ -12,6 +12,24 @@ from prepare_wave import snapshot_headers
 
 
 class ConfigurationTests(unittest.TestCase):
+    def test_cache_preference_fallback_and_revision_isolation(self):
+        def release(number, names):
+            return {'tag_name': f'upgrid-ci-{number}-1',
+                    'assets': [{'name': name} for name in names]}
+        prepared = release(2, ['workspace.json', 'plan.json'])
+        completed = release(1, ['cache.json', 'apk-verification.json'])
+        compatible = {'root': str(pipeline.ROOT), 'chromiumRevision': 'pinned'}
+        with patch.object(pipeline, 'download', return_value='manifest'), \
+                patch.object(pipeline, 'read', return_value=compatible):
+            self.assertEqual(pipeline.select_cached_workspace([prepared, completed], 'pinned'),
+                             ('upgrid-ci-1-1', 'cache'))
+            self.assertEqual(pipeline.select_cached_workspace([prepared], 'pinned'),
+                             ('upgrid-ci-2-1', 'workspace'))
+            self.assertEqual(pipeline.select_cached_workspace([prepared, completed], 'other'),
+                             ('', 'cache'))
+            self.assertEqual(pipeline.select_cached_workspace(
+                [release(3, ['workspace.json'])], 'pinned'), ('', 'cache'))
+
     def test_optimized_profile_updates_only_owned_ci_output(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
