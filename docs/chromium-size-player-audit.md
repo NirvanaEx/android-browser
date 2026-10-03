@@ -183,10 +183,14 @@ wrong-commit/public drafts and verify failure occurs before build configuration.
 This retains ordinary job-token scopes and does not move the release target to
 another commit or make a development APK public.
 
-The early probe in run `37145370715` reproduced the same 403 even while the
-commit was still the branch head, before heavy setup. Thus branch movement alone
-does not explain the permission restriction. A trusted authenticated dispatcher
-can pre-create the exact private draft using its existing workflow scope; the
-job reuses it only after validating tag/commit/privacy and uploading its own
-small access receipt. No account token is stored in Actions and no repository-wide
-permission setting is changed. The run must not proceed until this probe passes.
+Correction after inspecting the full early-probe logs: run `37145370715` did
+create its draft successfully. The new verification then used the published-only
+`releases/tags/{tag}` API and falsely treated the draft as missing (404). In run
+`37145500411`, a trusted dispatcher created the draft, but the same faulty lookup
+caused a duplicate draft and failed before heavy setup. Neither early probe was
+another expensive compilation run. Verification now searches the authenticated
+release list, selects the exact tag and rejects duplicates, public releases and
+wrong commits. Unit tests cover these cases. Early creation uses the ordinary
+job token; no account token is stored in Actions. A trusted precreated exact draft
+is also supported, but should not be created redundantly. The run must not proceed
+until its own upload-access probe passes.
