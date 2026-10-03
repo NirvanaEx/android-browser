@@ -13,6 +13,7 @@ import re
 import subprocess
 import threading
 import time
+import traceback
 import urllib.request
 import xml.etree.ElementTree as ET
 
@@ -124,7 +125,8 @@ class Handler(http.server.SimpleHTTPRequestHandler):
 class CDP:
     def __init__(self):
         import websocket
-        pages = json.load(urllib.request.urlopen('http://127.0.0.1:9222/json', timeout=10))
+        pages = json.load(urllib.request.urlopen('http://127.0.0.1:9222/json', timeout=3))
+        save('devtools-targets.json', pages)
         page = next(p for p in pages if p.get('type') == 'page' and ':8766/' in p.get('url', ''))
         self.ws = websocket.create_connection(page['webSocketDebuggerUrl'], timeout=15, suppress_origin=True)
         self.serial = 0
@@ -161,6 +163,8 @@ def wait_for(fn, timeout=30):
 
 
 def ui():
+    # uiautomator can exit successfully with a null root. Never reuse an old dump.
+    adb('shell', 'rm', '-f', '/sdcard/upgrid-ui.xml')
     adb('shell', 'uiautomator', 'dump', '/sdcard/upgrid-ui.xml', timeout=20)
     return ET.fromstring(adb('shell', 'cat', '/sdcard/upgrid-ui.xml'))
 
@@ -218,17 +222,29 @@ def launch_saved_tab():
 
 def connect_page(initial_url=None):
     # DevTools is browser-owned; no desktop browser is launched.
+    started = time.monotonic()
+    attempts = []
     def discover():
-        if dismiss_notification_prompt() and initial_url:
-            # Reissue only an explicitly requested first navigation. A saved-tab
-            # launch must restore its own URL and is never repaired this way.
-            adb('shell', 'am', 'start', '-W', '-a', 'android.intent.action.VIEW',
-                '-d', initial_url, '-p', PACKAGE)
-        sockets = adb('shell', 'cat', '/proc/net/unix')
-        names = re.findall(r'@(chrome_devtools_remote[^\s]*)', sockets)
-        adb('forward', 'tcp:9222', 'localabstract:' + (names[0] if names else 'chrome_devtools_remote'))
-        return CDP()
-    cdp = wait_for(discover, timeout=90)
+        try:
+            if dismiss_notification_prompt() and initial_url:
+                # Only initial navigation is retried, never saved-tab restoration.
+                adb('shell', 'am', 'start', '-W', '-a', 'android.intent.action.VIEW',
+                    '-d', initial_url, '-p', PACKAGE)
+            sockets = adb('shell', 'cat', '/proc/net/unix')
+            names = re.findall(r'@(chrome_devtools_remote[^\s]*)', sockets)
+            save('devtools-sockets.json', names)
+            if not names:
+                raise RuntimeError('Browser DevTools socket is not ready')
+            adb('forward', 'tcp:9222', 'localabstract:' + names[0])
+            return CDP()
+        except Exception as error:
+            attempts.append(dict(elapsedSeconds=round(time.monotonic() - started, 1), error=repr(error)))
+            save('startup-attempts.json', attempts)
+            print('Android: waiting for browser: ' + repr(error), flush=True)
+            raise
+    # First ARM64 launch includes translation on a fresh x86 emulator. API 35
+    # evidence shows its native UI can appear after the former 90-second limit.
+    cdp = wait_for(discover, timeout=300 if initial_url else 180)
     wait_for(lambda: cdp.js('typeof state === "function"'))
     return cdp
 
@@ -337,6 +353,7 @@ def run():
         checks['cold_start_storage'] = dict(status='passed', evidence='cold-start.png')
     except Exception as error:
         checks['harness'] = dict(status='failed', error=repr(error))
+        (EVIDENCE / 'harness-traceback.txt').write_text(traceback.format_exc(), encoding='utf-8')
         collect_diagnostic(diagnostic_errors, 'harness-screenshot', lambda: screenshot('harness-failure'))
         collect_diagnostic(diagnostic_errors, 'harness-ui', lambda:
                            (EVIDENCE / 'failure-ui.xml').write_bytes(ET.tostring(ui(), encoding='utf-8')))

@@ -119,3 +119,13 @@ The harness now declines this exact native dialog by its package/resource IDs;
 it does not dismiss arbitrary web prompts or grant notification permission.
 Only initial explicit navigation can be retried after the dialog: saved-tab
 restoration still must succeed without supplying a replacement URL.
+
+Run `37139078870` still failed during first-launch discovery, before any player
+check. The runner logged repeated null accessibility roots; the final failure
+XML contains the notification rationale, but no successful dismissal was logged.
+The probe now permits up to five minutes for initial native translation/startup
+(three for a saved-tab launch), records each discovery failure with elapsed time,
+and preserves DevTools targets/socket names plus the Python traceback. Per-command
+timeouts remain bounded. It deletes the old accessibility dump before each query
+so a null-root response cannot silently reuse stale UI. No acceptance check was
+removed or marked passed.

@@ -10,6 +10,18 @@ import android_test
 
 
 class HarnessTests(unittest.TestCase):
+    def test_null_ui_dump_cannot_reuse_previous_screen(self):
+        calls = []
+        def fake_adb(*args, **kwargs):
+            calls.append(args)
+            if args[:2] == ('shell', 'cat'):
+                raise subprocess.CalledProcessError(1, 'cat')
+            return ''
+        with patch.object(android_test, 'adb', side_effect=fake_adb):
+            with self.assertRaises(subprocess.CalledProcessError):
+                android_test.ui()
+        self.assertEqual(calls[0], ('shell', 'rm', '-f', '/sdcard/upgrid-ui.xml'))
+
     def test_only_browser_notification_rationale_is_declined(self):
         tree = ET.fromstring('<hierarchy><node package="com.upgrid.chromium" '
                              'resource-id="com.upgrid.chromium:id/notification_permission_rationale_title"/>'
