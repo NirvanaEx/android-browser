@@ -172,9 +172,26 @@ def find(label):
 
 def tap(label):
     node = wait_for(lambda: find(label))
+    tap_node(node)
+
+
+def tap_node(node):
     bounds = list(map(int, re.findall(r'\d+', node.get('bounds'))))
     assert len(bounds) == 4
     adb('shell', 'input', 'tap', (bounds[0] + bounds[2]) // 2, (bounds[1] + bounds[3]) // 2)
+
+
+def dismiss_notification_prompt():
+    tree = ui()
+    # Match the browser-owned rationale, not an arbitrary site's "No thanks".
+    nodes = [n for n in tree.iter('node') if n.get('package') == PACKAGE]
+    if not any(n.get('resource-id') == PACKAGE + ':id/notification_permission_rationale_title' for n in nodes):
+        return False
+    decline = next(n for n in nodes if n.get('resource-id') == PACKAGE + ':id/negative_button')
+    screenshot('notification-rationale')
+    tap_node(decline)
+    print('Android: declined the first-run notification rationale', flush=True)
+    return True
 
 
 def screenshot(name):
@@ -184,9 +201,10 @@ def screenshot(name):
 
 
 def open_page(path='/direct'):
+    url = 'http://127.0.0.1:8766' + path
     adb('shell', 'am', 'start', '-W', '-a', 'android.intent.action.VIEW', '-d',
-        'http://127.0.0.1:8766' + path, '-p', PACKAGE)
-    return connect_page()
+        url, '-p', PACKAGE)
+    return connect_page(initial_url=url)
 
 
 def launch_saved_tab():
@@ -198,15 +216,19 @@ def launch_saved_tab():
     return connect_page()
 
 
-def connect_page():
+def connect_page(initial_url=None):
     # DevTools is browser-owned; no desktop browser is launched.
-    sockets = adb('shell', 'cat', '/proc/net/unix')
-    names = re.findall(r'@(chrome_devtools_remote[^\s]*)', sockets)
-    if names:
-        adb('forward', 'tcp:9222', 'localabstract:' + names[0])
-    else:
-        adb('forward', 'tcp:9222', 'localabstract:chrome_devtools_remote')
-    cdp = wait_for(CDP, timeout=45)
+    def discover():
+        if dismiss_notification_prompt() and initial_url:
+            # Reissue only an explicitly requested first navigation. A saved-tab
+            # launch must restore its own URL and is never repaired this way.
+            adb('shell', 'am', 'start', '-W', '-a', 'android.intent.action.VIEW',
+                '-d', initial_url, '-p', PACKAGE)
+        sockets = adb('shell', 'cat', '/proc/net/unix')
+        names = re.findall(r'@(chrome_devtools_remote[^\s]*)', sockets)
+        adb('forward', 'tcp:9222', 'localabstract:' + (names[0] if names else 'chrome_devtools_remote'))
+        return CDP()
+    cdp = wait_for(discover, timeout=90)
     wait_for(lambda: cdp.js('typeof state === "function"'))
     return cdp
 

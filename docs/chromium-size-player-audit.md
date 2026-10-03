@@ -111,3 +111,11 @@ signed APK to test newer native translation; success remains unverified.
 The previous unbounded probe `37134446720` required forced cancellation after
 ordinary cancellation did not complete. The harness now bounds ADB/DevTools
 calls and retains failure evidence when a diagnostic command also fails.
+
+The API 35 baseline run `37138154384` reached the browser UI without the
+API 30 translation crash. Its screenshot/XML show the browser notification
+rationale obscuring an about:blank tab, while DevTools discovery timed out.
+The harness now declines this exact native dialog by its package/resource IDs;
+it does not dismiss arbitrary web prompts or grant notification permission.
+Only initial explicit navigation can be retried after the dialog: saved-tab
+restoration still must succeed without supplying a replacement URL.
