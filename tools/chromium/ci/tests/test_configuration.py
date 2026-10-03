@@ -12,6 +12,16 @@ from prepare_wave import snapshot_headers
 
 
 class ConfigurationTests(unittest.TestCase):
+    def test_precreated_exact_draft_is_reused_without_create_privilege(self):
+        with tempfile.TemporaryDirectory() as directory, \
+                patch.dict(pipeline.os.environ, {'GITHUB_RUN_ID': '42', 'GITHUB_RUN_ATTEMPT': '1', 'GITHUB_SHA': 'head'}), \
+                patch.object(pipeline, 'STATE', Path(directory)), \
+                patch.object(pipeline, 'verify_transfer'), patch.object(pipeline, 'create_transfer') as create, \
+                patch.object(pipeline, 'upload') as upload:
+            pipeline.preflight(None)
+            create.assert_not_called()
+            upload.assert_called_once()
+
     def test_transfer_failure_happens_before_build_configuration(self):
         with patch.dict(pipeline.os.environ, {'GITHUB_RUN_ID': '42', 'GITHUB_RUN_ATTEMPT': '1'}), \
                 patch.object(pipeline, 'verify_transfer', side_effect=RuntimeError('no draft access')), \

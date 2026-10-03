@@ -182,3 +182,11 @@ the draft and exact commit and uploads to that existing draft. Tests reject
 wrong-commit/public drafts and verify failure occurs before build configuration.
 This retains ordinary job-token scopes and does not move the release target to
 another commit or make a development APK public.
+
+The early probe in run `37145370715` reproduced the same 403 even while the
+commit was still the branch head, before heavy setup. Thus branch movement alone
+does not explain the permission restriction. A trusted authenticated dispatcher
+can pre-create the exact private draft using its existing workflow scope; the
+job reuses it only after validating tag/commit/privacy and uploading its own
+small access receipt. No account token is stored in Actions and no repository-wide
+permission setting is changed. The run must not proceed until this probe passes.
