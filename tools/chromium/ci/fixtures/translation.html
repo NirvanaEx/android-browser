@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Translation garden guide</title>
+<style>body{font:18px/1.5 sans-serif;margin:20px;max-width:700px}#status{position:sticky;top:0;background:#fff4b8;padding:8px;font:14px sans-serif}p{margin:12px 0}</style>
+<div id="status" translate="no">Translation fixture ready</div>
+<h1>A small garden throughout the year</h1>
+<main></main>
+<div translate="no" id="excluded">This sentence must stay in English.</div>
+<input aria-label="Garden notes" value="My private garden notes" translate="no">
+<script>
+window.state = () => ({ fixture: 'translation' });
+const texts = [
+  'Plant the seeds in spring when the soil is warm. Give each young plant enough room to grow.',
+  'Water the garden early in the morning. This helps the roots absorb moisture before the afternoon heat.',
+  'Choose a sunny place for your tomatoes. Keep the leaves dry to reduce the risk of disease.',
+  'Small birds visit the garden every day. A shallow bowl of clean water will help them in summer.',
+  'Fallen leaves protect the soil during winter. Use them to cover empty beds until the next season.',
+  'Fresh herbs can grow in pots beside a window. Turn the pots regularly so every side gets sunlight.',
+  'Keep a notebook of the flowers that bloom each month. These observations will help you plan next year.',
+  'A healthy garden needs patience and regular care. Check the plants often and remove damaged branches.',
+];
+const original = new Map();
+const run = new URL(location.href).searchParams.get('run') || 'default';
+for (let i = 0; i < 32; i++) {
+  const p = document.createElement('p');
+  // Unique test labels prevent Gecko's per-origin DOM cache from turning the
+  // second model benchmark into a cache-hit benchmark.
+  p.textContent = `${i + 1}. ${texts[i % texts.length]} (${run})`;
+  document.querySelector('main').append(p);
+  original.set(p, p.textContent);
+}
+let started = performance.now(), first = null, previous = -1;
+new MutationObserver(() => {
+  const translated = [...original].filter(([node, text]) => node.textContent !== text).length;
+  if (translated === previous) return;
+  previous = translated;
+  if (translated && first === null) first = performance.now();
+  const data = { run,
+    translated, total: original.size, sinceLoad: Math.round(performance.now() - started),
+    sinceFirst: first === null ? null : Math.round(performance.now() - first),
+    excludedIntact: document.querySelector('#excluded').textContent === 'This sentence must stay in English.',
+    inputIntact: document.querySelector('input').value === 'My private garden notes' };
+  document.querySelector('#status').textContent = `Translated ${translated} / ${original.size}`;
+  fetch('/translation-events', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(data) }).catch(() => {});
+}).observe(document.querySelector('main'), { childList:true, characterData:true, subtree:true });
+</script>
+</html>
