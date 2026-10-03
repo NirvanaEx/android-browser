@@ -16,7 +16,7 @@ validation without starting another full Chromium build.
 
 `mode=android-test` runs a signed APK in a GitHub-hosted Android emulator.
 Pass `build_tag=upgrid-ci-RUN-ATTEMPT`, or `baseline` to check the previous
-signed APK used for update tests. The test job also follows successful builds.
+signed APK used for update tests. After APK verification/upload, the build dispatches an Android test run before waiting for the incremental cache upload. Its dispatch receipt is stored with build diagnostics.
 It verifies the APK digest, installs the previous version, stores test data,
 updates without clearing data, exercises native player controls and saves
 screenshots, page state and logcat in an Actions artifact. ARM64 runs through
@@ -48,12 +48,15 @@ No paid larger runner is selected. Allocation is not measured peak usage.
 ```mermaid
 flowchart LR
   A[Validate tooling] --> B[Restore cache or fetch pinned Chromium]
-  B --> C[Generate native dependencies]
-  C --> D[40 balanced C++ shards]
+  B --> C[Generate host compiler inputs]
+  C --> H0[Parallel host C and C++ wave]
+  H0 --> H1[Import host objects and generate Android inputs]
+  H1 --> D[Balanced Android C and C++ shards]
   D --> E[Parallel verify and import on final runner]
   E --> F[Java, Rust, linking, signed APK]
   F --> G[APK identity and SHA checks]
-  G --> H[APK and next-build cache in GitHub]
+  G --> H[APK in GitHub]
+  H --> K[Save next-build cache]
   H --> I[Real Android acceptance]
   I --> J[Accepted GitHub release and Telegram verification]
 ```
@@ -75,8 +78,12 @@ inputs still invalidate outputs normally.
 Preparation now exposes separate Actions steps for source restoration/GN,
 generated headers/modules, and snapshots. `timing-*.json` receipts and the
 step summary report elapsed time and failure/success for each stage.
-Generated prerequisites still use one Ninja graph with four local compiler
-processes on the hosted VM; they are not distributed across the native matrix.
+Host-tool C/C++ objects now have an earlier distributed matrix. Only their
+direct generated inputs and bootstrap dependencies run before that matrix.
+After import, Ninja links those tools and generates Android inputs. A warm
+cache with no pending host objects skips the host wave and its extra restore.
+`mode=plan` audits the actual dependency cut without compiling Chromium.
+See `docs/chromium-build-performance.md` for measured baseline and limitations.
 
 After Ninja finishes writing the tree, two tasks run concurrently on the
 prepare runner: creating/uploading the workspace checkpoint and creating/uploading
@@ -90,8 +97,9 @@ The workspace manifest is published only after every chunk succeeds. Its
 creation fails before `plan.json` is available. A failed native snapshot never
 publishes a plan or starts compilation workers. Existing workspaces with a plan
 remain compatible. No second full workspace copy/checkpoint upload is added.
-These changes reduce serialization in transfer/packaging; a full-build speedup
-has not yet been measured and the generation stage remains a potential bottleneck.
+These changes remove serialization in transfer/packaging and distribute host
+compilation; a full-build speedup has not yet been measured. Bootstrap work,
+final linking and the extra host-checkpoint transfer remain measured boundaries.
 
 Preparation generates reachable native headers and Clang modules before
 sharding. Import checks the run, source SHA, snapshot SHA, every object,

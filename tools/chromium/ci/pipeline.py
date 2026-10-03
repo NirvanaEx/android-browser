@@ -268,6 +268,16 @@ def prepare(args):
     prepare_snapshots(args)
 
 
+def first_wave(args):
+    # A warm incremental build must not pay for an empty host wave and a second
+    # full workspace transfer. Continue on this VM directly when tools are ready.
+    args.wave = 'host' if pending_native('host') else 'native'
+    if args.wave == 'native':
+        native_prerequisites()
+    prepare_snapshots(args)
+    output('wave', args.wave)
+
+
 def get_plan(args):
     name = 'host-plan.json' if args.wave == 'host' else 'plan.json'
     plan = read(download(args.tag, name, STATE, args.plan_sha256))
@@ -405,7 +415,7 @@ def save_cache(args):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('stage', choices=['preflight', 'prepare', 'sources', 'prerequisites',
-                                         'host-inputs', 'restore-wave', 'snapshots', 'worker', 'finalize',
+                                         'host-inputs', 'first-wave', 'restore-wave', 'snapshots', 'worker', 'finalize',
                                          'assemble', 'start-android', 'save-cache'])
     parser.add_argument('--wave', choices=['host', 'native'], default='native')
     parser.add_argument('--audit-only', action='store_true')
@@ -423,6 +433,7 @@ def main():
     try:
         {'preflight': preflight, 'prepare': prepare, 'sources': prepare_sources,
          'host-inputs': host_inputs, 'restore-wave': restore_wave,
+         'first-wave': first_wave,
          'assemble': assemble, 'start-android': start_android, 'save-cache': save_cache,
          'prerequisites': lambda _: native_prerequisites(), 'snapshots': prepare_snapshots,
          'worker': worker, 'finalize': finalize}[args.stage](args)
