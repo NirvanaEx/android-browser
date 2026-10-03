@@ -194,3 +194,19 @@ wrong commits. Unit tests cover these cases. Early creation uses the ordinary
 job token; no account token is stored in Actions. A trusted precreated exact draft
 is also supported, but should not be created redundantly. The run must not proceed
 until its own upload-access probe passes.
+
+## Preparation transfer concurrency — 2026-10-04
+
+Preparation is split into visible source, prerequisite and snapshot steps with
+duration receipts. Workspace and native snapshot production now overlap after
+the last Ninja write. Workspace uploads overlap compression with a two-chunk
+staging limit; restoration retrieves four chunks concurrently and verifies all
+digests before extraction. Native gzip compression uses two cloud-only threads.
+The existing workspace archive also acts as a completed-prerequisites checkpoint,
+selectable without a native plan when its final manifest carries the checkpoint
+marker. Incomplete uploads cannot produce that manifest or a usable plan.
+
+These changes do not distribute generated-header/host-tool dependencies across
+multiple runners. The currently running `37145804732` remains on `61a1f2c` and
+is not cancelled or restarted to adopt them. Cloud tooling checks are separate
+from performance measurement of a full Chromium build and Android acceptance.

@@ -2,6 +2,8 @@ import json
 from pathlib import Path
 import sys
 import tempfile
+import threading
+from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 
@@ -12,6 +14,36 @@ from prepare_wave import snapshot_headers
 
 
 class ConfigurationTests(unittest.TestCase):
+    def test_completed_checkpoint_can_seed_build_without_native_plan(self):
+        release = {'tag_name': 'upgrid-ci-42-1', 'assets': [{'name': 'workspace.json'}]}
+        cache = dict(root=str(pipeline.ROOT), chromiumRevision='pinned',
+                     checkpoint='native-prerequisites-v1')
+        with patch.object(pipeline, 'download', return_value='manifest'), \
+                patch.object(pipeline, 'read', return_value=cache):
+            self.assertEqual(pipeline.select_cached_workspace([release], 'pinned'),
+                             ('upgrid-ci-42-1', 'workspace'))
+
+    def test_checkpoint_finishes_even_when_parallel_native_snapshot_fails(self):
+        both_started = threading.Barrier(2)
+        checkpoint_finished = threading.Event()
+        def checkpoint(*args, **kwargs):
+            both_started.wait(timeout=5)
+            checkpoint_finished.set()
+            return 'workspace-hash'
+        def native(args):
+            both_started.wait(timeout=5)
+            raise RuntimeError('snapshot failed')
+        with patch.object(pipeline, 'transfer_tag', return_value='upgrid-ci-42-1'), \
+                patch.object(pipeline, 'verify_transfer'), patch.object(pipeline, 'configure'), \
+                patch.object(pipeline, 'pending_native', return_value=[]), \
+                patch.object(pipeline, 'pack_workspace', side_effect=checkpoint), \
+                patch.object(pipeline, 'prepare_native_snapshot', side_effect=native), \
+                patch.object(pipeline, 'upload') as upload:
+            with self.assertRaisesRegex(RuntimeError, 'snapshot failed'):
+                pipeline.prepare_snapshots(SimpleNamespace(shards=40))
+            self.assertTrue(checkpoint_finished.is_set())
+            upload.assert_not_called()  # Never publish a usable native plan on failure.
+
     def test_precreated_exact_draft_is_reused_without_create_privilege(self):
         with tempfile.TemporaryDirectory() as directory, \
                 patch.dict(pipeline.os.environ, {'GITHUB_RUN_ID': '42', 'GITHUB_RUN_ATTEMPT': '1', 'GITHUB_SHA': 'head'}), \

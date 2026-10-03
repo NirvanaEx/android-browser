@@ -6,6 +6,7 @@ import os
 import pathlib
 import shlex
 import shutil
+import subprocess
 import tarfile
 from ninja_cache import read_deps
 from probe_bundle import SRC, OUT, BASE, sha
@@ -13,6 +14,39 @@ from probe_bundle import SRC, OUT, BASE, sha
 
 HEADER_SUFFIXES = {'.h', '.hh', '.hpp', '.hxx', '.hpp11', '.inc', '.inl',
                    '.def', '.ipp', '.tcc', '.modulemap'}
+
+
+def pack_snapshot(archive, metadata, inputs):
+    # Keep the existing gzip format used by workers, but compress on two cores
+    # in cloud CI. Non-CI snapshot tooling retains its previous resource use.
+    cloud = os.environ.get('GITHUB_ACTIONS') == 'true'
+    process = None
+    with archive.open('wb') as destination:
+        try:
+            if cloud:
+                process = subprocess.Popen(['pigz', '-1', '-p', '2', '-c'],
+                                           stdin=subprocess.PIPE, stdout=destination)
+            stream = process.stdin if process else destination
+            options = {} if process else {'compresslevel': 1}
+            with tarfile.open(fileobj=stream, mode='w|' if process else 'w:gz',
+                              dereference=True, **options) as output:
+                output.add(metadata, arcname='wave-manifest.json')
+                output.add(BASE / 'llvm-LICENSE.TXT', arcname='LICENSES/llvm-LICENSE.TXT')
+                for number, item in enumerate(inputs):
+                    output.add(SRC / item['path'], arcname='src/' + item['path'], recursive=False)
+                    if number and number % 25000 == 0:
+                        print(json.dumps({'stage': 'packing', 'filesDone': number}), flush=True)
+            if process:
+                process.stdin.close()
+                if process.wait():
+                    raise RuntimeError('Native snapshot compression failed')
+        finally:
+            if process:
+                if process.poll() is None:
+                    process.terminate()
+                if not process.stdin.closed:
+                    process.stdin.close()
+                process.wait()
 
 
 def snapshot_headers(src):
@@ -116,13 +150,7 @@ def main():
                 'totalActions': len(actions), 'mode': 'compile-wave', 'jobsPerWorker': 4}
     metadata = BASE / (args.prefix + '-manifest.json')
     metadata.write_text(json.dumps(manifest) + '\n')
-    with tarfile.open(archive, 'w:gz', compresslevel=1, dereference=True) as output:
-        output.add(metadata, arcname='wave-manifest.json')
-        output.add(BASE / 'llvm-LICENSE.TXT', arcname='LICENSES/llvm-LICENSE.TXT')
-        for number, item in enumerate(inputs):
-            output.add(SRC / item['path'], arcname='src/' + item['path'], recursive=False)
-            if number and number % 25000 == 0:
-                print(json.dumps({'stage': 'packing', 'filesDone': number}), flush=True)
+    pack_snapshot(archive, metadata, inputs)
     receipt = {'archive': str(archive), 'sha256': sha(archive), 'bytes': archive.stat().st_size,
                'inputFiles': len(inputs), 'inputBytes': sum(item['size'] for item in inputs),
                'actions': len(actions), 'shards': len(shards), 'deferred': len(deferred)}

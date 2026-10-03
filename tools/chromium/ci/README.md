@@ -72,6 +72,27 @@ prepared workspace from an earlier interrupted run. This is only a source
 seed; it does not count as a successful compilation, and all changed build
 inputs still invalidate outputs normally.
 
+Preparation now exposes separate Actions steps for source restoration/GN,
+generated headers/modules, and snapshots. `timing-*.json` receipts and the
+step summary report elapsed time and failure/success for each stage.
+Generated prerequisites still use one Ninja graph with four local compiler
+processes on the hosted VM; they are not distributed across the native matrix.
+
+After Ninja finishes writing the tree, two tasks run concurrently on the
+prepare runner: creating/uploading the workspace checkpoint and creating/uploading
+the native compiler snapshot. Gzip compression uses two `pigz` threads in CI;
+the worker format remains unchanged. Workspace compression overlaps a single
+upload, retaining at most two temporary chunks. Restoration downloads up to four
+chunks concurrently, verifies all hashes, then extracts them in manifest order.
+
+The workspace manifest is published only after every chunk succeeds. Its
+`native-prerequisites-v1` checkpoint marker permits reuse even if native snapshot
+creation fails before `plan.json` is available. A failed native snapshot never
+publishes a plan or starts compilation workers. Existing workspaces with a plan
+remain compatible. No second full workspace copy/checkpoint upload is added.
+These changes reduce serialization in transfer/packaging; a full-build speedup
+has not yet been measured and the generation stage remains a potential bottleneck.
+
 Preparation generates reachable native headers and Clang modules before
 sharding. Import checks the run, source SHA, snapshot SHA, every object,
 and all compiler inputs. Four threads unpack/hash/copy; a single writer

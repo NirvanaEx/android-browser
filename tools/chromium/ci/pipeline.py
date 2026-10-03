@@ -9,6 +9,7 @@ import re
 import shutil
 import subprocess
 import sys
+import time
 import zipfile
 from concurrent.futures import ThreadPoolExecutor
 from common import (ROOT, STATE, PROJECT, REPO, cloud_only, create_transfer, download, gh_json,
@@ -97,7 +98,7 @@ def select_cached_workspace(releases, revision):
     # of a failed build still saves fetching the entire Chromium checkout.
     # It is only a source seed: GN/Ninja regenerate and validate every output.
     for prefix, required in [('cache', {'cache.json', 'apk-verification.json'}),
-                             ('workspace', {'workspace.json', 'plan.json'})]:
+                             ('workspace', {'workspace.json'})]:
         for release in releases:
             candidate = release['tag_name']
             if not re.fullmatch(r'upgrid-ci-[0-9]+-[0-9]+', candidate):
@@ -105,6 +106,9 @@ def select_cached_workspace(releases, revision):
             if not required <= {asset['name'] for asset in release['assets']}:
                 continue
             cache = read(download(candidate, prefix + '.json', STATE / 'cache-candidates' / candidate))
+            if (prefix == 'workspace' and 'plan.json' not in {asset['name'] for asset in release['assets']}
+                    and cache.get('checkpoint') != 'native-prerequisites-v1'):
+                continue
             if cache['root'] == str(ROOT) and cache['chromiumRevision'] == revision:
                 return candidate, prefix
     return '', 'cache'
@@ -162,7 +166,7 @@ def preflight(args):
     print(json.dumps(dict(stage='transfer-access-verified', tag=tag)), flush=True)
 
 
-def prepare(args):
+def prepare_sources(args):
     tag = transfer_tag()
     verify_transfer(tag)  # Fail before downloading or compiling any build inputs.
     config = configure()
@@ -182,8 +186,10 @@ def prepare(args):
     run('sudo', 'bash', SRC / 'build/install-build-deps.sh', '--android', '--no-prompt')
     run(sys.executable, TOOLS / 'prepare.py', '--checkout', ROOT, '--hooks')
     run(sys.executable, TOOLS / 'build.py', '--checkout', ROOT, '--profile', config['profile'], '--generate-only')
-    native_prerequisites()
-    actions = pending_native()
+
+
+def prepare_native_snapshot(args):
+    tag = transfer_tag()
     sys.path.insert(0, str(TOOLS / 'distributed'))
     import prepare_wave
     # Licensing file is pinned to the checked out compiler's accompanying notice.
@@ -199,7 +205,23 @@ def prepare(args):
     if receipt['deferred']:
         raise RuntimeError('Missing native source/module prerequisites; refusing speculative wave')
     upload(tag, STATE / 'native-inputs.tar.gz', STATE / 'native-manifest.json', STATE / 'native-receipt.json')
-    workspace_digest = pack_workspace(tag, 'workspace')
+    return receipt
+
+
+def prepare_snapshots(args):
+    tag = transfer_tag()
+    verify_transfer(tag)
+    config = configure()
+    actions = pending_native()
+    # Ninja has finished all writes before these readers start. The workspace
+    # and compiler snapshot are independent immutable views of the same tree.
+    # Even if native packaging fails, finish the checkpoint upload for reuse.
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        workspace = pool.submit(pack_workspace, tag, 'workspace',
+                                checkpoint='native-prerequisites-v1')
+        snapshot = pool.submit(prepare_native_snapshot, args)
+        workspace_digest = workspace.result()
+        receipt = snapshot.result()
     manifest = read(STATE / 'native-manifest.json')
     shards = [i for i, items in enumerate(manifest['shards']) if items]
     plan = {'schema': 1, 'runId': os.environ['GITHUB_RUN_ID'], 'headSha': os.environ['GITHUB_SHA'],
@@ -213,6 +235,12 @@ def prepare(args):
     output('plan_sha256', sha(STATE / 'plan.json'))
     output('matrix', json.dumps({'worker': shards or [0]}))
     output('actions', len(actions))
+
+
+def prepare(args):
+    prepare_sources(args)
+    native_prerequisites()
+    prepare_snapshots(args)
 
 
 def get_plan(args):
@@ -310,7 +338,8 @@ def finalize(args):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('stage', choices=['preflight', 'prepare', 'worker', 'finalize'])
+    parser.add_argument('stage', choices=['preflight', 'prepare', 'sources', 'prerequisites',
+                                         'snapshots', 'worker', 'finalize'])
     parser.add_argument('--cache-tag', default='auto')
     parser.add_argument('--shards', type=int, default=40, choices=range(1, 41))
     parser.add_argument('--tag')
@@ -320,7 +349,21 @@ def main():
     cloud_only()
     os.environ['UPGRID_CHROMIUM_ROOT'] = str(ROOT)
     os.environ['UPGRID_DISTRIBUTED_STATE'] = str(STATE)
-    {'preflight': preflight, 'prepare': prepare, 'worker': worker, 'finalize': finalize}[args.stage](args)
+    started = time.monotonic()
+    status = 'failed'
+    try:
+        {'preflight': preflight, 'prepare': prepare, 'sources': prepare_sources,
+         'prerequisites': lambda _: native_prerequisites(), 'snapshots': prepare_snapshots,
+         'worker': worker, 'finalize': finalize}[args.stage](args)
+        status = 'success'
+    finally:
+        timing = dict(stage=args.stage, status=status, seconds=round(time.monotonic() - started, 1),
+                      runId=os.environ['GITHUB_RUN_ID'], headSha=os.environ['GITHUB_SHA'])
+        write(STATE / f'timing-{args.stage}.json', timing)
+        print(json.dumps(timing), flush=True)
+        if os.environ.get('GITHUB_STEP_SUMMARY'):
+            with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as summary:
+                summary.write(f"{args.stage}: {status}, {timing['seconds']} seconds.\n\n")
 
 
 if __name__ == '__main__':
