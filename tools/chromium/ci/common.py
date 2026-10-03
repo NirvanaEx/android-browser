@@ -66,8 +66,12 @@ def gh_json(endpoint):
 def create_transfer(tag):
     tag_checked(tag)
     # Drafts keep unaccepted APKs and complete build caches out of public releases.
-    run('gh', 'release', 'create', tag, '--repo', REPO, '--draft', '--target', os.environ['GITHUB_SHA'],
-        '--title', f'Private CI workspace {tag}', '--notes', 'Build inputs and cache; not an accepted application release.')
+    return json.loads(subprocess.check_output([
+        'gh', 'api', '--method', 'POST', f'repos/{REPO}/releases',
+        '-f', f'tag_name={tag}', '-f', f'target_commitish={os.environ["GITHUB_SHA"]}',
+        '-F', 'draft=true', '-f', f'name=Private CI workspace {tag}',
+        '-f', 'body=Build inputs and cache; not an accepted application release.'
+    ], text=True))
 
 
 def upload(tag, *paths):

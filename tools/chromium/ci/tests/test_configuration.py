@@ -16,12 +16,23 @@ class ConfigurationTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory, \
                 patch.dict(pipeline.os.environ, {'GITHUB_RUN_ID': '42', 'GITHUB_RUN_ATTEMPT': '1', 'GITHUB_SHA': 'head'}), \
                 patch.object(pipeline, 'STATE', Path(directory)), \
-                patch.object(pipeline, 'find_transfer', return_value={'draft': True}), \
+                patch.object(pipeline, 'find_transfer', return_value={'draft': True, 'id': 123}), \
                 patch.object(pipeline, 'verify_transfer'), patch.object(pipeline, 'create_transfer') as create, \
                 patch.object(pipeline, 'upload') as upload:
             pipeline.preflight(None)
             create.assert_not_called()
             upload.assert_called_once()
+
+    def test_new_draft_uses_create_response_without_stale_listing(self):
+        draft = dict(draft=True, id=123, tag_name='upgrid-ci-42-1', target_commitish='head')
+        with tempfile.TemporaryDirectory() as directory, \
+                patch.dict(pipeline.os.environ, {'GITHUB_RUN_ID': '42', 'GITHUB_RUN_ATTEMPT': '1', 'GITHUB_SHA': 'head'}), \
+                patch.object(pipeline, 'STATE', Path(directory)), \
+                patch.object(pipeline, 'find_transfer', return_value=None) as lookup, \
+                patch.object(pipeline, 'create_transfer', return_value=draft), patch.object(pipeline, 'upload'):
+            pipeline.preflight(None)
+            lookup.assert_called_once()
+            self.assertEqual(json.loads((Path(directory) / 'transfer-access.json').read_text())['releaseId'], 123)
 
     def test_transfer_failure_happens_before_build_configuration(self):
         with patch.dict(pipeline.os.environ, {'GITHUB_RUN_ID': '42', 'GITHUB_RUN_ATTEMPT': '1'}), \

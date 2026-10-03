@@ -115,6 +115,11 @@ def transfer_tag():
 
 
 def find_transfer(tag):
+    probe = STATE / 'transfer-access.json'
+    if probe.exists():
+        saved = read(probe)
+        if saved.get('tag') == tag and isinstance(saved.get('releaseId'), int):
+            return gh_json('releases/' + str(saved['releaseId']))
     # GET releases/tags/{tag} excludes drafts. List authenticated releases and
     # select the exact tag instead; never interpret a draft's 404 as absence.
     found = []
@@ -146,13 +151,13 @@ def preflight(args):
     # token still verifies its exact identity and proves its own upload access.
     release = find_transfer(tag)
     if release is None:
-        create_transfer(tag)
-        verify_transfer(tag)
-    else:
-        verify_transfer(tag, release)
+        # Use the create response directly: the release listing can lag behind
+        # creation, even when the exact draft is already readable by numeric ID.
+        release = create_transfer(tag)
+    verify_transfer(tag, release)
     probe = STATE / 'transfer-access.json'
     write(probe, dict(runId=os.environ['GITHUB_RUN_ID'], headSha=os.environ['GITHUB_SHA'],
-                      tag=tag, purpose='Verify draft upload access before heavy build work'))
+                      tag=tag, releaseId=release['id'], purpose='Verify draft upload access before heavy build work'))
     upload(tag, probe)
     print(json.dumps(dict(stage='transfer-access-verified', tag=tag)), flush=True)
 
