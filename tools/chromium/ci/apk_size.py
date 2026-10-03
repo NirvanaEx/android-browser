@@ -39,6 +39,6 @@ if __name__ == '__main__':
     args = parser.parse_args()
     result = json.dumps(analyze(args.apk), indent=2) + '\n'
     if args.output:
-        args.output.write_text(result, encoding='utf-8')
+        args.output.write_text(result, encoding='utf-8', newline='\n')
     else:
         print(result, end='')
