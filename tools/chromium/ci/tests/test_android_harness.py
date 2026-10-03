@@ -10,6 +10,23 @@ import android_test
 
 
 class HarnessTests(unittest.TestCase):
+    def test_only_browser_notification_rationale_is_declined(self):
+        tree = ET.fromstring('<hierarchy><node package="com.upgrid.chromium" '
+                             'resource-id="com.upgrid.chromium:id/notification_permission_rationale_title"/>'
+                             '<node package="com.upgrid.chromium" resource-id="com.upgrid.chromium:id/negative_button" '
+                             'bounds="[10,20][110,80]"/></hierarchy>')
+        with patch.object(android_test, 'ui', return_value=tree), \
+                patch.object(android_test, 'screenshot'), patch.object(android_test, 'adb') as adb:
+            self.assertTrue(android_test.dismiss_notification_prompt())
+            adb.assert_called_once_with('shell', 'input', 'tap', 60, 50)
+
+    def test_site_decline_button_is_not_treated_as_startup_prompt(self):
+        tree = ET.fromstring('<hierarchy><node package="com.upgrid.chromium" text="No thanks" '
+                             'bounds="[10,20][110,80]"/></hierarchy>')
+        with patch.object(android_test, 'ui', return_value=tree), patch.object(android_test, 'adb') as adb:
+            self.assertFalse(android_test.dismiss_notification_prompt())
+            adb.assert_not_called()
+
     def test_unresponsive_adb_has_finite_timeout_and_reports_failure(self):
         with patch.object(android_test.subprocess, 'check_output',
                           side_effect=subprocess.TimeoutExpired('adb', 45)) as call:
