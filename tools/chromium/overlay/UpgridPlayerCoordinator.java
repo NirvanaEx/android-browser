@@ -59,7 +59,8 @@ public final class UpgridPlayerCoordinator implements FullscreenManager.Observer
         lockOrientation(tab);
         int generation = ++mGeneration;
         // The browser hides its controls before Blink confirms fullscreen. Wait
-        // for fullscreen; Blink then confirms the video inside that exact root.
+        // for fullscreen; Blink attaches only if the fullscreen element is a
+        // video. A site's container retains its own controls, without an overlay.
         // hasActiveEffectivelyFullscreenVideo() excludes paused videos.
         mHandler.post(() -> tryAttach(tab, generation, 0));
     }

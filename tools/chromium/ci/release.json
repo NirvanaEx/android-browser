@@ -1,8 +1,8 @@
 {
-  "profile": "extensions-dev",
+  "profile": "extensions-ci",
   "package": "com.upgrid.chromium",
-  "versionName": "146.0.7680.31-upgrid.8-player-fixes-test",
-  "versionCode": 768003111,
+  "versionName": "146.0.7680.31-upgrid.9-isolated-player-test",
+  "versionCode": 768003112,
   "abi": "arm64-v8a",
   "signerSha256": "32a2fc74d731105859e5a85df16d95f102d85b22099b8064c5d8915c61dad1e0",
   "distributionApproved": false

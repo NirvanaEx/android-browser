@@ -1,7 +1,7 @@
 name: Upgrid full cloud APK
 on:
   push:
-    branches: [codex/chromium-distributed]
+    branches: [codex/chromium-distributed, codex/apk-size-player-isolation-20261003]
     paths:
       - .github/workflows/chromium-full.yml
       - tools/chromium/ci/**
@@ -32,7 +32,7 @@ env:
   GCLIENT_PY3: '1'
 jobs:
   validate:
-    if: github.ref == 'refs/heads/codex/chromium-distributed'
+    if: github.ref == 'refs/heads/codex/chromium-distributed' || github.ref == 'refs/heads/codex/apk-size-player-isolation-20261003'
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
@@ -43,6 +43,8 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends ninja-build zstd
           python3 -m unittest discover -s tools/chromium/ci/tests -v
+          python3 -m unittest discover -s tools/chromium/tests -v
+          node --test tools/chromium/tests/youtube-options.test.cjs
           UPGRID_TEST_NINJA=ninja python3 tools/chromium/distributed/test_cache.py
   prepare:
     needs: validate
@@ -130,8 +132,9 @@ jobs:
           name: cloud-apk-verification
           path: |
             /home/runner/upgrid-state/apk-verification.json
+            /home/runner/upgrid-state/apk-size.json
             /home/runner/upgrid-state/import-receipt.json
             /home/runner/upgrid-state/remaining-tasks.log
-            /home/neyron/.cache/upgrid/chromium/upgrid-extensions-dev-build-receipt.json
+            /home/neyron/.cache/upgrid/chromium/upgrid-*-build-receipt.json
           retention-days: 7
           if-no-files-found: ignore

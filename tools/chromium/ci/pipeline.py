@@ -20,7 +20,11 @@ SRC, OUT = ROOT / 'src', ROOT / 'src/out/Upgrid'
 
 def configure():
     config = read(TOOLS / 'ci/release.json')
-    template = TOOLS / 'args-extensions-dev.gn'
+    templates = {'extensions-dev': 'args-extensions-dev.gn',
+                 'extensions-ci': 'args-extensions.gn'}
+    if config.get('profile') not in templates:
+        raise RuntimeError('Unsupported CI build profile')
+    template = TOOLS / templates[config['profile']]
     text = template.read_text()
     for key, value in [('android_override_version_name', config['versionName']),
                        ('android_override_version_code', str(config['versionCode']))]:
@@ -114,7 +118,7 @@ def prepare(args):
     # System dependencies are installed only on the disposable CI VM.
     run('sudo', 'bash', SRC / 'build/install-build-deps.sh', '--android', '--no-prompt')
     run(sys.executable, TOOLS / 'prepare.py', '--checkout', ROOT, '--hooks')
-    run(sys.executable, TOOLS / 'build.py', '--checkout', ROOT, '--profile', 'extensions-dev', '--generate-only')
+    run(sys.executable, TOOLS / 'build.py', '--checkout', ROOT, '--profile', config['profile'], '--generate-only')
     native_prerequisites()
     actions = pending_native()
     sys.path.insert(0, str(TOOLS / 'distributed'))
@@ -224,15 +228,17 @@ def finalize(args):
     with (STATE / 'remaining-tasks.log').open('w') as log:
         ninja('-n', 'chrome_public_apk', stdout=log)
     started = datetime.datetime.now(datetime.timezone.utc)
-    run(sys.executable, TOOLS / 'build.py', '--checkout', ROOT, '--profile', 'extensions-dev', '--jobs', '4')
-    build_receipt = read(ROOT / 'upgrid-extensions-dev-build-receipt.json')
+    run(sys.executable, TOOLS / 'build.py', '--checkout', ROOT, '--profile', plan['release']['profile'], '--jobs', '4')
+    build_receipt = read(ROOT / f"upgrid-{plan['release']['profile']}-build-receipt.json")
     if datetime.datetime.fromisoformat(build_receipt['finishedAtUtc']) < started:
         raise RuntimeError('Stale build receipt')
     verification = verify_apk(plan['release'])
     if verification['sha256'] != build_receipt['sha256']:
         raise RuntimeError('APK digest differs from build receipt')
     write(STATE / 'apk-verification.json', verification)
-    upload(args.tag, OUT / 'apks/ChromePublic.apk', STATE / 'apk-verification.json', ROOT / 'upgrid-extensions-dev-build-receipt.json')
+    from apk_size import analyze
+    write(STATE / 'apk-size.json', analyze(OUT / 'apks/ChromePublic.apk'))
+    upload(args.tag, OUT / 'apks/ChromePublic.apk', STATE / 'apk-verification.json', STATE / 'apk-size.json', ROOT / f"upgrid-{plan['release']['profile']}-build-receipt.json")
     # Save a complete reusable state, so the next run rebuilds only changed inputs.
     pack_workspace(args.tag, 'cache')
     with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as summary:
