@@ -32,7 +32,7 @@ concurrency:
 
 jobs:
   build:
-    if: github.ref != 'refs/heads/codex/chromium-distributed'
+    if: github.ref != 'refs/heads/codex/chromium-distributed' && github.ref != 'refs/heads/codex/apk-size-player-isolation-20261003'
     runs-on: ubuntu-latest
 
     # Job-level so the delivery step can gate on them in its `if:` — step-level

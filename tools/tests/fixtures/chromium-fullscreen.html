@@ -22,6 +22,7 @@
   <a href="?mode=frame">Iframe</a>
   <a href="?mode=sourcechange">Source replacement in fullscreen</a>
   <a href="?mode=shadow">Shadow player</a>
+  <a href="?mode=clipped">Transformed, clipped container</a>
 </nav>
 <div id="player">
   <video id="video" src="/sample.mp4" controls loop playsinline></video>
@@ -31,6 +32,7 @@
   <button id="play">Start video</button>
   <button id="pause">Pause video</button>
   <button id="fullscreen">Site fullscreen</button>
+  <button id="videoFullscreen">Video-only fullscreen</button>
 </p>
 <div id="plain" hidden>Fullscreen test without any video</div>
 <pre id="status"></pre>
@@ -47,7 +49,10 @@
     const event = {kind: `${mode}-${kind}`, time: video.currentTime,
       paused: video.paused, fullscreen: !!document.fullscreenElement, loads, pauses,
       fit: getComputedStyle(video).objectFit, videoWidth: video.videoWidth, videoHeight: video.videoHeight,
-      siteUiVisible: [...player.querySelectorAll('.site')].some(node => !!node.getClientRects().length),
+      // Layout boxes can still exist behind the fullscreen top layer. This is
+      // diagnostic layout data, not evidence that site controls are painted.
+      siteUiHasLayout: [...player.querySelectorAll('.site')].some(node => !!node.getClientRects().length),
+      videoIsFullscreen: video.matches(':fullscreen'),
       videoRect: {width: video.getBoundingClientRect().width, height: video.getBoundingClientRect().height}};
     status.textContent = JSON.stringify(event, null, 2);
     fetch('/probe-events', {method: 'POST', headers: {'Content-Type': 'application/json'},
@@ -59,9 +64,12 @@
   document.getElementById('pause').onclick = () => video.pause();
   document.getElementById('fullscreen').onclick = () => {
     observe('before');
-    const target = ['container', 'sourcechange', 'shadow'].includes(mode) ? player : mode === 'novideo' ? plain : video;
+    const target = ['container', 'sourcechange', 'shadow', 'clipped'].includes(mode) ? player : mode === 'novideo' ? plain : video;
     target.hidden = false;
     target.requestFullscreen().catch(error => { status.textContent = error.name; observe('rejected'); });
+  };
+  document.getElementById('videoFullscreen').onclick = () => {
+    video.requestFullscreen().catch(error => { status.textContent = error.name; observe('rejected'); });
   };
   document.addEventListener('fullscreenchange', () => observe(document.fullscreenElement ? 'entered' : 'left'));
   document.addEventListener('fullscreenchange', () => {
@@ -99,6 +107,16 @@
     controls.textContent = 'Shadow site controls';
     shadow.appendChild(controls);
     player.prepend(host);
+  }
+  if (mode === 'clipped') {
+    const wrapper = document.createElement('div');
+    wrapper.style.cssText = 'transform:translate(32px,24px);overflow:hidden;clip-path:inset(12px);width:65%;height:190px';
+    player.prepend(wrapper);
+    wrapper.append(video);
+    const badge = document.createElement('div');
+    badge.className = 'site';
+    badge.textContent = 'Site UI: must not be overlaid with Upgrid controls';
+    wrapper.append(badge);
   }
 </script>
 </html>
