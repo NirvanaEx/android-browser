@@ -15,10 +15,12 @@ from prepare_wave import snapshot_headers
 
 class ConfigurationTests(unittest.TestCase):
     def test_warm_cache_skips_empty_host_wave_and_second_workspace_transfer(self):
-        for pending, expected in [([], 'native'), ([{'output': 'clang_x64/obj/a.o'}], 'host')]:
+        for pending, expected in [([], 'native'), ([{'output': 'clang_x64/obj/a.o'}], 'native'),
+                                  ([{'output': f'clang_x64/obj/{i}.o'} for i in range(128)], 'host')]:
             with self.subTest(expected=expected), patch.object(pipeline, 'pending_native', return_value=pending), \
                     patch.object(pipeline, 'native_prerequisites') as prerequisites, \
-                    patch.object(pipeline, 'prepare_snapshots') as snapshot, patch.object(pipeline, 'output'):
+                    patch.object(pipeline, 'prepare_snapshots') as snapshot, patch.object(pipeline, 'output'), \
+                    patch.object(pipeline, 'write'):
                 args = SimpleNamespace(wave='native')
                 pipeline.first_wave(args)
                 self.assertEqual(args.wave, expected)

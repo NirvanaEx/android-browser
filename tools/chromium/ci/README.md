@@ -81,7 +81,9 @@ step summary report elapsed time and failure/success for each stage.
 Host-tool C/C++ objects now have an earlier distributed matrix. Only their
 direct generated inputs and bootstrap dependencies run before that matrix.
 After import, Ninja links those tools and generates Android inputs. A warm
-cache with no pending host objects skips the host wave and its extra restore.
+cache with fewer than 128 pending host objects skips the host wave and its extra
+restore: rebuilding a few tools locally on the hosted VM avoids a second large
+workspace transfer. `host-routing.json` records this explicit tuning threshold.
 `mode=plan` audits the actual dependency cut without compiling Chromium.
 See `docs/chromium-build-performance.md` for measured baseline and limitations.
 
