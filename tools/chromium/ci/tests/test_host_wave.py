@@ -7,11 +7,21 @@ import unittest
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2] / 'distributed'))
-from host_wave import query_inputs, write_inputs
+from host_wave import query_inputs, write_inputs, query_batches
 from action_paths import object_path, host_object
 
 
 class HostPlanTests(unittest.TestCase):
+    def test_queries_are_bounded_without_reloading_graph_for_tiny_batches(self):
+        targets = [f'clang_x64/obj/target{i}.o' for i in range(9000)]
+        batches = list(query_batches(targets, 256 * 1024))
+        self.assertEqual([name for batch in batches for name in batch], targets)
+        self.assertLess(len(batches), 4)
+        for batch in batches:
+            self.assertLessEqual(sum(len(name.encode()) + 9 for name in batch), 256 * 1024)
+        with self.assertRaises(RuntimeError):
+            list(query_batches(['long_target'], 4))
+
     def test_explicit_implicit_order_only_and_validation_inputs(self):
         text = ('clang_x64/obj/a.o:\n  input: cxx\n    ../../a.cc\n'
                 '    | gen/header.h\n    || gen/order.stamp\n'

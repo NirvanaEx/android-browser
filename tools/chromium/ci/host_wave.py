@@ -4,6 +4,22 @@ Ninja remains responsible for transitive dependencies (including bootstrap tools
 Never replace missing generated inputs with guessed files or stale timestamps.
 """
 import re
+import os
+
+
+def query_batches(targets, budget):
+    batch, size = [], 0
+    for target in targets:
+        cost = len(os.fsencode(target)) + 9  # NUL plus argv pointer.
+        if cost > budget:
+            raise RuntimeError('Ninja target exceeds argument budget')
+        if batch and size + cost > budget:
+            yield batch
+            batch, size = [], 0
+        batch.append(target)
+        size += cost
+    if batch:
+        yield batch
 
 
 def query_inputs(text, expected):
@@ -32,8 +48,14 @@ def query_inputs(text, expected):
 def write_inputs(ninja, actions, out, state):
     targets = sorted({action['output'] for action in actions})
     dependencies = set()
-    for start in range(0, len(targets), 128):
-        batch = targets[start:start + 128]
+    # Reading the Chromium graph for every 128 targets wastes minutes. Batch
+    # by the actual OS argv budget, with room reserved for the environment.
+    limit = os.sysconf('SC_ARG_MAX') if hasattr(os, 'sysconf') else 32768
+    environment_bytes = sum(len(os.fsencode(k)) + len(os.fsencode(v)) + 2 for k, v in os.environ.items())
+    budget = min(256 * 1024, (limit - environment_bytes - 16384) // 2)
+    if budget < 4096:
+        raise RuntimeError('Insufficient argument space for Ninja queries')
+    for batch in query_batches(targets, budget):
         query = state / 'host-query.txt'
         with query.open('w') as stream:
             ninja('-t', 'query', *batch, stdout=stream)

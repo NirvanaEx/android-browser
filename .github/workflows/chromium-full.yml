@@ -108,6 +108,7 @@ jobs:
             /home/runner/upgrid-state/workspace.json
             /home/runner/upgrid-state/host-*.json
             /home/runner/upgrid-state/host-input-tasks.log
+            /home/runner/upgrid-state/host-query.txt
           if-no-files-found: ignore
           retention-days: 14
   host:
