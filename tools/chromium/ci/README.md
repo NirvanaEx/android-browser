@@ -25,6 +25,13 @@ Android functional evidence, not physical-device codec/performance/DRM proof.
 The test entry point refuses execution outside GitHub Actions. Test VMs are
 disposable and never use the user's PC as a runner.
 
+The emulator uses API 35. The API 30 baseline probe installed the signed .8
+APK but crashed at startup in `libndk_translation.so`
+(`DecodeSimdThreeDifferent`, SIGILL), before reaching any player test.
+See run 37136340535 and its Android evidence artifact. Changing the emulator
+image preserves the APK under test; it does not establish physical ARM64
+compatibility or make the failed probe a passing acceptance check.
+
 The workflow is serialized per branch. Forty shards can run concurrently
 subject to the account's actual GitHub concurrency quota (20 was observed).
 Each worker runs four compiler processes. Preparation and final assembly

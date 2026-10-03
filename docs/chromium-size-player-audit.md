@@ -95,3 +95,19 @@ All 11 CI tests, 19 tooling tests, seven adapter tests and two Ninja cache tests
 passed on the GitHub runner. This was validation mode; native compilation and
 APK assembly were skipped. The unrelated legacy Android workflow was cancelled
 before delivery and excluded for this Chromium feature branch.
+
+## Cloud Android baseline — 2026-10-03
+
+Run `37136340535` installed the exact .8 baseline APK in the API 30 x86_64
+Google APIs emulator (advertising arm64-v8a support). The app failed to start:
+logcat records SIGILL in `libndk_translation.so`, specifically
+`DecodeSimdThreeDifferent`, followed by process death. The launch timeout is
+a consequence of that crash, not evidence of player failure. No player or
+update-preservation check passed in that run. Its artifact
+`android-test-evidence-37136340535` includes results.json, device.json, logcat,
+failure UI and screenshot. The next probe uses the API 35 image with the same
+signed APK to test newer native translation; success remains unverified.
+
+The previous unbounded probe `37134446720` required forced cancellation after
+ordinary cancellation did not complete. The harness now bounds ADB/DevTools
+calls and retains failure evidence when a diagnostic command also fails.
