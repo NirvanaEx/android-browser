@@ -114,8 +114,26 @@ def transfer_tag():
     return f"upgrid-ci-{os.environ['GITHUB_RUN_ID']}-{os.environ['GITHUB_RUN_ATTEMPT']}"
 
 
-def verify_transfer(tag):
-    release = gh_json('releases/tags/' + tag)
+def find_transfer(tag):
+    # GET releases/tags/{tag} excludes drafts. List authenticated releases and
+    # select the exact tag instead; never interpret a draft's 404 as absence.
+    found = []
+    page = 1
+    while True:
+        releases = gh_json(f'releases?per_page=100&page={page}')
+        found.extend(item for item in releases if item.get('tag_name') == tag)
+        if len(releases) < 100:
+            break
+        page += 1
+    if len(found) > 1:
+        raise RuntimeError('Ambiguous duplicate CI transfer drafts')
+    return found[0] if found else None
+
+
+def verify_transfer(tag, release=None):
+    release = release if release is not None else find_transfer(tag)
+    if release is None:
+        raise RuntimeError('CI transfer draft is missing')
     if (release.get('draft') is not True or release.get('tag_name') != tag
             or release.get('target_commitish') != os.environ['GITHUB_SHA']):
         raise RuntimeError('CI transfer must be a private draft for this exact workflow commit')
@@ -126,11 +144,12 @@ def preflight(args):
     tag = transfer_tag()
     # A trusted dispatcher may reserve the draft with workflow scope. The job
     # token still verifies its exact identity and proves its own upload access.
-    try:
-        verify_transfer(tag)
-    except subprocess.CalledProcessError:
+    release = find_transfer(tag)
+    if release is None:
         create_transfer(tag)
         verify_transfer(tag)
+    else:
+        verify_transfer(tag, release)
     probe = STATE / 'transfer-access.json'
     write(probe, dict(runId=os.environ['GITHUB_RUN_ID'], headSha=os.environ['GITHUB_SHA'],
                       tag=tag, purpose='Verify draft upload access before heavy build work'))

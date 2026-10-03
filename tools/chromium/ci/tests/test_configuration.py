@@ -16,6 +16,7 @@ class ConfigurationTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory, \
                 patch.dict(pipeline.os.environ, {'GITHUB_RUN_ID': '42', 'GITHUB_RUN_ATTEMPT': '1', 'GITHUB_SHA': 'head'}), \
                 patch.object(pipeline, 'STATE', Path(directory)), \
+                patch.object(pipeline, 'find_transfer', return_value={'draft': True}), \
                 patch.object(pipeline, 'verify_transfer'), patch.object(pipeline, 'create_transfer') as create, \
                 patch.object(pipeline, 'upload') as upload:
             pipeline.preflight(None)
@@ -33,12 +34,21 @@ class ConfigurationTests(unittest.TestCase):
     def test_transfer_rejects_published_or_wrong_commit_draft(self):
         good = dict(draft=True, tag_name='upgrid-ci-42-1', target_commitish='exact-head')
         with patch.dict(pipeline.os.environ, {'GITHUB_SHA': 'exact-head'}):
-            with patch.object(pipeline, 'gh_json', return_value=good):
+            with patch.object(pipeline, 'gh_json', return_value=[good]):
                 self.assertEqual(pipeline.verify_transfer('upgrid-ci-42-1'), good)
             for change in [dict(draft=False), dict(target_commitish='other'), dict(tag_name='upgrid-ci-43-1')]:
-                with patch.object(pipeline, 'gh_json', return_value={**good, **change}):
+                with patch.object(pipeline, 'gh_json', return_value=[{**good, **change}]):
                     with self.assertRaises(RuntimeError):
                         pipeline.verify_transfer('upgrid-ci-42-1')
+
+    def test_draft_lookup_uses_listing_and_rejects_duplicates(self):
+        draft = dict(tag_name='upgrid-ci-42-1', draft=True)
+        with patch.object(pipeline, 'gh_json', return_value=[draft]) as query:
+            self.assertEqual(pipeline.find_transfer('upgrid-ci-42-1'), draft)
+            query.assert_called_once_with('releases?per_page=100&page=1')
+        with patch.object(pipeline, 'gh_json', return_value=[draft, draft]):
+            with self.assertRaisesRegex(RuntimeError, 'duplicate'):
+                pipeline.find_transfer('upgrid-ci-42-1')
 
     def test_cache_preference_fallback_and_revision_isolation(self):
         def release(number, names):
