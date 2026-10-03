@@ -11,6 +11,23 @@ import android_test
 
 
 class HarnessTests(unittest.TestCase):
+    def test_loop_boundary_is_playback_but_frozen_frames_are_not(self):
+        before = dict(paused=False, frames=350, time=23.9)
+        android_test.assert_playing_advanced(before, dict(paused=False, frames=380, time=1.9))
+        for after in [dict(paused=False, frames=350, time=1.9),
+                      dict(paused=True, frames=380, time=1.9),
+                      dict(paused=False, frames=380, time=23.9)]:
+            with self.subTest(after=after), self.assertRaises(AssertionError):
+                android_test.assert_playing_advanced(before, after)
+
+    def test_video_identity_check_rejects_reload_and_source_replacement(self):
+        before = dict(source='http://fixture/sample.mp4', loads=1)
+        android_test.assert_same_video(before, dict(before))
+        for after in [dict(source='http://fixture/other.mp4', loads=1),
+                      dict(source=before['source'], loads=2)]:
+            with self.subTest(after=after), self.assertRaises(AssertionError):
+                android_test.assert_same_video(before, after)
+
     def test_baseline_failure_does_not_hide_candidate_or_pass_update_check(self):
         context = dict(baselineApk='old.apk', apk='new.apk', metadata=dict(baseline=False, versionCode=768003112))
         candidate = Mock()
