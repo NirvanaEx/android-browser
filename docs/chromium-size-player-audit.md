@@ -88,3 +88,10 @@ diagnostics do not claim that a box behind the top layer is visibly painted.
 
 Candidate version: `146.0.7680.31-upgrid.9-isolated-player-test` / `768003112`.
 No new APK is accepted or published by this source change.
+
+GitHub validation passed on source commit `1a7e54d`:
+[run 37133490760](https://github.com/NirvanaEx/android-browser/actions/runs/37133490760).
+All 11 CI tests, 19 tooling tests, seven adapter tests and two Ninja cache tests
+passed on the GitHub runner. This was validation mode; native compilation and
+APK assembly were skipped. The unrelated legacy Android workflow was cancelled
+before delivery and excluded for this Chromium feature branch.
