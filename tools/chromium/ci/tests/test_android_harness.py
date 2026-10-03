@@ -1,5 +1,6 @@
 from pathlib import Path
 import sys
+import subprocess
 import unittest
 from unittest.mock import patch
 import xml.etree.ElementTree as ET
@@ -9,6 +10,24 @@ import android_test
 
 
 class HarnessTests(unittest.TestCase):
+    def test_unresponsive_adb_has_finite_timeout_and_reports_failure(self):
+        with patch.object(android_test.subprocess, 'check_output',
+                          side_effect=subprocess.TimeoutExpired('adb', 45)) as call:
+            with self.assertRaises(subprocess.TimeoutExpired):
+                android_test.adb('shell', 'dumpsys', 'package', 'example')
+            self.assertEqual(call.call_args.kwargs['timeout'], 45)
+
+    def test_logcat_failure_does_not_prevent_remaining_evidence(self):
+        errors = {}
+        with patch.object(android_test, 'adb',
+                          side_effect=subprocess.TimeoutExpired('adb', 20)):
+            android_test.collect_diagnostic(errors, 'logcat', lambda: android_test.adb('logcat', '-d'))
+        self.assertIn('TimeoutExpired', errors['logcat'])
+        with patch.object(android_test, 'save') as save:
+            android_test.collect_diagnostic(errors, 'results', lambda: android_test.save('results.json', {}))
+            save.assert_called_once()
+        self.assertNotIn('results', errors)
+
     def test_leaf_accessibility_node_is_a_successful_wait_result(self):
         node = ET.fromstring('<node text="Play" bounds="[10,20][110,80]"/>')
         with patch.object(android_test.time, 'sleep') as sleep:
