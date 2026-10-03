@@ -162,3 +162,23 @@ page state and screenshot evidence are recorded per scenario. Looping video
 checks permit a currentTime wrap only when decoded frames also advance.
 These do not cover tab switching, iframe execution, the complete menu/empty-tab
 path, or Tampermonkey/user scripts, and do not constitute passed acceptance.
+
+The expanded current scenario inventory is in `chromium-test-coverage.md`.
+
+## Full build transfer failure — 2026-10-03
+
+Run `37133916096` failed at 18:27 UTC after completing 11,729 prerequisite
+actions and preparing 34,562 native actions. Creation of the private transfer
+draft returned HTTP 403 (`Resource not accessible by integration`). The job
+token had `contents: write`; its exact build commit had ceased to be the branch
+head while preparation ran. GitHub applies an additional workflow-modification
+permission guard to release targets; see the official
+[release API documentation](https://docs.github.com/en/rest/releases/releases).
+No native shards or APK ran, and no transferable snapshot reached GitHub.
+
+The workflow now creates its exact-commit private draft and uploads a small
+access receipt before any heavy setup or compilation. Preparation revalidates
+the draft and exact commit and uploads to that existing draft. Tests reject
+wrong-commit/public drafts and verify failure occurs before build configuration.
+This retains ordinary job-token scopes and does not move the release target to
+another commit or make a development APK public.

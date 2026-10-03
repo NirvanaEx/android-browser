@@ -110,8 +110,34 @@ def select_cached_workspace(releases, revision):
     return '', 'cache'
 
 
+def transfer_tag():
+    return f"upgrid-ci-{os.environ['GITHUB_RUN_ID']}-{os.environ['GITHUB_RUN_ATTEMPT']}"
+
+
+def verify_transfer(tag):
+    release = gh_json('releases/tags/' + tag)
+    if (release.get('draft') is not True or release.get('tag_name') != tag
+            or release.get('target_commitish') != os.environ['GITHUB_SHA']):
+        raise RuntimeError('CI transfer must be a private draft for this exact workflow commit')
+    return release
+
+
+def preflight(args):
+    tag = transfer_tag()
+    # Reserve the exact commit while it is still the branch head. Creating the
+    # draft hours later can require workflow privileges after the branch moves.
+    create_transfer(tag)
+    verify_transfer(tag)
+    probe = STATE / 'transfer-access.json'
+    write(probe, dict(runId=os.environ['GITHUB_RUN_ID'], headSha=os.environ['GITHUB_SHA'],
+                      tag=tag, purpose='Verify draft upload access before heavy build work'))
+    upload(tag, probe)
+    print(json.dumps(dict(stage='transfer-access-verified', tag=tag)), flush=True)
+
+
 def prepare(args):
-    tag = f"upgrid-ci-{os.environ['GITHUB_RUN_ID']}-{os.environ['GITHUB_RUN_ATTEMPT']}"
+    tag = transfer_tag()
+    verify_transfer(tag)  # Fail before downloading or compiling any build inputs.
     config = configure()
     cache_tag = args.cache_tag
     cache_prefix = 'cache'
@@ -145,7 +171,6 @@ def prepare(args):
     receipt = read(STATE / 'native-receipt.json')
     if receipt['deferred']:
         raise RuntimeError('Missing native source/module prerequisites; refusing speculative wave')
-    create_transfer(tag)
     upload(tag, STATE / 'native-inputs.tar.gz', STATE / 'native-manifest.json', STATE / 'native-receipt.json')
     workspace_digest = pack_workspace(tag, 'workspace')
     manifest = read(STATE / 'native-manifest.json')
@@ -258,7 +283,7 @@ def finalize(args):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('stage', choices=['prepare', 'worker', 'finalize'])
+    parser.add_argument('stage', choices=['preflight', 'prepare', 'worker', 'finalize'])
     parser.add_argument('--cache-tag', default='auto')
     parser.add_argument('--shards', type=int, default=40, choices=range(1, 41))
     parser.add_argument('--tag')
@@ -268,7 +293,7 @@ def main():
     cloud_only()
     os.environ['UPGRID_CHROMIUM_ROOT'] = str(ROOT)
     os.environ['UPGRID_DISTRIBUTED_STATE'] = str(STATE)
-    {'prepare': prepare, 'worker': worker, 'finalize': finalize}[args.stage](args)
+    {'preflight': preflight, 'prepare': prepare, 'worker': worker, 'finalize': finalize}[args.stage](args)
 
 
 if __name__ == '__main__':

@@ -70,6 +70,10 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
+      - name: Verify exact private transfer and upload access before build
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 -u tools/chromium/ci/pipeline.py preflight
       - name: Prepare disposable build runner
         run: bash tools/chromium/ci/setup-runner.sh
       - name: Prepare complete source, native dependencies, and immutable snapshots
@@ -79,6 +83,16 @@ jobs:
           CACHE_TAG: ${{ inputs.cache_tag }}
           SHARDS: ${{ inputs.shards }}
         run: python3 -u tools/chromium/ci/pipeline.py prepare --cache-tag "$CACHE_TAG" --shards "$SHARDS"
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: cloud-prepare-diagnostics
+          path: |
+            /home/runner/upgrid-state/transfer-access.json
+            /home/runner/upgrid-state/native-receipt.json
+            /home/runner/upgrid-state/plan.json
+          if-no-files-found: ignore
+          retention-days: 14
   native:
     needs: prepare
     if: needs.prepare.outputs.actions != '0'

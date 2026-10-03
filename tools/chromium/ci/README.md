@@ -141,6 +141,11 @@ Its `selfcheck` sends no Telegram messages.
 
 ## Failures and resumption
 
+- The prepare job reserves an exact-commit private draft and verifies asset
+  upload access before heavy setup. GitHub may reject late draft creation when
+  workflow files changed and the branch has advanced. Preparation requires the
+  previously verified draft; it never substitutes the current branch tip.
+
 - Shards retain completed object archives even when a compiler fails.
   A failed shard prevents APK assembly. Re-run failed jobs at the same
   workflow revision; successful shard outputs remain usable.
