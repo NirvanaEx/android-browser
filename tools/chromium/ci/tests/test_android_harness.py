@@ -2,7 +2,7 @@ from pathlib import Path
 import sys
 import subprocess
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 import xml.etree.ElementTree as ET
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -10,6 +10,21 @@ import android_test
 
 
 class HarnessTests(unittest.TestCase):
+    def test_late_native_prompt_is_handled_while_waiting_for_renderer(self):
+        stalled, ready = Mock(), Mock()
+        stalled.js.side_effect = TimeoutError('Renderer not ready')
+        ready.js.return_value = True
+        with patch.object(android_test, 'CDP', side_effect=[stalled, ready]), \
+                patch.object(android_test, 'dismiss_notification_prompt', side_effect=[False, True]) as prompt, \
+                patch.object(android_test, 'adb', return_value='@chrome_devtools_remote') as adb, \
+                patch.object(android_test, 'save'), patch.object(android_test.time, 'sleep'):
+            self.assertIs(android_test.connect_page(), ready)
+        stalled.ws.close.assert_called_once()
+        self.assertEqual(prompt.call_count, 2)
+        # A late dialog may be dismissed, but saved-tab restoration cannot be
+        # replaced by an explicit navigation, even after a renderer timeout.
+        self.assertFalse(any(call.args[:3] == ('shell', 'am', 'start') for call in adb.call_args_list))
+
     def test_null_ui_dump_cannot_reuse_previous_screen(self):
         calls = []
         def fake_adb(*args, **kwargs):
