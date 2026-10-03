@@ -345,11 +345,23 @@ def restore_wave(args):
         from import_objects import import_objects
         imported = import_objects(archives, manifest, plan['snapshotSha256'], plan['runId'], plan['headSha'])
         print(json.dumps(imported), flush=True)
+    write(STATE / f'restored-{args.wave}.json', dict(runId=plan['runId'], headSha=plan['headSha'],
+          workspaceSha256=plan['workspaceSha256'], wave=args.wave))
     return plan
 
 
 def finalize(args):
-    plan = restore_wave(args)
+    restore_wave(args)
+    assemble(args)
+    save_cache(args)
+
+
+def assemble(args):
+    plan = get_plan(args)
+    restored = read(STATE / 'restored-native.json')
+    if restored != dict(runId=plan['runId'], headSha=plan['headSha'],
+                        workspaceSha256=plan['workspaceSha256'], wave='native'):
+        raise RuntimeError('Assembly requires the verified native workspace and objects')
     with (STATE / 'remaining-tasks.log').open('w') as log:
         ninja('-n', 'chrome_public_apk', stdout=log)
     started = datetime.datetime.now(datetime.timezone.utc)
@@ -358,23 +370,43 @@ def finalize(args):
     if datetime.datetime.fromisoformat(build_receipt['finishedAtUtc']) < started:
         raise RuntimeError('Stale build receipt')
     verification = verify_apk(plan['release'])
+    verification['buildTag'] = args.tag
     if verification['sha256'] != build_receipt['sha256']:
         raise RuntimeError('APK digest differs from build receipt')
     write(STATE / 'apk-verification.json', verification)
     from apk_size import analyze
     write(STATE / 'apk-size.json', analyze(OUT / 'apks/ChromePublic.apk'))
     upload(args.tag, OUT / 'apks/ChromePublic.apk', STATE / 'apk-verification.json', STATE / 'apk-size.json', ROOT / f"upgrid-{plan['release']['profile']}-build-receipt.json")
-    # Save a complete reusable state, so the next run rebuilds only changed inputs.
-    pack_workspace(args.tag, 'cache')
     with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as summary:
         summary.write(f"APK compiled and verified: {verification['versionName']} ({verification['bytes']} bytes).\n\n"
-                      f"Reusable cache tag: `{args.tag}`. Android acceptance and distribution remain pending.\n")
+                      f"Private APK tag: `{args.tag}`. Android acceptance and distribution remain pending.\n")
+
+
+def start_android(args):
+    verification = read(STATE / 'apk-verification.json')
+    if (verification['headSha'] != os.environ['GITHUB_SHA']
+            or str(verification['runId']) != os.environ['GITHUB_RUN_ID']
+            or verification.get('buildTag') != args.tag):
+        raise RuntimeError('Cannot dispatch Android tests for an unrelated APK')
+    result = subprocess.check_output(['gh', 'workflow', 'run', 'chromium-full.yml', '--repo', REPO,
+              '--ref', os.environ['GITHUB_REF_NAME'], '-f', 'mode=android-test', '-f', f'build_tag={args.tag}'], text=True)
+    write(STATE / 'android-dispatch.json', dict(buildTag=args.tag, apkSha256=verification['sha256'],
+          requested=True, acceptanceVerified=False, response=result.strip()))
+    print(result, flush=True)
+
+
+def save_cache(args):
+    verification = read(STATE / 'apk-verification.json')
+    if verification['sha256'] != sha(OUT / 'apks/ChromePublic.apk'):
+        raise RuntimeError('Candidate changed before cache checkpoint')
+    pack_workspace(args.tag, 'cache')
 
 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('stage', choices=['preflight', 'prepare', 'sources', 'prerequisites',
-                                         'host-inputs', 'restore-wave', 'snapshots', 'worker', 'finalize'])
+                                         'host-inputs', 'restore-wave', 'snapshots', 'worker', 'finalize',
+                                         'assemble', 'start-android', 'save-cache'])
     parser.add_argument('--wave', choices=['host', 'native'], default='native')
     parser.add_argument('--audit-only', action='store_true')
     parser.add_argument('--cache-tag', default='auto')
@@ -391,6 +423,7 @@ def main():
     try:
         {'preflight': preflight, 'prepare': prepare, 'sources': prepare_sources,
          'host-inputs': host_inputs, 'restore-wave': restore_wave,
+         'assemble': assemble, 'start-android': start_android, 'save-cache': save_cache,
          'prerequisites': lambda _: native_prerequisites(), 'snapshots': prepare_snapshots,
          'worker': worker, 'finalize': finalize}[args.stage](args)
         status = 'success'

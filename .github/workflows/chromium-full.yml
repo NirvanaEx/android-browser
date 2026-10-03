@@ -227,8 +227,8 @@ jobs:
           if-no-files-found: ignore
           retention-days: 1
   android:
-    needs: [validate, prepare, apk]
-    if: always() && needs.validate.result == 'success' && github.event_name == 'workflow_dispatch' && (inputs.mode == 'android-test' || (inputs.mode == 'build' && needs.apk.result == 'success'))
+    needs: validate
+    if: github.event_name == 'workflow_dispatch' && inputs.mode == 'android-test'
     runs-on: ubuntu-24.04
     timeout-minutes: 50
     permissions:
@@ -240,7 +240,7 @@ jobs:
       - name: Prepare Android tests and exact APK
         env:
           GH_TOKEN: ${{ github.token }}
-          BUILD_TAG: ${{ inputs.mode == 'android-test' && inputs.build_tag || needs.prepare.outputs.tag }}
+          BUILD_TAG: ${{ inputs.build_tag }}
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends ffmpeg
@@ -278,17 +278,26 @@ jobs:
     timeout-minutes: 350
     permissions:
       contents: write
+      actions: write # Dispatch Android tests as soon as the verified APK is uploaded.
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TRANSFER_TAG: ${{ needs.prepare_native.outputs.tag }}
+      PLAN_SHA256: ${{ needs.prepare_native.outputs.plan_sha256 }}
     steps:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
       - run: bash tools/chromium/ci/setup-runner.sh
-      - name: Assemble, verify signed APK, and save incremental cache
-        env:
-          GH_TOKEN: ${{ github.token }}
-          TRANSFER_TAG: ${{ needs.prepare_native.outputs.tag }}
-          PLAN_SHA256: ${{ needs.prepare_native.outputs.plan_sha256 }}
-        run: python3 -u tools/chromium/ci/pipeline.py finalize --tag "$TRANSFER_TAG" --plan-sha256 "$PLAN_SHA256"
+      - name: Restore workspace and import verified Android objects
+        run: python3 -u tools/chromium/ci/pipeline.py restore-wave --tag "$TRANSFER_TAG" --plan-sha256 "$PLAN_SHA256"
+      - name: Link, assemble, verify and upload signed APK
+        id: assemble
+        run: python3 -u tools/chromium/ci/pipeline.py assemble --tag "$TRANSFER_TAG" --plan-sha256 "$PLAN_SHA256"
+      - name: Start Android acceptance independently of cache upload
+        run: python3 -u tools/chromium/ci/pipeline.py start-android --tag "$TRANSFER_TAG"
+      - name: Save complete incremental cache while Android tests run
+        if: always() && steps.assemble.outcome == 'success'
+        run: python3 -u tools/chromium/ci/pipeline.py save-cache --tag "$TRANSFER_TAG"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -298,6 +307,8 @@ jobs:
             /home/runner/upgrid-state/apk-size.json
             /home/runner/upgrid-state/import-receipt.json
             /home/runner/upgrid-state/remaining-tasks.log
+            /home/runner/upgrid-state/android-dispatch.json
+            /home/runner/upgrid-state/timing-*.json
             /home/neyron/.cache/upgrid/chromium/upgrid-*-build-receipt.json
           retention-days: 7
           if-no-files-found: ignore
