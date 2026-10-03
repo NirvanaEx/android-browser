@@ -12,4 +12,4 @@ def object_path(name):
 
 
 def host_object(name):
-    return object_path(name) and not name.startswith('obj/')
+    return object_path(name) and name.split('/', 1)[0] in ('clang_x64', 'clang_x64_v8_arm64')
