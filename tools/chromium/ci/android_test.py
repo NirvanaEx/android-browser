@@ -124,7 +124,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
 class CDP:
     def __init__(self):
         import websocket
-        pages = json.load(urllib.request.urlopen('http://127.0.0.1:9222/json'))
+        pages = json.load(urllib.request.urlopen('http://127.0.0.1:9222/json', timeout=10))
         page = next(p for p in pages if p.get('type') == 'page' and ':8766/' in p.get('url', ''))
         self.ws = websocket.create_connection(page['webSocketDebuggerUrl'], timeout=15, suppress_origin=True)
         self.serial = 0
