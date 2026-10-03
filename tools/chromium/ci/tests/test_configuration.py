@@ -12,6 +12,24 @@ from prepare_wave import snapshot_headers
 
 
 class ConfigurationTests(unittest.TestCase):
+    def test_transfer_failure_happens_before_build_configuration(self):
+        with patch.dict(pipeline.os.environ, {'GITHUB_RUN_ID': '42', 'GITHUB_RUN_ATTEMPT': '1'}), \
+                patch.object(pipeline, 'verify_transfer', side_effect=RuntimeError('no draft access')), \
+                patch.object(pipeline, 'configure') as configure:
+            with self.assertRaisesRegex(RuntimeError, 'no draft access'):
+                pipeline.prepare(None)
+            configure.assert_not_called()
+
+    def test_transfer_rejects_published_or_wrong_commit_draft(self):
+        good = dict(draft=True, tag_name='upgrid-ci-42-1', target_commitish='exact-head')
+        with patch.dict(pipeline.os.environ, {'GITHUB_SHA': 'exact-head'}):
+            with patch.object(pipeline, 'gh_json', return_value=good):
+                self.assertEqual(pipeline.verify_transfer('upgrid-ci-42-1'), good)
+            for change in [dict(draft=False), dict(target_commitish='other'), dict(tag_name='upgrid-ci-43-1')]:
+                with patch.object(pipeline, 'gh_json', return_value={**good, **change}):
+                    with self.assertRaises(RuntimeError):
+                        pipeline.verify_transfer('upgrid-ci-42-1')
+
     def test_cache_preference_fallback_and_revision_isolation(self):
         def release(number, names):
             return {'tag_name': f'upgrid-ci-{number}-1',
