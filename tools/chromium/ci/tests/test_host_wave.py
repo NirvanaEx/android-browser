@@ -36,6 +36,7 @@ class HostPlanTests(unittest.TestCase):
             self.assertTrue(object_path(name), name)
         self.assertTrue(host_object('clang_x64/obj/a.o'))
         self.assertFalse(host_object('obj/a.o'))
+        self.assertFalse(host_object('clang_arm64/obj/a.o'))
         for name in ['/obj/a.o', '../obj/a.o', 'clang_x64/../obj/a.o',
                      'clang_x64/obj/a.o;echo', 'unknown/obj/a.o', 'obj/a.exe', 'obj/a\\b.o']:
             self.assertFalse(object_path(name), name)
