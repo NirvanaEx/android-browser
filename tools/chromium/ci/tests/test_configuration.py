@@ -14,6 +14,16 @@ from prepare_wave import snapshot_headers
 
 
 class ConfigurationTests(unittest.TestCase):
+    def test_warm_cache_skips_empty_host_wave_and_second_workspace_transfer(self):
+        for pending, expected in [([], 'native'), ([{'output': 'clang_x64/obj/a.o'}], 'host')]:
+            with self.subTest(expected=expected), patch.object(pipeline, 'pending_native', return_value=pending), \
+                    patch.object(pipeline, 'native_prerequisites') as prerequisites, \
+                    patch.object(pipeline, 'prepare_snapshots') as snapshot, patch.object(pipeline, 'output'):
+                args = SimpleNamespace(wave='native')
+                pipeline.first_wave(args)
+                self.assertEqual(args.wave, expected)
+                self.assertEqual(prerequisites.call_count, int(expected == 'native'))
+                snapshot.assert_called_once_with(args)
     def test_android_dispatch_rejects_unrelated_candidate_before_dispatch(self):
         with patch.dict(pipeline.os.environ, GITHUB_SHA='head', GITHUB_RUN_ID='42'), \
                 patch.object(pipeline, 'read', return_value=dict(headSha='head', runId='42',
@@ -162,6 +172,8 @@ class ConfigurationTests(unittest.TestCase):
                 'third_party/spirv-headers/src/include/spirv/unified1/spirv.hpp11',
                 'third_party/emoji-segmenter/src/emoji_presentation_scanner.c',
                 'base/ordinary.h',
+                'third_party/libc++/src/include/vector',
+                'build/linux/sysroot/usr/include/c++/12/string',
             }
             excluded = {'out/Old/gen/header.h', '.git/internal.h',
                         'node_modules/dependency/header.h', 'unrelated/binary', 'private.key'}

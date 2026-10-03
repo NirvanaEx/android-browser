@@ -67,6 +67,7 @@ jobs:
       plan_sha256: ${{ steps.prepare.outputs.plan_sha256 }}
       matrix: ${{ steps.prepare.outputs.matrix }}
       actions: ${{ steps.prepare.outputs.actions }}
+      wave: ${{ steps.prepare.outputs.wave }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -94,7 +95,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           SHARDS: ${{ inputs.shards }}
-        run: python3 -u tools/chromium/ci/pipeline.py snapshots --wave host --shards "$SHARDS"
+        run: python3 -u tools/chromium/ci/pipeline.py first-wave --shards "$SHARDS"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -111,7 +112,7 @@ jobs:
           retention-days: 14
   host:
     needs: prepare
-    if: inputs.mode == 'build' && needs.prepare.outputs.actions != '0'
+    if: inputs.mode == 'build' && needs.prepare.outputs.wave == 'host' && needs.prepare.outputs.actions != '0'
     runs-on: ubuntu-24.04
     timeout-minutes: 330
     permissions:
@@ -148,7 +149,7 @@ jobs:
           if-no-files-found: ignore
   prepare_native:
     needs: [prepare, host]
-    if: always() && inputs.mode == 'build' && needs.prepare.result == 'success' && (needs.host.result == 'success' || needs.host.result == 'skipped')
+    if: always() && inputs.mode == 'build' && needs.prepare.result == 'success' && needs.prepare.outputs.wave == 'host' && (needs.host.result == 'success' || needs.host.result == 'skipped')
     runs-on: ubuntu-24.04
     timeout-minutes: 350
     permissions:
@@ -190,8 +191,8 @@ jobs:
           if-no-files-found: ignore
           retention-days: 14
   native:
-    needs: prepare_native
-    if: needs.prepare_native.outputs.actions != '0'
+    needs: [prepare, prepare_native]
+    if: always() && inputs.mode == 'build' && needs.prepare.result == 'success' && (needs.prepare.outputs.wave == 'native' || needs.prepare_native.result == 'success') && (needs.prepare_native.outputs.actions || needs.prepare.outputs.actions) != '0'
     runs-on: ubuntu-24.04
     timeout-minutes: 330
     permissions:
@@ -200,7 +201,7 @@ jobs:
     strategy:
       fail-fast: false
       max-parallel: 40
-      matrix: ${{ fromJSON(needs.prepare_native.outputs.matrix) }}
+      matrix: ${{ fromJSON(needs.prepare_native.outputs.matrix || needs.prepare.outputs.matrix) }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -213,8 +214,8 @@ jobs:
       - name: Compile Android C and C++ shard
         env:
           GH_TOKEN: ${{ github.token }}
-          TRANSFER_TAG: ${{ needs.prepare_native.outputs.tag }}
-          PLAN_SHA256: ${{ needs.prepare_native.outputs.plan_sha256 }}
+          TRANSFER_TAG: ${{ needs.prepare_native.outputs.tag || needs.prepare.outputs.tag }}
+          PLAN_SHA256: ${{ needs.prepare_native.outputs.plan_sha256 || needs.prepare.outputs.plan_sha256 }}
           WORKER: ${{ matrix.worker }}
         run: python3 -u tools/chromium/ci/pipeline.py worker --tag "$TRANSFER_TAG" --plan-sha256 "$PLAN_SHA256" --worker "$WORKER"
       - uses: actions/upload-artifact@v4
@@ -272,8 +273,8 @@ jobs:
           path: android-evidence/
           retention-days: 14
   apk:
-    needs: [prepare_native, native]
-    if: always() && needs.prepare_native.result == 'success' && (needs.native.result == 'success' || needs.native.result == 'skipped')
+    needs: [prepare, prepare_native, native]
+    if: always() && inputs.mode == 'build' && needs.prepare.result == 'success' && (needs.prepare.outputs.wave == 'native' || needs.prepare_native.result == 'success') && (needs.native.result == 'success' || needs.native.result == 'skipped')
     runs-on: ubuntu-24.04
     timeout-minutes: 350
     permissions:
@@ -281,8 +282,8 @@ jobs:
       actions: write # Dispatch Android tests as soon as the verified APK is uploaded.
     env:
       GH_TOKEN: ${{ github.token }}
-      TRANSFER_TAG: ${{ needs.prepare_native.outputs.tag }}
-      PLAN_SHA256: ${{ needs.prepare_native.outputs.plan_sha256 }}
+      TRANSFER_TAG: ${{ needs.prepare_native.outputs.tag || needs.prepare.outputs.tag }}
+      PLAN_SHA256: ${{ needs.prepare_native.outputs.plan_sha256 || needs.prepare.outputs.plan_sha256 }}
     steps:
       - uses: actions/checkout@v4
         with:

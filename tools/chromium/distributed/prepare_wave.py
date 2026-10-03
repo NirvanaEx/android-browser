@@ -59,9 +59,10 @@ def snapshot_headers(src):
             parts = path.relative_to(src).parts
             # Eigen exposes public headers named Core and Tensor (no suffix).
             eigen = parts[:3] == ('third_party', 'eigen3', 'src')
+            standard_include = 'include' in parts
             # Some libraries #include generated/scanner .c files from C++.
             if (path.suffix in HEADER_SUFFIXES | {'.c'} or
-                    (eigen and not path.suffix)) and path.is_file():
+                    ((eigen or standard_include) and not path.suffix)) and path.is_file():
                 yield path
 
 
