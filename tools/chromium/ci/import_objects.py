@@ -27,8 +27,11 @@ def import_objects(archives, manifest, digest, run_id, head, workers=4):
     reserve(ROOT, extra=expanded * 2)
 
     def unpack(path):
-        with tarfile.open(path) as archive:
-            report = json.load(archive.extractfile('result.json'))
+        with tarfile.open(path, mode='r|*') as archive:
+            first = archive.next()
+            if first is None or first.name != 'result.json' or not first.isfile():
+                raise RuntimeError('Object archive must begin with its receipt')
+            report = json.load(archive.extractfile(first))
             if (str(report['runId']) != str(run_id) or report['headSha'] != head
                     or report['snapshotSha256'] != digest or report['exitCode'] != 0
                     or report['completed'] != report['total']):
@@ -41,15 +44,22 @@ def import_objects(archives, manifest, digest, run_id, head, workers=4):
             if (len(returned) != len(set(returned)) or set(returned) != set(actions)
                     or report['total'] != len(actions)):
                 raise RuntimeError('Missing/duplicate/unexpected shard output')
-            members = archive.getmembers()
             allowed = set(actions) | {'result.json', '.ninja_log', '.ninja_deps'}
-            if len({item.name for item in members}) != len(members):
-                raise RuntimeError('Duplicate archive member')
-            if any(not item.isfile() or item.name not in allowed for item in members):
-                raise RuntimeError('Unsafe object archive')
             destination = STATE / 'unpacked' / str(shard)
             destination.mkdir(parents=True, exist_ok=False)
-            archive.extractall(destination, filter='data')
+            seen = set()
+            for member in archive:
+                if member.name in seen:
+                    raise RuntimeError('Duplicate archive member')
+                if not member.isfile() or member.name not in allowed:
+                    raise RuntimeError('Unsafe object archive')
+                seen.add(member.name)
+                # Stream forward once, instead of scanning and seeking back
+                # through gzip for extraction. Output tree is still untouched.
+                if member.name != 'result.json':
+                    archive.extract(member, destination, filter='data')
+            if seen != allowed:
+                raise RuntimeError('Incomplete object archive')
         _, deps = read_deps(destination / '.ninja_deps')
         dependencies = set()
         for item in report['objects']:

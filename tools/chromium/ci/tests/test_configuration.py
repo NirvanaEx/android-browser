@@ -14,6 +14,22 @@ from prepare_wave import snapshot_headers
 
 
 class ConfigurationTests(unittest.TestCase):
+    def test_android_dispatch_rejects_unrelated_candidate_before_dispatch(self):
+        with patch.dict(pipeline.os.environ, GITHUB_SHA='head', GITHUB_RUN_ID='42'), \
+                patch.object(pipeline, 'read', return_value=dict(headSha='head', runId='42',
+                    buildTag='upgrid-ci-42-1')), \
+                patch.object(pipeline.subprocess, 'check_output') as dispatch:
+            with self.assertRaisesRegex(RuntimeError, 'unrelated APK'):
+                pipeline.start_android(SimpleNamespace(tag='upgrid-ci-43-1'))
+            dispatch.assert_not_called()
+
+    def test_host_plan_cannot_be_used_as_android_plan(self):
+        with patch.dict(pipeline.os.environ, GITHUB_SHA='head', GITHUB_RUN_ID='42'), \
+                patch.object(pipeline, 'download'), \
+                patch.object(pipeline, 'read', return_value=dict(headSha='head', runId='42', wave='host')):
+            with self.assertRaisesRegex(RuntimeError, 'wave mismatch'):
+                pipeline.get_plan(SimpleNamespace(tag='upgrid-ci-42-1', wave='native', plan_sha256='hash'))
+
     def test_completed_checkpoint_can_seed_build_without_native_plan(self):
         release = {'tag_name': 'upgrid-ci-42-1', 'assets': [{'name': 'workspace.json'}]}
         cache = dict(root=str(pipeline.ROOT), chromiumRevision='pinned',
