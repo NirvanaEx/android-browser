@@ -16,6 +16,7 @@ HERE = pathlib.Path(__file__).resolve().parent
 PROFILES = {
     "player": ("Upgrid", "args.gn", "upgrid"),
     "extensions": ("UpgridExtensions", "args-extensions.gn", "upgrid-extensions"),
+    "extensions-ci": ("Upgrid", "args-extensions.gn", "upgrid-extensions-ci"),
     "extensions-dev": ("Upgrid", "args-extensions-dev.gn", "upgrid-extensions-dev"),
 }
 
@@ -35,6 +36,8 @@ def main():
     parser.add_argument("--low-memory", action="store_true",
                         help="Use the agreed 6 GiB RAM / 8 GiB swap profile with one worker; never change WSL limits")
     args = parser.parse_args()
+    if args.profile == "extensions-ci" and os.environ.get("GITHUB_ACTIONS") != "true":
+        parser.error("extensions-ci is reserved for a disposable GitHub Actions workspace")
     if args.jobs < 1:
         parser.error("--jobs must be at least 1")
     if args.low_memory and args.jobs != 1:

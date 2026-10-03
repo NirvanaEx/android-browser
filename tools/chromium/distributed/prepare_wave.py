@@ -11,6 +11,26 @@ from ninja_cache import read_deps
 from probe_bundle import SRC, OUT, BASE, sha
 
 
+HEADER_SUFFIXES = {'.h', '.hh', '.hpp', '.hxx', '.hpp11', '.inc', '.inl',
+                   '.def', '.ipp', '.tcc', '.modulemap'}
+
+
+def snapshot_headers(src):
+    """Include textual compiler inputs missed by an old Ninja dependency log."""
+    for directory, dirs, names in os.walk(src):
+        dirs[:] = [name for name in dirs if name not in
+                   ('.git', 'out', 'node_modules', '__pycache__')]
+        for name in names:
+            path = pathlib.Path(directory) / name
+            parts = path.relative_to(src).parts
+            # Eigen exposes public headers named Core and Tensor (no suffix).
+            eigen = parts[:3] == ('third_party', 'eigen3', 'src')
+            # Some libraries #include generated/scanner .c files from C++.
+            if (path.suffix in HEADER_SUFFIXES | {'.c'} or
+                    (eigen and not path.suffix)) and path.is_file():
+                yield path
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--prefix', default='wave1')
@@ -34,17 +54,11 @@ def main():
             files.add(p)
     # Existing deps omit headers behind newly enabled conditionals and module
     # search headers. Include the header trees while excluding caches/test data.
-    header_suffixes = {'.h', '.hh', '.hpp', '.hxx', '.inc', '.inl', '.def', '.ipp', '.tcc', '.modulemap'}
-    for directory, dirs, names in os.walk(SRC):
-        dirs[:] = [name for name in dirs if name not in ('.git', 'out', 'node_modules', '__pycache__')]
-        for name in names:
-            p = pathlib.Path(directory) / name
-            if p.suffix in header_suffixes and p.is_file():
-                files.add(p)
+    files.update(snapshot_headers(SRC))
     for directory in [OUT / 'gen', OUT / 'obj/build/modules',
                       SRC / 'third_party/llvm-build/Release+Asserts/lib/clang/23/include']:
         for p in directory.rglob('*'):
-            if p.is_file() and p.suffix in header_suffixes | {'.pcm', '', '.cc', '.c', '.cpp'}:
+            if p.is_file() and p.suffix in HEADER_SUFFIXES | {'.pcm', '', '.cc', '.c', '.cpp'}:
                 files.add(p)
     files.update(SRC / name for name in ['third_party/ninja/ninja', 'LICENSE',
                  'build/config/warning_suppression.txt', 'build/config/unsafe_buffers_paths.txt'])

@@ -69,10 +69,14 @@ the GN arguments only inside its disposable checkout; local builds are
 untouched. It checks APK ZIP integrity, package, version name/code, ABI,
 signing certificate, SHA-256 and the fresh build receipt.
 
-`extensions-dev` preserves the current development profile and debug
-signing identity. This pipeline does not turn a development build into a
-production release or guarantee an in-place update from the older Fenix
-package. Installation/data preservation remain explicit acceptance checks.
+`release.json.profile` selects `extensions-ci` (optimized C++ and Java) or
+`extensions-dev` (debug). Both use the CI-owned `out/Upgrid` directory; GN/Ninja
+must invalidate incompatible cached outputs when changing profile. The optimized
+profile is restricted to GitHub Actions and keeps the configured signing identity.
+An optimized APK is still a test candidate, not production acceptance or a promise
+of an in-place update from the older Fenix package. Installation/data preservation
+remain explicit acceptance checks. `apk-size.json` records the signed candidate's
+size by ZIP category, largest entries and ABI list without repacking it.
 The current pinned security base is marked `productionApproved=false`.
 
 After testing the exact APK on Android, commit

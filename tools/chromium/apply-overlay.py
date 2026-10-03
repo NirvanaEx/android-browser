@@ -48,7 +48,6 @@ TRACKED = (MOJOM, HEADER, SOURCE, MEDIA_H, MEDIA_CC, MEDIA_TEST, ORIENTATION,
            CONTEXT_MENU, CONTEXT_MENU_TEST, CHROME_ACTIVITY, TOOLBAR_OVERLAY, LINT_CONFIG,
            TABLET_LAYOUT, TABLET_JAVA, FULLSCREEN_CSS)
 NEW_FILES = {
-    "third_party/blink/renderer/core/frame/upgrid_fullscreen_presentation.h": "video_fullscreen_presentation.h",
     "chrome/browser/android/upgrid_player.cc": "player_android.cc",
     "chrome/browser/android/upgrid_translate.cc": "translate_android.cc",
     "chrome/android/java/src/org/chromium/chrome/browser/upgrid/UpgridTranslate.java": "UpgridTranslate.java",
@@ -148,7 +147,7 @@ def render(inputs):
         fragment("video_protocol.mojom.inc") + "\ninterface FullscreenVideoElementHandler {", MOJOM)
     output[MOJOM] += "\ninterface UpgridVideoController {\n" + fragment("video_methods.mojom.inc") + "};\n"
     output[HEADER] = replace_once(output[HEADER], "class Document;",
-        "class Document;\nclass Element;\nclass HTMLVideoElement;\nclass TextTrack;\nclass UpgridFullscreenGuard;\nclass UpgridFullscreenPresentation;", HEADER)
+        "class Document;\nclass Element;\nclass HTMLVideoElement;\nclass TextTrack;\nclass UpgridFullscreenGuard;", HEADER)
     output[HEADER] = replace_once(output[HEADER], "namespace blink {",
         '#include "third_party/blink/renderer/platform/heap/collection_support/heap_vector.h"\n\n'
         "namespace blink {", HEADER)
@@ -170,7 +169,6 @@ def render(inputs):
         '#include "third_party/blink/renderer/core/html_names.h"\n'
         '#include "third_party/blink/renderer/core/style/computed_style.h"\n')
     includes += '#include "third_party/blink/renderer/platform/loader/fetch/resource_request.h"\n'
-    includes += '#include "third_party/blink/renderer/core/frame/upgrid_fullscreen_presentation.h"\n'
     output[SOURCE] = replace_once(output[SOURCE], "namespace blink {", includes + "\nnamespace blink {\n" +
         fragment("video_fullscreen_guard.cc.inc"), SOURCE)
     output[SOURCE] = replace_once(output[SOURCE],
@@ -180,8 +178,6 @@ def render(inputs):
         "      &LocalFrameMojoHandler::BindUpgridVideoReceiver, WrapWeakPersistent(this)));", SOURCE)
     output[SOURCE] = replace_once(output[SOURCE], "  visitor->Trace(frame_);",
         "  visitor->Trace(frame_);\n  visitor->Trace(upgrid_video_);\n"
-        "  visitor->Trace(upgrid_fullscreen_root_);\n"
-        "  visitor->Trace(upgrid_presentation_);\n"
         "  visitor->Trace(upgrid_fullscreen_guard_);\n  visitor->Trace(upgrid_tracks_);\n"
         "  visitor->Trace(upgrid_video_receiver_);", SOURCE)
     output[SOURCE] = replace_once(output[SOURCE], "void LocalFrameMojoHandler::DidDetachFrame() {",
@@ -206,19 +202,13 @@ def render(inputs):
         "  upgrid_controls_hidden_ = hidden;\n  UpdateControlsVisibility();\n}\n\n"
         "bool HTMLMediaElement::ShouldShowControls() const {\n"
         "  if (upgrid_controls_hidden_) {\n"
-        "    auto* fullscreen = Fullscreen::FullscreenElementFrom(GetDocument());\n"
-        "    if (fullscreen && fullscreen->ContainsIncludingHostElements(*this))\n"
+        "    if (Fullscreen::IsFullscreenElement(*this))\n"
         "      return false;\n  }", MEDIA_CC)
     output[MEDIA_TEST] = replace_once(output[MEDIA_TEST], "}  // namespace blink",
         fragment("video_controls_test.cc.inc") + "\n}  // namespace blink", MEDIA_TEST)
-    output[MEDIA_TEST] = replace_once(output[MEDIA_TEST],
-        '#include "third_party/blink/renderer/core/html/media/html_media_element.h"',
-        '#include "third_party/blink/renderer/core/html/media/html_media_element.h"\n'
-        '#include "third_party/blink/renderer/core/frame/upgrid_fullscreen_presentation.h"', MEDIA_TEST)
-    output[FULLSCREEN_CSS] = replace_once(output[FULLSCREEN_CSS],
-        ":-internal-video-persistent {",
-        ":-internal-video-persistent,\n"
-        ":fullscreen video:-internal-video-persistent-ancestor {", FULLSCREEN_CSS)
+    # Keep fullscreen.css in the write set to restore the previous overlay's
+    # persistent-video rule when updating a cached Chromium checkout.
+    output[FULLSCREEN_CSS] = inputs[FULLSCREEN_CSS]
     output[MEDIA_TEST] = replace_once(output[MEDIA_TEST],
         '#include "third_party/blink/renderer/core/dom/element.h"',
         '#include "third_party/blink/renderer/core/dom/element.h"\n'
