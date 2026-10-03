@@ -225,6 +225,7 @@ def connect_page(initial_url=None):
     started = time.monotonic()
     attempts = []
     def discover():
+        cdp = None
         try:
             if dismiss_notification_prompt() and initial_url:
                 # Only initial navigation is retried, never saved-tab restoration.
@@ -236,16 +237,21 @@ def connect_page(initial_url=None):
             if not names:
                 raise RuntimeError('Browser DevTools socket is not ready')
             adb('forward', 'tcp:9222', 'localabstract:' + names[0])
-            return CDP()
+            cdp = CDP()
+            # The browser target exists before the renderer is ready. Keep
+            # handling late native onboarding while waiting for the test page.
+            if not cdp.js('typeof state === "function"'):
+                raise RuntimeError('Test page execution context is not ready')
+            return cdp
         except Exception as error:
+            if cdp is not None:
+                cdp.ws.close()
             attempts.append(dict(elapsedSeconds=round(time.monotonic() - started, 1), error=repr(error)))
             save('startup-attempts.json', attempts)
             print('Android: waiting for browser: ' + repr(error), flush=True)
             raise
-    # First ARM64 launch includes translation on a fresh x86 emulator. API 35
-    # evidence shows its native UI can appear after the former 90-second limit.
+    # First ARM64 launch includes translation on a fresh x86 emulator.
     cdp = wait_for(discover, timeout=300 if initial_url else 180)
-    wait_for(lambda: cdp.js('typeof state === "function"'))
     return cdp
 
 

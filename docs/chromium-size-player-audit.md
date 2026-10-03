@@ -129,3 +129,15 @@ and preserves DevTools targets/socket names plus the Python traceback. Per-comma
 timeouts remain bounded. It deletes the old accessibility dump before each query
 so a null-root response cannot silently reuse stale UI. No acceptance check was
 removed or marked passed.
+
+Run `37140207049` identifies the actual later-stage failure: DevTools target
+discovery succeeds, but Runtime.evaluate never receives a page response. Logcat
+contains a renderer SIGSEGV/SEGV_ACCERR in `libndk_translation.so`, with
+`berberis_HandleNoExec` / `ExecuteGuest` in the stack, then repeated sandboxed
+process deaths. The browser also had a startup input timeout. Thus increasing
+discovery time alone does not solve this baseline incompatibility. The native
+notification dialog can also appear after target discovery; readiness now stays
+in the same bounded retry loop and closes unsuccessful DevTools connections.
+The next probe uses the official Android 16/API 36 emulator image with the exact
+same APK and normal renderer/JIT/sandbox settings. No success is assumed from
+the OS change; no playback or update check has passed so far.
