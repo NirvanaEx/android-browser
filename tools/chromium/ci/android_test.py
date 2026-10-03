@@ -15,7 +15,11 @@ import threading
 import time
 import traceback
 import urllib.request
+import urllib.parse
 import xml.etree.ElementTree as ET
+import shutil
+
+from acceptance import REQUIRED
 
 REPO = 'NirvanaEx/android-browser'
 PACKAGE = 'com.upgrid.chromium'
@@ -23,6 +27,7 @@ BASELINE = 'upgrid-android-baseline-768003111'
 BASELINE_SHA = '058403f2646440fb2507101beaeba87d8a8470c523561d231b9df494ac942fd2'
 WORK = Path('android-test-inputs')
 EVIDENCE = Path('android-evidence')
+FIXTURES = Path(__file__).with_name('fixtures')
 
 
 def command(*args, **kwargs):
@@ -71,6 +76,25 @@ def fetch(tag):
         assert digest(apk) == metadata['sha256'], 'Candidate APK digest mismatch'
         metadata['baseline'] = False
     save('input.json', dict(tag=tag, apk=str(apk.resolve()), baselineApk=str(baseline.resolve()), metadata=metadata))
+    script_results = []
+    for script in json.loads((FIXTURES / 'userscripts-inventory.json').read_text(encoding='utf-8')):
+        result = dict(id=script['id'], version=script['version'], expectedSha256=script['sha256'], androidExecutionVerified=False)
+        try:
+            with urllib.request.urlopen(script['source'], timeout=30) as response:
+                if urllib.parse.urlsplit(response.url).hostname != 'tampermonkey.neyron.site':
+                    raise ValueError('Unexpected userscript download host')
+                content = response.read(2 * 1024 * 1024 + 1)
+            assert len(content) <= 2 * 1024 * 1024, 'Userscript exceeds fixture size limit'
+            result['sha256'] = hashlib.sha256(content).hexdigest()
+            assert result['sha256'] == script['sha256'], 'Script changed since reviewed inventory; review new version first'
+            destination = WORK / (script['id'] + '.user.js')
+            destination.write_bytes(content)
+            command('node', '--check', destination, timeout=20)
+            result['status'] = 'syntax-passed'
+        except Exception as error:
+            result.update(status='failed', error=repr(error))
+        script_results.append(result)
+    save('userscripts-source-verification.json', script_results)
 
 
 PAGE = '''<!doctype html><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -91,14 +115,26 @@ document.querySelector('#container').onclick=()=>document.querySelector('#root')
 document.querySelector('#direct').onclick=()=>v.requestFullscreen();
 window.state=()=>({...probe,time:v.currentTime,paused:v.paused,videoFullscreen:v.matches(':fullscreen'),
  fullscreen:!!document.fullscreenElement,width:v.videoWidth,height:v.videoHeight,
- source:v.currentSrc,duration:v.duration,storage:localStorage.getItem('upgrid-ci')});
+ source:v.currentSrc,duration:v.duration,readyState:v.readyState,storage:localStorage.getItem('upgrid-ci')});
+if(window.parent !== window){
+ setInterval(()=>parent.postMessage({kind:'upgrid-video-state',state:state()},'http://127.0.0.1:8766'),200);
+}
 if(location.pathname==='/clipped')document.body.className='clipped';
 if(location.pathname==='/shadow'){
  const host=document.createElement('div');document.querySelector('#wrap').append(host);
  const s=host.attachShadow({mode:'closed'});s.innerHTML='<style>video{width:100%;height:240px}</style><p>SHADOW SITE UI</p>';s.append(v);
 }
-if(location.pathname==='/iframe'){
- document.body.innerHTML='<iframe style="width:100%;height:550px" allowfullscreen src="http://localhost:8766/direct"></iframe>';
+if(location.pathname==='/iframe' || location.pathname==='/iframe-same'){
+ const origin=location.pathname==='/iframe'?'http://localhost:8766':location.origin;
+ document.body.innerHTML='<iframe title="Fixture video" style="width:100%;height:550px" allowfullscreen></iframe>';
+ const frame=document.querySelector('iframe');frame.src=origin+'/direct';
+ window.iframeState=null;
+ window.addEventListener('message',event=>{
+  if(event.source===frame.contentWindow && event.origin===origin && event.data?.kind==='upgrid-video-state'){
+   window.iframeState={...event.data.state,receivedAt:performance.now()};
+  }
+ });
+ window.state=()=>iframeState && performance.now()-iframeState.receivedAt<3000?iframeState:null;
 }
 </script>'''
 
@@ -108,7 +144,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         super().__init__(*args, directory=str(WORK), **kwargs)
 
     def do_GET(self):
-        if self.path.split('?')[0] in ('/direct', '/clipped', '/shadow', '/iframe'):
+        if self.path.split('?')[0] in ('/direct', '/clipped', '/shadow', '/iframe', '/iframe-same'):
             data = PAGE.encode()
             self.send_response(200)
             self.send_header('Content-Type', 'text/html; charset=utf-8')
@@ -117,6 +153,19 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             self.wfile.write(data)
         else:
             super().do_GET()
+
+    def do_POST(self):
+        # The translation fixture reports local counters, never page contents.
+        if self.path != '/translation-events':
+            self.send_error(404)
+            return
+        length = int(self.headers.get('Content-Length', '0'))
+        if not 0 <= length <= 4096:
+            self.send_error(413)
+            return
+        self.rfile.read(length)
+        self.send_response(204)
+        self.end_headers()
 
     def log_message(self, *_):
         pass
@@ -128,6 +177,7 @@ class CDP:
         pages = json.load(urllib.request.urlopen('http://127.0.0.1:9222/json', timeout=3))
         save('devtools-targets.json', pages)
         page = next(p for p in pages if p.get('type') == 'page' and ':8766/' in p.get('url', ''))
+        self.target_id = page['id']
         self.ws = websocket.create_connection(page['webSocketDebuggerUrl'], timeout=15, suppress_origin=True)
         self.serial = 0
 
@@ -206,6 +256,42 @@ def assert_playing_advanced(before, after):
     assert abs(after['time'] - before['time']) > 0.01, 'Video clock did not advance'
 
 
+def app_failures(log):
+    failures = []
+    # Android native tombstones identify the crashing process before the signal.
+    for block in log.split('*** *** *** *** *** *** *** *** *** *** *** *** *** *** *** ***'):
+        if re.search(r'Cmdline: ' + re.escape(PACKAGE) + r'(?=[:\s])', block) and re.search(r'signal \d+ \(SIG', block):
+            failures.append(dict(kind='native-crash', detail='\n'.join(line for line in block.splitlines()
+                if 'Cmdline:' in line or 'signal ' in line or 'libndk_translation.so' in line)[:4000]))
+    for line in log.splitlines():
+        if ('ANR in ' + PACKAGE in line or ('ANR in Window{' in line and PACKAGE + '/' in line)
+                or ('Process: ' + PACKAGE in line and 'AndroidRuntime' in line)):
+            failures.append(dict(kind='anr-or-java-crash', detail=line[:1000]))
+    return failures
+
+
+def acceptance_coverage(checks):
+    dependencies = {
+        'android_install_and_update': ['install_update_preserves_storage'],
+        'saved_data_preserved': ['install_update_preserves_storage'],
+        'cold_start_saved_tab': ['cold_start_storage'],
+        'real_video_frame': ['direct_playing'],
+        'player_enter_exit_playback': ['direct_playing', 'direct_paused', 'clipped_playing',
+                                     'shadow_playing', 'iframe_playing', 'iframe-same_playing',
+                                     'repeat-native-play-pause', 'container_no_mixed_ui'],
+        'manual_rotation': ['manual-rotation'],
+        'background_and_tab_pause': ['background-pause', 'tab-switch-pause'],
+    }
+    coverage = {}
+    for name in REQUIRED:
+        names = dependencies.get(name, [name])
+        missing = [item for item in names if item not in checks]
+        failed = [item for item in names if item in checks and checks[item]['status'] != 'passed']
+        coverage[name] = dict(status='failed' if failed else 'blocked' if missing else 'passed',
+                              scenarios=names, missing=missing, failed=failed)
+    return coverage
+
+
 def dismiss_notification_prompt():
     tree = ui()
     # Match the browser-owned rationale, not an arbitrary site's "No thanks".
@@ -232,12 +318,16 @@ def open_page(path='/direct'):
     return connect_page(initial_url=url)
 
 
-def launch_saved_tab():
+def launch_activity():
     resolved = adb('shell', 'cmd', 'package', 'resolve-activity', '--brief',
                    '-a', 'android.intent.action.MAIN', '-c', 'android.intent.category.LAUNCHER', PACKAGE)
     component = next(line.strip() for line in resolved.splitlines()
                      if re.fullmatch(r'[\w.]+/[\w.]+', line.strip()))
     adb('shell', 'am', 'start', '-W', '-n', component)
+
+
+def launch_saved_tab():
+    launch_activity()
     return connect_page()
 
 
@@ -336,7 +426,10 @@ def run():
     command('ffmpeg', '-hide_banner', '-loglevel', 'error', '-y', '-f', 'lavfi',
             '-i', 'testsrc2=size=640x360:rate=15', '-t', '24', '-c:v', 'libx264',
             '-pix_fmt', 'yuv420p', '-movflags', '+faststart', WORK / 'sample.mp4')
-    server = http.server.ThreadingHTTPServer(('0.0.0.0', 8766), Handler)
+    for fixture in FIXTURES.iterdir():
+        if fixture.is_file():
+            shutil.copyfile(fixture, WORK / fixture.name)
+    server = http.server.ThreadingHTTPServer(('127.0.0.1', 8766), Handler)
     threading.Thread(target=server.serve_forever, daemon=True).start()
     adb('reverse', 'tcp:8766', 'tcp:8766')
     # Ephemeral test device only; these flags do not relax fullscreen activation.
@@ -355,14 +448,14 @@ def run():
         def exercise(path, paused=False):
             cdp.call('Page.navigate', dict(url='http://127.0.0.1:8766' + path))
             wait_for(lambda: cdp.js('location.pathname === ' + json.dumps(path) +
-                                   ' && typeof state === "function" && v.readyState >= 2'))
+                                   ' && typeof state === "function" && state()?.readyState >= 2'))
             tap('Play')
-            wait_for(lambda: cdp.js('probe.frames > 3 && v.currentTime > 0.2'))
+            wait_for(lambda: cdp.js('state()?.frames > 3 && state()?.time > 0.2'))
             if paused:
                 cdp.js('v.pause()')
             before = cdp.js('state()')
             tap('Видеоплеер Upgrid')
-            wait_for(lambda: cdp.js('v.matches(":fullscreen")'))
+            wait_for(lambda: cdp.js('state()?.videoFullscreen'))
             wait_for(lambda: find('Позиция видео') is not None)
             first = Image.open(io.BytesIO(screenshot(path[1:] + ('-paused' if paused else '') + '-player'))).convert('RGB')
             time.sleep(2)
@@ -378,13 +471,14 @@ def run():
                 assert max(ImageStat.Stat(first.crop(region)).var) > 100, 'No varied video pixels'
                 assert max(ImageStat.Stat(ImageChops.difference(first.crop(region), second.crop(region))).mean) > 1, 'Video pixels did not advance'
             player_tap('Вернуться на страницу')
-            wait_for(lambda: cdp.js('!document.fullscreenElement'))
+            wait_for(lambda: cdp.js('!document.fullscreenElement && state() && !state().videoFullscreen'))
             after = cdp.js('state()')
             assert after['paused'] == paused and after['loads'] == before['loads']
             save(path[1:] + ('-paused' if paused else '') + '-state.json', dict(before=before, during=during, after=after))
             screenshot(path[1:] + '-returned')
 
-        for path, paused in [('/direct', False), ('/direct', True), ('/clipped', False), ('/shadow', False)]:
+        for path, paused in [('/direct', False), ('/direct', True), ('/clipped', False), ('/shadow', False),
+                             ('/iframe-same', False), ('/iframe', False)]:
             name = path[1:] + ('_paused' if paused else '_playing')
             print('Android: checking ' + name, flush=True)
             try:
@@ -486,9 +580,126 @@ def run():
                 player_tap('Вернуться на страницу')
                 wait_for(lambda: cdp.js('!document.fullscreenElement'))
 
+        def tab_switch_pause():
+            before = start_direct_player()
+            other = None
+            try:
+                other = cdp.call('Target.createTarget', dict(url='http://127.0.0.1:8766/direct?other-tab=1'))['targetId']
+                cdp.call('Target.activateTarget', dict(targetId=other))
+                time.sleep(3)
+                screenshot('other-tab')
+                cdp.call('Target.activateTarget', dict(targetId=cdp.target_id))
+                returned = cdp.js('state()')
+                assert returned['paused'], 'Tab switching did not preserve manual-resume requirement'
+                assert_same_video(before, returned)
+                time.sleep(2)
+                still = cdp.js('state()')
+                assert still['paused'] and abs(still['time'] - returned['time']) < 0.1
+                screenshot('tab-return-paused')
+                save('tab-switch-pause.json', dict(before=before, returned=returned, still=still,
+                                                   selectionMethod='DevTools Target activation; not tab-tray UI proof'))
+            finally:
+                if other is not None:
+                    cdp.call('Target.closeTarget', dict(targetId=other))
+
+        def browser_menu():
+            cdp.call('Page.navigate', dict(url='http://127.0.0.1:8766/direct'))
+            wait_for(lambda: cdp.js('location.pathname === "/direct" && typeof state === "function"'))
+            for cycle in range(3):
+                adb('shell', 'input', 'keyevent', 'KEYCODE_MENU')
+                wait_for(lambda: find('New tab'))
+                assert find('History') is not None, 'Browser menu is incomplete'
+                screenshot('browser-menu-' + str(cycle))
+                adb('shell', 'input', 'keyevent', 'KEYCODE_BACK')
+                wait_for(lambda: find('New tab') is None)
+                assert cdp.js('typeof state === "function"'), 'Page stopped responding after menu close'
+            save('browser-menu.json', dict(openCloseCycles=3, pageResponsive=True, emptyTabTested=False))
+
+        def empty_tab_menu():
+            nonlocal cdp
+            # Closing actual tabs is distinct from navigating to about:blank.
+            targets = cdp.call('Target.getTargets')['targetInfos']
+            pages = [t['targetId'] for t in targets if t.get('type') == 'page']
+            for target in pages:
+                if target != cdp.target_id:
+                    cdp.call('Target.closeTarget', dict(targetId=target))
+            cdp.call('Target.closeTarget', dict(targetId=cdp.target_id))
+            cdp.ws.close()
+            adb('shell', 'am', 'force-stop', PACKAGE)
+            launch_activity()
+            wait_for(lambda: any(n.get('package') == PACKAGE for n in ui().iter('node')), timeout=90)
+            screenshot('empty-start')
+            adb('shell', 'input', 'keyevent', 'KEYCODE_MENU')
+            wait_for(lambda: find('New tab'))
+            screenshot('empty-start-menu')
+            tap('New tab')
+            screenshot('empty-start-new-tab')
+            cdp = open_page()
+            assert cdp.js('localStorage.getItem("upgrid-ci")') == sentinel, 'Closing tabs erased site data'
+            save('empty_tab_and_menu.json', dict(closedPageTargets=pages, launcherWithoutUrl=True,
+                                                nativeNewTabMenuTapped=True, siteStoragePreserved=True))
+
+        def tampermonkey_fixture():
+            nonlocal cdp
+            # These are real installed userscripts, never Runtime.evaluate
+            # substitutes for GM_* or injection through the manager.
+            cdp.call('Page.navigate', dict(url='http://127.0.0.1:8766/tampermonkey.html'))
+            read = lambda: cdp.js('JSON.parse(document.querySelector("#upgrid-tm-results").textContent)')
+            first = wait_for(lambda: (r if (r := read()).get('menuRegistration') else None), timeout=60)
+            for key in ('realTampermonkey', 'legacyStorage', 'styleInjection', 'localGmRequest', 'menuRegistration'):
+                assert first.get(key) is True, 'Tampermonkey API failed: ' + key
+            raw = cdp.js('JSON.parse(document.querySelector("#upgrid-tm-raw-results").textContent)')
+            page = cdp.js('JSON.parse(document.querySelector("#upgrid-tm-page-results").textContent)')
+            assert raw.get('early') is True and raw.get('intercepted') is True
+            assert page.get('pageWorldHook') is True and page.get('pageSawScript') is True
+            tap('Проверить выполнение во фрейме')
+            def frame_result():
+                result = cdp.js('JSON.parse(document.querySelector("iframe").contentDocument.querySelector("#upgrid-tm-results").textContent)')
+                return result if result.get('menuRegistration') else None
+            frame = wait_for(frame_result)
+            assert frame.get('realTampermonkey') is True and frame.get('legacyStorage') is True
+            screenshot('tampermonkey-apis-and-frame')
+            cdp.call('Page.reload')
+            reloaded = wait_for(lambda: (r if (r := read()).get('persistentRunCount', 0) > first['persistentRunCount'] else None))
+            cdp.ws.close()
+            adb('shell', 'am', 'force-stop', PACKAGE)
+            cdp = launch_saved_tab()
+            restored = wait_for(lambda: (r if (r := read()).get('persistentRunCount', 0) > reloaded['persistentRunCount'] else None))
+            screenshot('tampermonkey-cold-start')
+            save('tampermonkey-fixture.json', dict(first=first, frame=frame, raw=raw, page=page, reloaded=reloaded,
+                                                 restored=restored, actualUserScriptsTested=False, menuInvocationTested=False))
+
+        def translated_content():
+            nonlocal cdp
+            cdp.call('Page.navigate', dict(url='http://127.0.0.1:8766/translation.html'))
+            def inspect():
+                data = cdp.js('({url:location.href,title:document.querySelector("h1")?.textContent,'
+                              'excluded:document.querySelector("#excluded")?.textContent,'
+                              'input:document.querySelector("input")?.value})')
+                return data if data and re.search('[Сс]ад', data.get('title') or '') else None
+            first = wait_for(inspect, timeout=90)
+            assert first['url'] == 'http://127.0.0.1:8766/translation.html', 'Translation left the original page'
+            assert first['excluded'] == 'This sentence must stay in English.'
+            assert first['input'] == 'My private garden notes'
+            screenshot('translated-content')
+            cdp.call('Page.reload')
+            wait_for(inspect, timeout=90)
+            cdp.ws.close()
+            adb('shell', 'am', 'force-stop', PACKAGE)
+            cdp = launch_saved_tab()
+            restored = wait_for(inspect, timeout=90)
+            screenshot('translated-content-cold-start')
+            save('translated-content.json', dict(first=first, restored=restored,
+                                                 providerVerified=False, siteLanguageExceptionsTested=False))
+
         for name, operation in [('repeat-native-play-pause', repeat_and_pause),
                                 ('manual-rotation', manual_rotation),
-                                ('background-pause', background_pause)]:
+                                ('background-pause', background_pause),
+                                ('tab-switch-pause', tab_switch_pause),
+                                ('browser-menu', browser_menu),
+                                ('empty_tab_and_menu', empty_tab_menu),
+                                ('tampermonkey-fixture', tampermonkey_fixture),
+                                ('translated-content', translated_content)]:
             print('Android: checking ' + name, flush=True)
             try:
                 operation()
@@ -525,8 +736,18 @@ def run():
     finally:
         collect_diagnostic(diagnostic_errors, 'logcat', lambda:
                            (EVIDENCE / 'logcat.txt').write_text(adb('logcat', '-d', timeout=20), encoding='utf-8'))
-        failed = any(item['status'] != 'passed' for item in checks.values())
+        log_path = EVIDENCE / 'logcat.txt'
+        if log_path.exists():
+            crashes = app_failures(log_path.read_text(encoding='utf-8'))
+            save('app-failures.json', crashes)
+            checks['no_crash_or_anr'] = dict(status='failed' if crashes else 'passed', evidence='app-failures.json')
+        else:
+            checks['no_crash_or_anr'] = dict(status='blocked', error='logcat unavailable')
+        coverage = acceptance_coverage(checks)
+        scenario_failed = any(item['status'] != 'passed' for item in checks.values())
+        failed = scenario_failed or any(item['status'] != 'passed' for item in coverage.values())
         save('results.json', dict(apk=context['metadata'], checks=checks, passed=not failed,
+                                 executedScenariosPassed=not scenario_failed, acceptanceCoverage=coverage,
                                  diagnosticErrors=diagnostic_errors,
                                  physicalDevice=False, distributionApproved=False))
         server.shutdown()

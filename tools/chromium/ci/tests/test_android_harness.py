@@ -11,6 +11,25 @@ import android_test
 
 
 class HarnessTests(unittest.TestCase):
+    def test_unexecuted_acceptance_is_blocked_even_if_smoke_checks_pass(self):
+        coverage = android_test.acceptance_coverage({'direct_playing': {'status': 'passed'}})
+        self.assertEqual(coverage['real_video_frame']['status'], 'passed')
+        self.assertEqual(coverage['tampermonkey_scripts']['status'], 'blocked')
+        self.assertEqual(coverage['player_enter_exit_playback']['status'], 'blocked')
+        coverage = android_test.acceptance_coverage({'background-pause': {'status': 'passed'},
+                                                     'tab-switch-pause': {'status': 'failed'}})
+        self.assertEqual(coverage['background_and_tab_pause']['status'], 'failed')
+
+    def test_crash_detection_includes_renderer_but_ignores_other_apps(self):
+        marker = '*** *** *** *** *** *** *** *** *** *** *** *** *** *** *** ***'
+        crash = '\nF DEBUG: Cmdline: com.upgrid.chromium:sandboxed_process0\nF DEBUG: signal 11 (SIGSEGV)\n'
+        log = marker + crash + marker + crash.replace('com.upgrid.chromium', 'com.other.browser')
+        failures = android_test.app_failures(log)
+        self.assertEqual(len(failures), 1)
+        self.assertEqual(failures[0]['kind'], 'native-crash')
+        self.assertEqual(android_test.app_failures('ActivityManager: ANR in com.other.browser'), [])
+        self.assertTrue(android_test.app_failures('WindowManager: ANR in Window{abc u0 com.upgrid.chromium/Activity}'))
+
     def test_loop_boundary_is_playback_but_frozen_frames_are_not(self):
         before = dict(paused=False, frames=350, time=23.9)
         android_test.assert_playing_advanced(before, dict(paused=False, frames=380, time=1.9))
