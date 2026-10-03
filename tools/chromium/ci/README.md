@@ -14,6 +14,17 @@ gh workflow run chromium-full.yml --repo NirvanaEx/android-browser \
 `mode=validate` only runs the tooling tests. Pushes to CI sources also run
 validation without starting another full Chromium build.
 
+`mode=android-test` runs a signed APK in a GitHub-hosted Android emulator.
+Pass `build_tag=upgrid-ci-RUN-ATTEMPT`, or `baseline` to check the previous
+signed APK used for update tests. The test job also follows successful builds.
+It verifies the APK digest, installs the previous version, stores test data,
+updates without clearing data, exercises native player controls and saves
+screenshots, page state and logcat in an Actions artifact. ARM64 runs through
+the Google APIs image's native translation on an x86_64 emulator. This is
+Android functional evidence, not physical-device codec/performance/DRM proof.
+The test entry point refuses execution outside GitHub Actions. Test VMs are
+disposable and never use the user's PC as a runner.
+
 The workflow is serialized per branch. Forty shards can run concurrently
 subject to the account's actual GitHub concurrency quota (20 was observed).
 Each worker runs four compiler processes. Preparation and final assembly
@@ -41,6 +52,11 @@ selects a specific cache. An empty value requests a cold checkout.
 The source overlay and version arguments are applied, GN is regenerated,
 and Ninja decides what changed. No dependency timestamp is artificially
 advanced to suppress a legitimate rebuild.
+
+If no completed cache is available, `auto` can restore a compatible immutable
+prepared workspace from an earlier interrupted run. This is only a source
+seed; it does not count as a successful compilation, and all changed build
+inputs still invalidate outputs normally.
 
 Preparation generates reachable native headers and Clang modules before
 sharding. Import checks the run, source SHA, snapshot SHA, every object,
