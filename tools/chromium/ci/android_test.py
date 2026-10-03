@@ -178,6 +178,19 @@ def screenshot(name):
 def open_page(path='/direct'):
     adb('shell', 'am', 'start', '-W', '-a', 'android.intent.action.VIEW', '-d',
         'http://127.0.0.1:8766' + path, '-p', PACKAGE)
+    return connect_page()
+
+
+def launch_saved_tab():
+    resolved = adb('shell', 'cmd', 'package', 'resolve-activity', '--brief',
+                   '-a', 'android.intent.action.MAIN', '-c', 'android.intent.category.LAUNCHER', PACKAGE)
+    component = next(line.strip() for line in resolved.splitlines()
+                     if re.fullmatch(r'[\w.]+/[\w.]+', line.strip()))
+    adb('shell', 'am', 'start', '-W', '-n', component)
+    return connect_page()
+
+
+def connect_page():
     # DevTools is browser-owned; no desktop browser is launched.
     sockets = adb('shell', 'cat', '/proc/net/unix')
     names = re.findall(r'@(chrome_devtools_remote[^\s]*)', sockets)
@@ -215,11 +228,12 @@ def run():
         assert 'Success' in install, install
         cdp = open_page()
         cdp.js('localStorage.setItem("upgrid-ci","preserve-768003111")')
+        time.sleep(2)  # Allow the ordinary tab/session persistence task to run.
         cdp.ws.close()
         adb('shell', 'am', 'force-stop', PACKAGE)
         install = adb('install', '-r', context['apk'])
         assert 'Success' in install, install
-        cdp = open_page()
+        cdp = launch_saved_tab()
         assert cdp.js('localStorage.getItem("upgrid-ci")') == 'preserve-768003111'
         checks['install_update_preserves_storage'] = dict(status='passed', evidence=install.strip())
         package_dump = adb('shell', 'dumpsys', 'package', PACKAGE)
@@ -229,7 +243,8 @@ def run():
 
         def exercise(path, paused=False):
             cdp.call('Page.navigate', dict(url='http://127.0.0.1:8766' + path))
-            wait_for(lambda: cdp.js('typeof state === "function" && v.readyState >= 2'))
+            wait_for(lambda: cdp.js('location.pathname === ' + json.dumps(path) +
+                                   ' && typeof state === "function" && v.readyState >= 2'))
             tap('Play')
             wait_for(lambda: cdp.js('probe.frames > 3 && v.currentTime > 0.2'))
             if paused:
@@ -279,9 +294,10 @@ def run():
             screenshot('container-keeps-site-controls')
             checks['container_no_mixed_ui'] = dict(status='passed', evidence='container-keeps-site-controls.png')
             adb('shell', 'input', 'keyevent', 'KEYCODE_BACK')
+        time.sleep(2)
         cdp.ws.close()
         adb('shell', 'am', 'force-stop', PACKAGE)
-        cdp = open_page()
+        cdp = launch_saved_tab()
         assert cdp.js('localStorage.getItem("upgrid-ci")') == 'preserve-768003111'
         screenshot('cold-start')
         checks['cold_start_storage'] = dict(status='passed', evidence='cold-start.png')
