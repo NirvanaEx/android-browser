@@ -144,7 +144,7 @@ def wait_for(fn, timeout=30):
     while time.monotonic() < end:
         try:
             value = fn()
-            if value:
+            if isinstance(value, ET.Element) or value:
                 return value
         except Exception as exc:
             error = exc
@@ -222,7 +222,9 @@ def run():
         cdp = open_page()
         assert cdp.js('localStorage.getItem("upgrid-ci")') == 'preserve-768003111'
         checks['install_update_preserves_storage'] = dict(status='passed', evidence=install.strip())
-        save('package.json', dict(dump=adb('shell', 'dumpsys', 'package', PACKAGE)))
+        package_dump = adb('shell', 'dumpsys', 'package', PACKAGE)
+        assert re.search(r'versionCode=' + str(context['metadata']['versionCode']) + r'\b', package_dump), 'Installed version differs from tested APK'
+        save('package.json', dict(dump=package_dump))
         screenshot('installed')
 
         def exercise(path, paused=False):
