@@ -124,10 +124,13 @@ def verify_transfer(tag):
 
 def preflight(args):
     tag = transfer_tag()
-    # Reserve the exact commit while it is still the branch head. Creating the
-    # draft hours later can require workflow privileges after the branch moves.
-    create_transfer(tag)
-    verify_transfer(tag)
+    # A trusted dispatcher may reserve the draft with workflow scope. The job
+    # token still verifies its exact identity and proves its own upload access.
+    try:
+        verify_transfer(tag)
+    except subprocess.CalledProcessError:
+        create_transfer(tag)
+        verify_transfer(tag)
     probe = STATE / 'transfer-access.json'
     write(probe, dict(runId=os.environ['GITHUB_RUN_ID'], headSha=os.environ['GITHUB_SHA'],
                       tag=tag, purpose='Verify draft upload access before heavy build work'))
