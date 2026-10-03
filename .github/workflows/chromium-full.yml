@@ -5,6 +5,7 @@ on:
     paths:
       - .github/workflows/chromium-full.yml
       - tools/chromium/ci/**
+      - tools/chromium/distributed/**
   workflow_dispatch:
     inputs:
       mode:
@@ -45,7 +46,7 @@ jobs:
           persist-credentials: false
       - run: |
           sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends ninja-build zstd
+          sudo apt-get install -y --no-install-recommends ninja-build zstd pigz
           python3 -m unittest discover -s tools/chromium/ci/tests -v
           python3 -m unittest discover -s tools/chromium/tests -v
           node --test tools/chromium/tests/youtube-options.test.cjs
@@ -76,21 +77,29 @@ jobs:
         run: python3 -u tools/chromium/ci/pipeline.py preflight
       - name: Prepare disposable build runner
         run: bash tools/chromium/ci/setup-runner.sh
-      - name: Prepare complete source, native dependencies, and immutable snapshots
-        id: prepare
+      - name: Restore source cache, apply overlay, and generate build graph
         env:
           GH_TOKEN: ${{ github.token }}
           CACHE_TAG: ${{ inputs.cache_tag }}
+        run: python3 -u tools/chromium/ci/pipeline.py sources --cache-tag "$CACHE_TAG"
+      - name: Build generated headers and compiler modules
+        run: python3 -u tools/chromium/ci/pipeline.py prerequisites
+      - name: Save checkpoint and compiler snapshot in parallel
+        id: prepare
+        env:
+          GH_TOKEN: ${{ github.token }}
           SHARDS: ${{ inputs.shards }}
-        run: python3 -u tools/chromium/ci/pipeline.py prepare --cache-tag "$CACHE_TAG" --shards "$SHARDS"
+        run: python3 -u tools/chromium/ci/pipeline.py snapshots --shards "$SHARDS"
       - uses: actions/upload-artifact@v4
-        if: failure()
+        if: always()
         with:
           name: cloud-prepare-diagnostics
           path: |
             /home/runner/upgrid-state/transfer-access.json
             /home/runner/upgrid-state/native-receipt.json
             /home/runner/upgrid-state/plan.json
+            /home/runner/upgrid-state/timing-*.json
+            /home/runner/upgrid-state/workspace.json
           if-no-files-found: ignore
           retention-days: 14
   native:

@@ -7,6 +7,7 @@ import subprocess
 import sys
 import tarfile
 import tempfile
+import threading
 import unittest
 from unittest.mock import patch
 
@@ -187,10 +188,23 @@ class WorkspaceTests(unittest.TestCase):
             os.utime(original, ns=(stamp, stamp))
             (root/'link').symlink_to('source')
             expected = common.sha(original)
+            second_packed = threading.Event()
+            downloads = threading.Barrier(3)
+            original_sha = common.sha
+            def hash_part(path):
+                result = original_sha(path)
+                if pathlib.Path(path).name == 'workspace.0001.tar.zst.part':
+                    second_packed.set()
+                return result
             def upload(tag, *paths):
                 for path in paths:
+                    if pathlib.Path(path).name == 'workspace.0000.tar.zst.part':
+                        if not second_packed.wait(10):
+                            raise RuntimeError('Packing blocked behind the first upload')
                     shutil.copyfile(path, assets/pathlib.Path(path).name)
             def download(tag, name, destination, digest=None):
+                if name.endswith('.part'):
+                    downloads.wait(timeout=10)
                 destination = pathlib.Path(destination)
                 destination.mkdir(parents=True, exist_ok=True)
                 result = destination/name
@@ -200,6 +214,7 @@ class WorkspaceTests(unittest.TestCase):
                 return result
             with patch.multiple(common, ROOT=root, STATE=state, CHUNK_BYTES=65536), \
                     patch.object(common, 'reserve'), patch.object(common, 'upload', side_effect=upload), \
+                    patch.object(common, 'sha', side_effect=hash_part), \
                     patch.object(common, 'download', side_effect=download), patch.dict(os.environ, GITHUB_SHA='head'):
                 digest = common.pack_workspace('upgrid-ci-fixture-1-1', 'workspace')
                 self.assertGreater(len(common.read(assets/'workspace.json')['parts']), 1)
@@ -209,6 +224,27 @@ class WorkspaceTests(unittest.TestCase):
             self.assertEqual(common.sha(original), expected)
             self.assertEqual(original.stat().st_mtime_ns, stamp)
             self.assertTrue((root/'link').is_symlink())
+
+    def test_failed_chunk_upload_never_publishes_checkpoint_manifest(self):
+        with tempfile.TemporaryDirectory() as directory:
+            base = pathlib.Path(directory)
+            root, state = base/'root', base/'state'
+            root.mkdir()
+            state.mkdir()
+            (root/'source').write_bytes(os.urandom(180000))
+            uploaded = []
+            def upload(tag, path):
+                uploaded.append(path.name)
+                if path.name.endswith('0001.tar.zst.part'):
+                    raise RuntimeError('simulated network failure')
+            with patch.multiple(common, ROOT=root, STATE=state, CHUNK_BYTES=65536), \
+                    patch.object(common, 'reserve'), patch.object(common, 'upload', side_effect=upload):
+                with self.assertRaisesRegex(RuntimeError, 'simulated network failure'):
+                    common.pack_workspace('upgrid-ci-fixture-1-1', 'workspace',
+                                          checkpoint='native-prerequisites-v1')
+            self.assertNotIn('workspace.json', uploaded)
+            self.assertFalse((state/'workspace.json').exists())
+            self.assertTrue((root/'source').exists())
 
 
 if __name__ == '__main__':
