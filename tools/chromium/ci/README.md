@@ -25,12 +25,19 @@ Android functional evidence, not physical-device codec/performance/DRM proof.
 The test entry point refuses execution outside GitHub Actions. Test VMs are
 disposable and never use the user's PC as a runner.
 
-The emulator uses API 35. The API 30 baseline probe installed the signed .8
+The emulator uses API 36. The API 30 baseline probe installed the signed .8
 APK but crashed at startup in `libndk_translation.so`
 (`DecodeSimdThreeDifferent`, SIGILL), before reaching any player test.
 See run 37136340535 and its Android evidence artifact. Changing the emulator
 image preserves the APK under test; it does not establish physical ARM64
 compatibility or make the failed probe a passing acceptance check.
+
+API 35 and 36 also failed on the baseline renderer in the translator's
+`berberis_HandleNoExec` (SIGSEGV). See runs 37140207049 and 37140928040.
+If the baseline or update-restoration stage fails, that check remains failed,
+but a different candidate can still run independent player diagnostics.
+The harness never clears app data; candidate-only cold-start storage uses a
+separate sentinel and cannot establish preservation across an upgrade.
 
 The workflow is serialized per branch. Forty shards can run concurrently
 subject to the account's actual GitHub concurrency quota (20 was observed).

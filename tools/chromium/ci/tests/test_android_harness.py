@@ -1,6 +1,7 @@
 from pathlib import Path
 import sys
 import subprocess
+import tempfile
 import unittest
 from unittest.mock import Mock, patch
 import xml.etree.ElementTree as ET
@@ -10,6 +11,39 @@ import android_test
 
 
 class HarnessTests(unittest.TestCase):
+    def test_baseline_failure_does_not_hide_candidate_or_pass_update_check(self):
+        context = dict(baselineApk='old.apk', apk='new.apk', metadata=dict(baseline=False, versionCode=768003112))
+        candidate = Mock()
+        checks, errors = {}, {}
+        with tempfile.TemporaryDirectory() as tmp, \
+                patch.object(android_test, 'EVIDENCE', Path(tmp)), \
+                patch.object(android_test, 'adb', return_value='Success') as adb, \
+                patch.object(android_test, 'screenshot'), \
+                patch.object(android_test, 'open_page', side_effect=[RuntimeError('translator crash'), candidate]), \
+                patch.object(android_test, 'launch_saved_tab') as restore:
+            result, sentinel = android_test.prepare_candidate(context, checks, errors)
+        self.assertIs(result, candidate)
+        self.assertEqual(sentinel, 'candidate-only-768003112')
+        self.assertEqual(checks['install_update_preserves_storage']['status'], 'failed')
+        self.assertEqual(checks['install_update_preserves_storage']['stage'], 'baseline')
+        restore.assert_not_called()
+        adb.assert_any_call('install', '-r', 'new.apk', timeout=300)
+        self.assertFalse(any('clear' in call.args or 'uninstall' in call.args for call in adb.call_args_list))
+
+    def test_failed_update_restoration_stays_failed_during_candidate_diagnostics(self):
+        baseline, candidate = Mock(), Mock()
+        checks = {}
+        context = dict(baselineApk='old.apk', apk='new.apk', metadata=dict(baseline=False, versionCode=768003112))
+        with patch.object(android_test, 'adb', return_value='Success'), \
+                patch.object(android_test, 'screenshot'), patch.object(android_test.time, 'sleep'), \
+                patch.object(android_test, 'open_page', side_effect=[baseline, candidate]), \
+                patch.object(android_test, 'launch_saved_tab', side_effect=RuntimeError('restore failed')):
+            result, sentinel = android_test.prepare_candidate(context, checks, {})
+        self.assertIs(result, candidate)
+        self.assertEqual(checks['install_update_preserves_storage']['status'], 'failed')
+        self.assertEqual(checks['install_update_preserves_storage']['stage'], 'update')
+        self.assertTrue(sentinel.startswith('candidate-only-'))
+
     def test_late_native_prompt_is_handled_while_waiting_for_renderer(self):
         stalled, ready = Mock(), Mock()
         stalled.js.side_effect = TimeoutError('Renderer not ready')

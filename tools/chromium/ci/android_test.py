@@ -255,6 +255,54 @@ def connect_page(initial_url=None):
     return cdp
 
 
+def prepare_candidate(context, checks, diagnostic_errors):
+    sentinel = 'preserve-768003111'
+    baseline_ready = False
+    cdp = None
+    try:
+        print('Android: installing verified baseline APK', flush=True)
+        install = adb('install', '-r', context['baselineApk'], timeout=300)
+        assert 'Success' in install, install
+        cdp = open_page()
+        cdp.js('localStorage.setItem("upgrid-ci",' + json.dumps(sentinel) + ')')
+        time.sleep(2)
+        baseline_ready = True
+    except Exception as error:
+        checks['install_update_preserves_storage'] = dict(status='failed', stage='baseline', error=repr(error))
+        collect_diagnostic(diagnostic_errors, 'baseline-screenshot', lambda: screenshot('baseline-failure'))
+        collect_diagnostic(diagnostic_errors, 'baseline-logcat', lambda:
+                           (EVIDENCE / 'baseline-logcat.txt').write_text(adb('logcat', '-d', timeout=20), encoding='utf-8'))
+        if context['metadata']['baseline']:
+            raise  # Do not retry the same failing APK as if it were a new candidate.
+    finally:
+        if cdp is not None:
+            cdp.ws.close()
+    adb('shell', 'am', 'force-stop', PACKAGE)
+    print('Android: installing candidate and checking saved data', flush=True)
+    install = adb('install', '-r', context['apk'], timeout=300)
+    assert 'Success' in install, install
+    cdp = None
+    if baseline_ready:
+        try:
+            cdp = launch_saved_tab()
+            assert cdp.js('localStorage.getItem("upgrid-ci")') == sentinel
+            checks['install_update_preserves_storage'] = dict(status='passed', evidence=install.strip())
+        except Exception as error:
+            checks['install_update_preserves_storage'] = dict(status='failed', stage='update', error=repr(error))
+            collect_diagnostic(diagnostic_errors, 'update-screenshot', lambda: screenshot('update-failure'))
+            if cdp is not None:
+                cdp.ws.close()
+            cdp = None
+    if cdp is None:
+        # Continue independent player diagnostics without erasing the failed
+        # update check or clearing app data. This can never turn the run green.
+        print('Android: update check failed; continuing candidate-only diagnostics', flush=True)
+        cdp = open_page()
+        sentinel = 'candidate-only-' + str(context['metadata']['versionCode'])
+        cdp.js('localStorage.setItem("upgrid-ci",' + json.dumps(sentinel) + ')')
+    return cdp, sentinel
+
+
 def run():
     from PIL import Image, ImageChops, ImageStat
     context = json.loads((EVIDENCE / 'input.json').read_text())
@@ -277,20 +325,7 @@ def run():
     adb('shell', 'am', 'set-debug-app', '--persistent', PACKAGE)
     adb('logcat', '-c')
     try:
-        print('Android: installing verified baseline APK', flush=True)
-        install = adb('install', '-r', context['baselineApk'], timeout=300)
-        assert 'Success' in install, install
-        cdp = open_page()
-        cdp.js('localStorage.setItem("upgrid-ci","preserve-768003111")')
-        time.sleep(2)  # Allow the ordinary tab/session persistence task to run.
-        cdp.ws.close()
-        adb('shell', 'am', 'force-stop', PACKAGE)
-        print('Android: installing candidate and checking saved data', flush=True)
-        install = adb('install', '-r', context['apk'], timeout=300)
-        assert 'Success' in install, install
-        cdp = launch_saved_tab()
-        assert cdp.js('localStorage.getItem("upgrid-ci")') == 'preserve-768003111'
-        checks['install_update_preserves_storage'] = dict(status='passed', evidence=install.strip())
+        cdp, sentinel = prepare_candidate(context, checks, diagnostic_errors)
         package_dump = adb('shell', 'dumpsys', 'package', PACKAGE)
         assert re.search(r'versionCode=' + str(context['metadata']['versionCode']) + r'\b', package_dump), 'Installed version differs from tested APK'
         save('package.json', dict(dump=package_dump))
@@ -354,7 +389,7 @@ def run():
         cdp.ws.close()
         adb('shell', 'am', 'force-stop', PACKAGE)
         cdp = launch_saved_tab()
-        assert cdp.js('localStorage.getItem("upgrid-ci")') == 'preserve-768003111'
+        assert cdp.js('localStorage.getItem("upgrid-ci")') == sentinel
         screenshot('cold-start')
         checks['cold_start_storage'] = dict(status='passed', evidence='cold-start.png')
     except Exception as error:
