@@ -12,6 +12,7 @@ import threading
 import time
 import urllib.request
 from worker import sha
+from action_paths import object_path
 
 
 def main():
@@ -57,7 +58,7 @@ def main():
     graph = []
     for index, action in enumerate(actions):
         name = action['output']
-        if not name.startswith('obj/') or '..' in pathlib.PurePosixPath(name).parts or not name.endswith('.o'):
+        if not object_path(name):
             raise RuntimeError('Invalid object path')
         (out / name).parent.mkdir(parents=True, exist_ok=True)
         graph += [f'rule cxx_{index}', '  command = ' + action['command'].replace('$', '$$'),
@@ -76,13 +77,13 @@ def main():
             return json.load(response)
 
     def progress():
-        return {'title': f'{completed}/{len(actions)} C++ actions',
+        return {'title': f'{completed}/{len(actions)} compiler actions',
                 'summary': json.dumps({'shard': args.shard, 'completed': completed, 'total': len(actions),
                     'runId': os.environ.get('GITHUB_RUN_ID'), 'snapshotSha256': args.digest})}
 
     if token and repo and head:
         try:
-            check_id = api('/check-runs', {'name': f'Chromium shard {args.shard} progress',
+            check_id = api('/check-runs', {'name': f'Chromium {manifest.get("wave", "native")} shard {args.shard} progress',
                 'head_sha': head, 'status': 'in_progress', 'output': progress()})['id']
         except Exception as error:
             print('Progress check unavailable: ' + type(error).__name__, flush=True)

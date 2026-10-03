@@ -40,7 +40,7 @@ class ConfigurationTests(unittest.TestCase):
                 patch.object(pipeline, 'prepare_native_snapshot', side_effect=native), \
                 patch.object(pipeline, 'upload') as upload:
             with self.assertRaisesRegex(RuntimeError, 'snapshot failed'):
-                pipeline.prepare_snapshots(SimpleNamespace(shards=40))
+                pipeline.prepare_snapshots(SimpleNamespace(shards=40, wave='native', tag=None))
             self.assertTrue(checkpoint_finished.is_set())
             upload.assert_not_called()  # Never publish a usable native plan on failure.
 

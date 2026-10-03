@@ -10,15 +10,15 @@ import tarfile
 from concurrent.futures import ThreadPoolExecutor
 from common import ROOT, STATE, read, reserve, sha, write
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / 'distributed'))
-from ninja_cache import read_deps, append_deps
+from ninja_cache import read_deps, append_deps, HEADER
+from action_paths import object_path
 
 
 def import_objects(archives, manifest, digest, run_id, head, workers=4):
     src, out = ROOT / 'src', ROOT / 'src/out/Upgrid'
     inputs = {item['path']: item for item in manifest['inputs']}
     expected_outputs = {action['output'] for shard in manifest['shards'] for action in shard}
-    if any(not name.startswith('obj/') or not name.endswith('.o') or
-           '..' in pathlib.PurePosixPath(name).parts or '\\' in name for name in expected_outputs):
+    if any(not object_path(name) for name in expected_outputs):
         raise RuntimeError('Unsafe output path')
     expanded = 0
     for path in archives:
@@ -102,6 +102,10 @@ def import_objects(archives, manifest, digest, run_id, head, workers=4):
     reserve(ROOT)
     with ThreadPoolExecutor(max_workers=workers) as pool:
         accepted = list(pool.map(copy_object, copy_jobs))
+    if not (out / '.ninja_deps').exists():
+        (out / '.ninja_deps').write_bytes(HEADER)
+    if not (out / '.ninja_log').exists():
+        (out / '.ninja_log').write_text('# ninja log v5\n')
     paths, _ = read_deps(out / '.ninja_deps', paths_only=True)
     temporary = out / '.ninja_deps.upgrid-import'
     shutil.copyfile(out / '.ninja_deps', temporary)

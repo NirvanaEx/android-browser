@@ -82,14 +82,15 @@ def main():
         raise RuntimeError('Insufficient staging space on D')
     pending = json.loads((BASE / args.pending).read_text())
     files = set()
-    for name in read_deps(OUT / '.ninja_deps', paths_only=True)[0]:
+    for name in (read_deps(OUT / '.ninja_deps', paths_only=True)[0] if (OUT / '.ninja_deps').exists() else []):
         p = pathlib.Path(os.path.normpath(OUT / name))
         if p.is_file() and p.suffix not in ('.o', '.a', '.so', '.rlib'):
             files.add(p)
     # Existing deps omit headers behind newly enabled conditionals and module
     # search headers. Include the header trees while excluding caches/test data.
     files.update(snapshot_headers(SRC))
-    for directory in [OUT / 'gen', OUT / 'obj/build/modules',
+    for directory in [OUT / 'gen', OUT / 'obj/build/modules', *OUT.glob('clang_*/gen'),
+                      *OUT.glob('clang_*/obj/build/modules'),
                       SRC / 'third_party/llvm-build/Release+Asserts/lib/clang/23/include']:
         for p in directory.rglob('*'):
             if p.is_file() and p.suffix in HEADER_SUFFIXES | {'.pcm', '', '.cc', '.c', '.cpp'}:
@@ -99,7 +100,7 @@ def main():
     actions, deferred = [], []
     for action in pending:
         argv = shlex.split(action['command'])
-        if pathlib.Path(argv[0]).name != 'clang++' or action['directory'] != str(OUT):
+        if pathlib.Path(argv[0]).name not in ('clang++', 'clang') or action['directory'] != str(OUT):
             deferred.append(action['output'])
             continue
         inputs = [pathlib.Path(os.path.normpath(OUT / argv[0])),
@@ -112,13 +113,11 @@ def main():
         files.update(inputs)
         actions.append(action)
     # Notices accompany distributed header/source snapshots.
-    for p in list(files):
-        for parent in p.parents:
-            if not parent.is_relative_to(SRC):
-                break
-            for name in ('LICENSE', 'LICENSE.txt', 'LICENSE.TXT', 'COPYING', 'NOTICE', 'README.chromium'):
-                if (parent / name).is_file():
-                    files.add(parent / name)
+    parents = {parent for p in files for parent in p.parents if parent.is_relative_to(SRC)}
+    for parent in parents:
+        for name in ('LICENSE', 'LICENSE.txt', 'LICENSE.TXT', 'COPYING', 'NOTICE', 'README.chromium'):
+            if (parent / name).is_file():
+                files.add(parent / name)
     print(json.dumps({'stage': 'hashing', 'actions': len(actions), 'files': len(files),
                       'deferred': len(deferred)}), flush=True)
     inputs = []
@@ -135,7 +134,7 @@ def main():
             print(json.dumps({'stage': 'hashing', 'filesDone': number}), flush=True)
     # Balance shards by previous timings where available; every target appears once.
     costs = {}
-    for line in (OUT / '.ninja_log').read_text().splitlines():
+    for line in ((OUT / '.ninja_log').read_text().splitlines() if (OUT / '.ninja_log').exists() else []):
         parts = line.split('\t')
         if len(parts) == 5:
             costs[parts[3]] = max(1000, int(parts[1]) - int(parts[0]))
@@ -147,7 +146,8 @@ def main():
         loads[index] += costs.get(action['output'], 15000)
     manifest = {'schema': 1, 'sourceRoot': str(SRC), 'outputRoot': str(OUT),
                 'inputs': inputs, 'shards': shards, 'deferred': deferred,
-                'totalActions': len(actions), 'mode': 'compile-wave', 'jobsPerWorker': 4}
+                'totalActions': len(actions), 'mode': 'compile-wave', 'jobsPerWorker': 4,
+                'wave': args.prefix}
     metadata = BASE / (args.prefix + '-manifest.json')
     metadata.write_text(json.dumps(manifest) + '\n')
     pack_snapshot(archive, metadata, inputs)

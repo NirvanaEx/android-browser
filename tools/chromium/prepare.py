@@ -75,7 +75,8 @@ def main():
     run(depot / "ensure_bootstrap", cwd=root, env=env)
     if args.sync or args.hooks:
         # src is unmanaged and checkout() already verifies its exact revision.
-        run(depot / "gclient", "sync", "--nohooks", "--no-history", "--jobs=1",
+        sync_jobs = "4" if os.environ.get("GITHUB_ACTIONS") == "true" else "1"
+        run(depot / "gclient", "sync", "--nohooks", "--no-history", f"--jobs={sync_jobs}",
             cwd=root, env=env)
     if args.hooks:
         run(depot / "gclient", "runhooks", cwd=root, env=env)
