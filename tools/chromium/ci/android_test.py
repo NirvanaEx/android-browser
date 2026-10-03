@@ -91,7 +91,7 @@ document.querySelector('#container').onclick=()=>document.querySelector('#root')
 document.querySelector('#direct').onclick=()=>v.requestFullscreen();
 window.state=()=>({...probe,time:v.currentTime,paused:v.paused,videoFullscreen:v.matches(':fullscreen'),
  fullscreen:!!document.fullscreenElement,width:v.videoWidth,height:v.videoHeight,
- source:v.currentSrc,storage:localStorage.getItem('upgrid-ci')});
+ source:v.currentSrc,duration:v.duration,storage:localStorage.getItem('upgrid-ci')});
 if(location.pathname==='/clipped')document.body.className='clipped';
 if(location.pathname==='/shadow'){
  const host=document.createElement('div');document.querySelector('#wrap').append(host);
@@ -183,6 +183,27 @@ def tap_node(node):
     bounds = list(map(int, re.findall(r'\d+', node.get('bounds'))))
     assert len(bounds) == 4
     adb('shell', 'input', 'tap', (bounds[0] + bounds[2]) // 2, (bounds[1] + bounds[3]) // 2)
+
+
+def player_tap(label):
+    node = find(label)
+    if node is None:
+        # A real single tap on the native player surface reveals its controls.
+        tap('Видеоплеер Upgrid')
+        node = wait_for(lambda: find(label))
+    tap_node(node)
+
+
+def assert_same_video(before, after):
+    assert after['source'] == before['source'], 'Selected video source changed'
+    assert after['loads'] == before['loads'], 'Video was reloaded'
+
+
+def assert_playing_advanced(before, after):
+    assert not after['paused'], 'Playing video was paused'
+    assert after['frames'] > before['frames'], 'No new decoded video frames'
+    # The short fixture loops; currentTime need not increase across its end.
+    assert abs(after['time'] - before['time']) > 0.01, 'Video clock did not advance'
 
 
 def dismiss_notification_prompt():
@@ -351,12 +372,12 @@ def run():
             assert during['loads'] == before['loads'], 'Video was reloaded on entry'
             assert during['paused'] == paused
             if not paused:
-                assert during['frames'] > before['frames'] and during['time'] > before['time']
+                assert_playing_advanced(before, during)
                 w, h = first.size
                 region = (w // 4, h * 2 // 5, w * 3 // 4, h * 3 // 5)
                 assert max(ImageStat.Stat(first.crop(region)).var) > 100, 'No varied video pixels'
                 assert max(ImageStat.Stat(ImageChops.difference(first.crop(region), second.crop(region))).mean) > 1, 'Video pixels did not advance'
-            tap('Вернуться на страницу')
+            player_tap('Вернуться на страницу')
             wait_for(lambda: cdp.js('!document.fullscreenElement'))
             after = cdp.js('state()')
             assert after['paused'] == paused and after['loads'] == before['loads']
@@ -371,6 +392,109 @@ def run():
                 checks[name] = dict(status='passed', evidence=path[1:] + ('-paused' if paused else '') + '-state.json')
             except Exception as error:
                 checks[name] = dict(status='failed', error=str(error))
+                collect_diagnostic(diagnostic_errors, name + '-failure', lambda: screenshot(name + '-failure'))
+                adb('shell', 'input', 'keyevent', 'KEYCODE_BACK')
+
+        def start_direct_player():
+            cdp.call('Page.navigate', dict(url='http://127.0.0.1:8766/direct'))
+            wait_for(lambda: cdp.js('location.pathname === "/direct" && typeof state === "function" && v.readyState >= 2'))
+            tap('Play')
+            wait_for(lambda: cdp.js('probe.frames > 3 && !v.paused'))
+            before = cdp.js('state()')
+            orientation = ui().get('rotation')
+            tap('Видеоплеер Upgrid')
+            wait_for(lambda: cdp.js('v.matches(":fullscreen")'))
+            assert ui().get('rotation') == orientation, 'Entry rotated the screen automatically'
+            return before
+
+        def repeat_and_pause():
+            before = start_direct_player()
+            states = []
+            for cycle in range(3):
+                player_tap('Пауза')
+                wait_for(lambda: cdp.js('v.paused'))
+                paused = cdp.js('state()')
+                time.sleep(2)
+                still = cdp.js('state()')
+                assert still['paused'] and abs(still['time'] - paused['time']) < 0.1
+                player_tap('Вернуться на страницу')
+                wait_for(lambda: cdp.js('!document.fullscreenElement'))
+                assert cdp.js('v.paused'), 'Paused video resumed on exit'
+                tap('Видеоплеер Upgrid')
+                wait_for(lambda: cdp.js('v.matches(":fullscreen")'))
+                assert cdp.js('v.paused'), 'Paused video resumed on entry'
+                player_tap('Играть')
+                wait_for(lambda: cdp.js('!v.paused'))
+                playing = cdp.js('state()')
+                time.sleep(2)
+                advanced = cdp.js('state()')
+                assert_same_video(before, advanced)
+                assert_playing_advanced(playing, advanced)
+                screenshot('repeat-' + str(cycle))
+                player_tap('Вернуться на страницу')
+                wait_for(lambda: cdp.js('!document.fullscreenElement'))
+                assert not cdp.js('v.paused'), 'Playing video paused on exit'
+                states.append(dict(paused=paused, playing=advanced, returned=cdp.js('state()')))
+                if cycle < 2:
+                    tap('Видеоплеер Upgrid')
+                    wait_for(lambda: cdp.js('v.matches(":fullscreen")'))
+                    assert not cdp.js('v.paused'), 'Playing video paused on entry'
+            save('repeat-native-play-pause.json', states)
+
+        def manual_rotation():
+            before = start_direct_player()
+            original = ui().get('rotation')
+            player_tap('Поворот')
+            rotated = wait_for(lambda: (r if (r := ui().get('rotation')) != original else None))
+            during = cdp.js('state()')
+            assert during['videoFullscreen']
+            assert_same_video(before, during)
+            assert_playing_advanced(before, during)
+            screenshot('manual-rotation')
+            player_tap('Поворот')
+            wait_for(lambda: ui().get('rotation') == original)
+            restored = cdp.js('state()')
+            assert restored['videoFullscreen'] and not restored['paused']
+            assert_same_video(before, restored)
+            screenshot('manual-rotation-restored')
+            player_tap('Вернуться на страницу')
+            wait_for(lambda: cdp.js('!document.fullscreenElement'))
+            save('manual-rotation.json', dict(original=original, rotated=rotated, before=before, during=during, restored=restored))
+
+        def background_pause():
+            nonlocal cdp
+            before = start_direct_player()
+            adb('shell', 'input', 'keyevent', 'KEYCODE_HOME')
+            time.sleep(3)
+            screenshot('background-home')
+            cdp.ws.close()
+            cdp = launch_saved_tab()  # No replacement URL and no synthetic Play.
+            returned = cdp.js('state()')
+            assert returned['paused'], 'Backgrounded video resumed without user Play'
+            assert_same_video(before, returned)
+            time.sleep(2)
+            still = cdp.js('state()')
+            assert still['paused'] and abs(still['time'] - returned['time']) < 0.1
+            screenshot('background-return-paused')
+            if still['videoFullscreen']:
+                player_tap('Играть')
+            else:
+                tap('Play')
+            wait_for(lambda: cdp.js('!v.paused && probe.frames > ' + str(still['frames'])))
+            save('background-pause.json', dict(before=before, returned=returned, still=still, resumed=cdp.js('state()')))
+            if cdp.js('!!document.fullscreenElement'):
+                player_tap('Вернуться на страницу')
+                wait_for(lambda: cdp.js('!document.fullscreenElement'))
+
+        for name, operation in [('repeat-native-play-pause', repeat_and_pause),
+                                ('manual-rotation', manual_rotation),
+                                ('background-pause', background_pause)]:
+            print('Android: checking ' + name, flush=True)
+            try:
+                operation()
+                checks[name] = dict(status='passed', evidence=name + '.json')
+            except Exception as error:
+                checks[name] = dict(status='failed', error=repr(error))
                 collect_diagnostic(diagnostic_errors, name + '-failure', lambda: screenshot(name + '-failure'))
                 adb('shell', 'input', 'keyevent', 'KEYCODE_BACK')
         if not context['metadata']['baseline']:

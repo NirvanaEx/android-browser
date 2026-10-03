@@ -152,3 +152,13 @@ clearing app data. A candidate-only storage sentinel is distinct from the
 baseline sentinel; those results cannot satisfy update-preservation acceptance.
 The full .9 build remains in preparation in run `37133916096`; no .9 APK size,
 Android acceptance, or publication result exists yet.
+
+Additional Android scenarios are now implemented but not yet executed:
+three repeated player entry/exit cycles with native Play/Pause buttons, paused
+position stability, preservation of source/load count, explicit rotation and
+return to the initial orientation, and Home/background/launcher return with no
+automatic playback. They use real ADB input plus native accessibility bounds;
+page state and screenshot evidence are recorded per scenario. Looping video
+checks permit a currentTime wrap only when decoded frames also advance.
+These do not cover tab switching, iframe execution, the complete menu/empty-tab
+path, or Tampermonkey/user scripts, and do not constitute passed acceptance.
