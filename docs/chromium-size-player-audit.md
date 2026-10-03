@@ -141,3 +141,14 @@ in the same bounded retry loop and closes unsuccessful DevTools connections.
 The next probe uses the official Android 16/API 36 emulator image with the exact
 same APK and normal renderer/JIT/sandbox settings. No success is assumed from
 the OS change; no playback or update check has passed so far.
+
+API 36 run `37140928040` reproduced renderer SIGSEGV/SEGV_ACCERR in
+`berberis_HandleNoExec`, followed by browser SIGABRT and disappearance of the
+DevTools socket. The notification rationale was captured/declined, so the
+remaining failure is not explained by that dialog. Repeating the same baseline
+probe is not useful. Candidate runs now retain a failed baseline/update check
+and its evidence while continuing independent candidate diagnostics, without
+clearing app data. A candidate-only storage sentinel is distinct from the
+baseline sentinel; those results cannot satisfy update-preservation acceptance.
+The full .9 build remains in preparation in run `37133916096`; no .9 APK size,
+Android acceptance, or publication result exists yet.
