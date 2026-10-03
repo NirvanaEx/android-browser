@@ -17,6 +17,8 @@ from common import (ROOT, STATE, PROJECT, REPO, cloud_only, create_transfer, dow
 
 TOOLS = PROJECT / 'tools/chromium'
 SRC, OUT = ROOT / 'src', ROOT / 'src/out/Upgrid'
+sys.path.insert(0, str(TOOLS / 'distributed'))
+from action_paths import object_path, host_object
 
 
 def configure():
@@ -72,7 +74,7 @@ def native_prerequisites():
     ninja('-f', wrapper.name, '-j', '4', 'upgrid_ci_prerequisites')
 
 
-def pending_native():
+def pending_native(wave='native'):
     plan = STATE / 'pending.txt'
     with plan.open('w') as stream:
         ninja('-n', '-v', 'chrome_public_apk', stdout=stream)
@@ -83,14 +85,30 @@ def pending_native():
     rule_files = [OUT / 'toolchain.ninja', *OUT.glob('*/toolchain.ninja')]
     rules = [match[1] for file in rule_files for match in
              re.finditer(r'^rule (\S+)$', file.read_text(), re.MULTILINE)
-             if match[1] == 'cxx' or match[1].endswith('_cxx')]
+             if match[1] in ('cc', 'cxx') or match[1].endswith(('_cc', '_cxx'))]
     with database.open('w') as stream:
         ninja('-t', 'compdb', *rules, stdout=stream)
     actions = [item for item in read(database) if item['command'] in commands
-               and item['output'].startswith('obj/') and item['output'].endswith('.o')
-               and item['command'].split(' ', 1)[0].endswith('/clang++')]
+               and object_path(item['output'])
+               and host_object(item['output']) == (wave == 'host')
+               and item['command'].split(' ', 1)[0].endswith(('/clang++', '/clang'))]
     write(STATE / 'pending-cxx.json', actions)
     return actions
+
+
+def host_inputs(args):
+    from host_wave import write_inputs
+    actions = pending_native('host')
+    wrapper, candidates, inputs = write_inputs(ninja, actions, OUT, STATE)
+    dry = STATE / 'host-input-tasks.log'
+    with dry.open('w') as stream:
+        ninja('-f', wrapper.name, '-n', 'upgrid_host_inputs', stdout=stream)
+    report = dict(hostCandidates=candidates, directInputs=inputs,
+                  bootstrapActions=sum(bool(re.match(r'^\[\d+/\d+\]', line)) for line in dry.read_text().splitlines()))
+    write(STATE / 'host-plan-audit.json', report)
+    print(json.dumps(report), flush=True)
+    if not args.audit_only:
+        ninja('-f', wrapper.name, '-j', '4', 'upgrid_host_inputs')
 
 
 def select_cached_workspace(releases, revision):
@@ -98,7 +116,8 @@ def select_cached_workspace(releases, revision):
     # of a failed build still saves fetching the entire Chromium checkout.
     # It is only a source seed: GN/Ninja regenerate and validate every output.
     for prefix, required in [('cache', {'cache.json', 'apk-verification.json'}),
-                             ('workspace', {'workspace.json'})]:
+                             ('workspace', {'workspace.json'}),
+                             ('host-workspace', {'host-workspace.json', 'host-plan.json'})]:
         for release in releases:
             candidate = release['tag_name']
             if not re.fullmatch(r'upgrid-ci-[0-9]+-[0-9]+', candidate):
@@ -189,7 +208,8 @@ def prepare_sources(args):
 
 
 def prepare_native_snapshot(args):
-    tag = transfer_tag()
+    tag = args.tag or transfer_tag()
+    prefix = args.wave
     sys.path.insert(0, str(TOOLS / 'distributed'))
     import prepare_wave
     # Licensing file is pinned to the checked out compiler's accompanying notice.
@@ -199,40 +219,45 @@ def prepare_native_snapshot(args):
     if not notice.exists():
         raise RuntimeError('LLVM license file missing; do not publish compiler without its notice')
     shutil.copyfile(notice, STATE / 'llvm-LICENSE.TXT')
-    sys.argv = ['prepare_wave.py', '--prefix', 'native', '--shards', str(args.shards)]
+    sys.argv = ['prepare_wave.py', '--prefix', prefix, '--shards', str(args.shards)]
     prepare_wave.main()
-    receipt = read(STATE / 'native-receipt.json')
+    receipt = read(STATE / f'{prefix}-receipt.json')
     if receipt['deferred']:
         raise RuntimeError('Missing native source/module prerequisites; refusing speculative wave')
-    upload(tag, STATE / 'native-inputs.tar.gz', STATE / 'native-manifest.json', STATE / 'native-receipt.json')
+    upload(tag, STATE / f'{prefix}-inputs.tar.gz', STATE / f'{prefix}-manifest.json', STATE / f'{prefix}-receipt.json')
     return receipt
 
 
 def prepare_snapshots(args):
-    tag = transfer_tag()
+    tag = args.tag or transfer_tag()
     verify_transfer(tag)
     config = configure()
-    actions = pending_native()
+    wave = args.wave
+    workspace_prefix = 'host-workspace' if wave == 'host' else 'workspace'
+    plan_name = 'host-plan.json' if wave == 'host' else 'plan.json'
+    actions = pending_native(wave)
     # Ninja has finished all writes before these readers start. The workspace
     # and compiler snapshot are independent immutable views of the same tree.
     # Even if native packaging fails, finish the checkpoint upload for reuse.
     with ThreadPoolExecutor(max_workers=2) as pool:
-        workspace = pool.submit(pack_workspace, tag, 'workspace',
-                                checkpoint='native-prerequisites-v1')
+        workspace = pool.submit(pack_workspace, tag, workspace_prefix,
+                                checkpoint=f'{wave}-prerequisites-v1')
         snapshot = pool.submit(prepare_native_snapshot, args)
         workspace_digest = workspace.result()
         receipt = snapshot.result()
-    manifest = read(STATE / 'native-manifest.json')
+    manifest = read(STATE / f'{wave}-manifest.json')
     shards = [i for i, items in enumerate(manifest['shards']) if items]
     plan = {'schema': 1, 'runId': os.environ['GITHUB_RUN_ID'], 'headSha': os.environ['GITHUB_SHA'],
             'tag': tag, 'snapshotSha256': receipt['sha256'], 'workspaceSha256': workspace_digest,
-            'manifestSha256': sha(STATE / 'native-manifest.json'), 'actions': len(actions),
+            'manifestSha256': sha(STATE / f'{wave}-manifest.json'), 'actions': len(actions),
+            'wave': wave, 'workspacePrefix': workspace_prefix,
+            'snapshotName': f'{wave}-inputs.tar.gz', 'manifestName': f'{wave}-manifest.json',
             'shards': shards, 'release': config,
             'chromiumRevision': read(TOOLS / 'upstream.json')['commit']}
-    write(STATE / 'plan.json', plan)
-    upload(tag, STATE / 'plan.json')
+    write(STATE / plan_name, plan)
+    upload(tag, STATE / plan_name)
     output('tag', tag)
-    output('plan_sha256', sha(STATE / 'plan.json'))
+    output('plan_sha256', sha(STATE / plan_name))
     output('matrix', json.dumps({'worker': shards or [0]}))
     output('actions', len(actions))
 
@@ -244,22 +269,26 @@ def prepare(args):
 
 
 def get_plan(args):
-    plan = read(download(args.tag, 'plan.json', STATE, args.plan_sha256))
+    name = 'host-plan.json' if args.wave == 'host' else 'plan.json'
+    plan = read(download(args.tag, name, STATE, args.plan_sha256))
     if plan['headSha'] != os.environ['GITHUB_SHA'] or str(plan['runId']) != os.environ['GITHUB_RUN_ID']:
         raise RuntimeError('Plan belongs to a different workflow revision/run')
+    if plan.get('wave', 'native') != args.wave:
+        raise RuntimeError('Compiler wave mismatch')
     return plan
 
 
 def worker(args):
     plan = get_plan(args)
-    archive = download(args.tag, 'native-inputs.tar.gz', STATE, plan['snapshotSha256'])
+    archive = download(args.tag, plan.get('snapshotName', 'native-inputs.tar.gz'), STATE, plan['snapshotSha256'])
     if args.worker not in plan['shards']:
         raise RuntimeError('Unexpected worker index')
     result = subprocess.run([sys.executable, str(TOOLS / 'distributed/wave_worker.py'),
                              str(archive), plan['snapshotSha256'], str(args.worker)], cwd=STATE)
     archive = STATE / 'objects.tar.gz'
     if archive.exists():
-        target = STATE / f"objects-{plan['runId']}-{os.environ['GITHUB_RUN_ATTEMPT']}-{args.worker}.tar.gz"
+        prefix = 'host-objects' if args.wave == 'host' else 'objects'
+        target = STATE / f"{prefix}-{plan['runId']}-{os.environ['GITHUB_RUN_ATTEMPT']}-{args.worker}.tar.gz"
         archive.rename(target)
         upload(args.tag, target)
     if result.returncode:
@@ -292,17 +321,18 @@ def verify_apk(config):
             'androidAcceptanceVerified': False, 'distributionApproved': False}
 
 
-def finalize(args):
+def restore_wave(args):
     plan = get_plan(args)
-    restore_workspace(args.tag, 'workspace', plan['workspaceSha256'])
+    restore_workspace(args.tag, plan.get('workspacePrefix', 'workspace'), plan['workspaceSha256'])
     configure()
     run('sudo', 'bash', SRC / 'build/install-build-deps.sh', '--android', '--no-prompt')
-    manifest = read(download(args.tag, 'native-manifest.json', STATE, plan['manifestSha256']))
+    manifest = read(download(args.tag, plan.get('manifestName', 'native-manifest.json'), STATE, plan['manifestSha256']))
     releases = gh_json('releases?per_page=100')
     release = next(item for item in releases if item['tag_name'] == args.tag)
     available = {}
     for item in release['assets']:
-        match = re.fullmatch(r'objects-' + str(plan['runId']) + r'-(\d+)-(\d+)\.tar\.gz', item['name'])
+        prefix = 'host-objects' if args.wave == 'host' else 'objects'
+        match = re.fullmatch(prefix + '-' + str(plan['runId']) + r'-(\d+)-(\d+)\.tar\.gz', item['name'])
         if match and int(match[1]) <= int(os.environ['GITHUB_RUN_ATTEMPT']):
             shard, attempt = int(match[2]), int(match[1])
             if shard not in available or attempt > available[shard][0]:
@@ -315,6 +345,11 @@ def finalize(args):
         from import_objects import import_objects
         imported = import_objects(archives, manifest, plan['snapshotSha256'], plan['runId'], plan['headSha'])
         print(json.dumps(imported), flush=True)
+    return plan
+
+
+def finalize(args):
+    plan = restore_wave(args)
     with (STATE / 'remaining-tasks.log').open('w') as log:
         ninja('-n', 'chrome_public_apk', stdout=log)
     started = datetime.datetime.now(datetime.timezone.utc)
@@ -339,7 +374,9 @@ def finalize(args):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('stage', choices=['preflight', 'prepare', 'sources', 'prerequisites',
-                                         'snapshots', 'worker', 'finalize'])
+                                         'host-inputs', 'restore-wave', 'snapshots', 'worker', 'finalize'])
+    parser.add_argument('--wave', choices=['host', 'native'], default='native')
+    parser.add_argument('--audit-only', action='store_true')
     parser.add_argument('--cache-tag', default='auto')
     parser.add_argument('--shards', type=int, default=40, choices=range(1, 41))
     parser.add_argument('--tag')
@@ -353,6 +390,7 @@ def main():
     status = 'failed'
     try:
         {'preflight': preflight, 'prepare': prepare, 'sources': prepare_sources,
+         'host-inputs': host_inputs, 'restore-wave': restore_wave,
          'prerequisites': lambda _: native_prerequisites(), 'snapshots': prepare_snapshots,
          'worker': worker, 'finalize': finalize}[args.stage](args)
         status = 'success'

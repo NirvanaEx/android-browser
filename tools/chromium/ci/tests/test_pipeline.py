@@ -78,6 +78,7 @@ class RelayTests(unittest.TestCase):
 
 @unittest.skipUnless(sys.platform == 'linux' and shutil.which('ninja'), 'Real Ninja test runs on Linux CI')
 class ImportTests(unittest.TestCase):
+    object_prefix = 'obj'
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
@@ -103,7 +104,7 @@ class ImportTests(unittest.TestCase):
         actions = []
         graph = []
         for i in range(2):
-            name = f'obj/{i}.o'
+            name = f'{self.object_prefix}/{i}.o'
             (self.src/f'{i}.cc').write_text('source')
             command = f'../../emitter {name}'
             actions.append({'output': name, 'file': f'../../{i}.cc', 'command': command})
@@ -144,7 +145,7 @@ class ImportTests(unittest.TestCase):
     def test_parallel_import_accepted_and_changed_header_rebuilds(self):
         self.assertEqual(self.invoke()['importedObjects'], 2)
         self.assertIn('no work to do', subprocess.check_output(['ninja', '-C', str(self.out), '-n'], text=True))
-        stamp = max((self.out/f'obj/{i}.o').stat().st_mtime_ns for i in range(2)) + 2_000_000_000
+        stamp = max((self.out/f'{self.object_prefix}/{i}.o').stat().st_mtime_ns for i in range(2)) + 2_000_000_000
         os.utime(self.src/'header.h', ns=(stamp, stamp))
         self.assertIn('[2/2]', subprocess.check_output(['ninja', '-C', str(self.out), '-n'], text=True))
 
@@ -152,26 +153,30 @@ class ImportTests(unittest.TestCase):
         (self.src/'header.h').write_text('changed')
         with self.assertRaisesRegex(RuntimeError, 'Compiler input changed'):
             self.invoke()
-        self.assertFalse((self.out/'obj/0.o').exists())
+        self.assertFalse((self.out/f'{self.object_prefix}/0.o').exists())
         self.assertEqual((self.out/'.ninja_deps').read_bytes(), HEADER)
 
     def test_incomplete_wave_rejected_before_output_mutation(self):
         with self.assertRaisesRegex(RuntimeError, 'Incomplete or overlapping'):
             self.invoke(self.archives[:1])
-        self.assertFalse((self.out/'obj/0.o').exists())
+        self.assertFalse((self.out/f'{self.object_prefix}/0.o').exists())
 
     def test_corrupt_object_rejected(self):
         stage = self.state/'corrupt'
         stage.mkdir()
         with tarfile.open(self.archives[0]) as archive:
             archive.extractall(stage, filter='data')
-        (stage/'obj/0.o').write_bytes(b'corrupted')
+        (stage/f'{self.object_prefix}/0.o').write_bytes(b'corrupted')
         with tarfile.open(self.archives[0], 'w:gz') as archive:
-            for name in ('result.json', '.ninja_deps', '.ninja_log', 'obj/0.o'):
+            for name in ('result.json', '.ninja_deps', '.ninja_log', f'{self.object_prefix}/0.o'):
                 archive.add(stage/name, arcname=name)
         with self.assertRaisesRegex(RuntimeError, 'Object or dependency'):
             self.invoke()
-        self.assertFalse((self.out/'obj/0.o').exists())
+        self.assertFalse((self.out/f'{self.object_prefix}/0.o').exists())
+
+
+class HostImportTests(ImportTests):
+    object_prefix = 'clang_x64/obj'
 
 
 @unittest.skipUnless(sys.platform == 'linux' and shutil.which('zstd'), 'Archive test runs on Linux CI')
