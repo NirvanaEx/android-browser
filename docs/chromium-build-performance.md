@@ -26,7 +26,7 @@ The subsequent draft-creation failure lost the prepared state in that run.
 
 | Stage | Change | Remaining constraint / verification |
 | --- | --- | --- |
-| Source setup | Four parallel cache downloads and four gclient sync jobs on GitHub; local resource defaults unchanged | Full workspace still needs decompression; GN validates changed configuration |
+| Source setup | Four parallel cache downloads and four gclient sync jobs on GitHub; reuse successful pinned setup from a verified workspace if DEPS, gclient metadata, setup script, pins and tool hashes match | Source/depot HEAD and ownership are still checked, depot bootstrap still runs on each fresh VM, missing/mismatching setup falls back to sync/hooks; local defaults unchanged |
 | Host preparation | Query actual Ninja direct inputs, including implicit/order-only dependencies and validations; build only this dependency cut | Bootstrap tools needed to generate compiler inputs still run here; `mode=plan` measures this cut on real Chromium |
 | Host compilation | Separate balanced host C/C++ matrix using the existing exact-command, hash-verified object transfer | New matrix needs a full production-sized trial; fixture tests are not a timing result |
 | Android preparation | Restore host checkpoint, validate/import objects, link tools and generate the remaining inputs | Genuine dependencies cannot execute before their inputs; no timestamp tricks |

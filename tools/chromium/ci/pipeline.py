@@ -203,7 +203,14 @@ def prepare_sources(args):
         run(sys.executable, TOOLS / 'prepare.py', '--checkout', ROOT)
     # System dependencies are installed only on the disposable CI VM.
     run('sudo', 'bash', SRC / 'build/install-build-deps.sh', '--android', '--no-prompt')
-    run(sys.executable, TOOLS / 'prepare.py', '--checkout', ROOT, '--hooks')
+    from source_cache import reusable, save
+    ready = bool(cache_tag) and reusable(ROOT, TOOLS)
+    print(json.dumps(dict(stage='source-setup', reusePinnedDependencies=ready)), flush=True)
+    # Even the fast path verifies source/depot HEADs, ownership and gclient
+    # configuration and initializes depot bootstrap in the new hosted VM.
+    run(sys.executable, TOOLS / 'prepare.py', '--checkout', ROOT, *([] if ready else ['--hooks']))
+    if not ready:
+        save(ROOT, TOOLS)
     run(sys.executable, TOOLS / 'build.py', '--checkout', ROOT, '--profile', config['profile'], '--generate-only')
 
 
