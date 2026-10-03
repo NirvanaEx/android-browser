@@ -278,7 +278,12 @@ def prepare(args):
 def first_wave(args):
     # A warm incremental build must not pay for an empty host wave and a second
     # full workspace transfer. Continue on this VM directly when tools are ready.
-    args.wave = 'host' if pending_native('host') else 'native'
+    pending = pending_native('host')
+    # A handful of host recompiles costs less than shipping/restoring the whole
+    # ~20 GB compressed checkout. Keep this threshold explicit and measurable.
+    args.wave = 'host' if len(pending) >= 128 else 'native'
+    write(STATE / 'host-routing.json', dict(pendingHostActions=len(pending), wave=args.wave,
+                                           minimumDistributedActions=128))
     if args.wave == 'native':
         native_prerequisites()
     prepare_snapshots(args)
