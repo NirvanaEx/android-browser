@@ -49,6 +49,8 @@ jobs:
           python3 -m unittest discover -s tools/chromium/ci/tests -v
           python3 -m unittest discover -s tools/chromium/tests -v
           node --test tools/chromium/tests/youtube-options.test.cjs
+          python3 tools/chromium/tests/test-scrub.py --jdk "$JAVA_HOME_17_X64"
+          python3 tools/chromium/tests/test-orientation.py --jdk "$JAVA_HOME_17_X64"
           UPGRID_TEST_NINJA=ninja python3 tools/chromium/distributed/test_cache.py
   prepare:
     needs: validate
