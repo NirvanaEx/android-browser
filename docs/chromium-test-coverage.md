@@ -110,3 +110,15 @@ records that update preservation and default runtime are unverified, and can
 never yield overall acceptance. No sandbox, DCHECK or fullscreen activation
 check is disabled. Screenshots/logcat and scenario assertions remain enabled.
 This is one causal GPU comparison, not a production configuration change.
+
+The Graphite-off run 37225357560 failed too. Evidence records the unchanged
+.10 APK and diagnostic flag. Its log has no CrGpuMain, Vulkan debug-name crash,
+blocking-disallowed DCHECK or SIGABRT, but contains 29 renderer native-crash
+records with `berberis_HandleNoExec` and one input-focus ANR at 18:44:01 UTC.
+The fixture remains unreachable. Therefore the GPU change isolates one path
+and does not repair the renderer or establish video playback.
+
+Before proposing native ARM64 Android on GitHub, `mode=android-host-probe`
+checks an `ubuntu-24.04-arm` runner's architecture and KVM API access without
+creating a VM or installing Android. Its success only means the report was
+collected; inspect kvmApiVersion/error. It is not an emulator compatibility test.

@@ -13,7 +13,7 @@ on:
       mode:
         description: Validate tooling or build the complete APK
         type: choice
-        options: [build, validate, android-test, plan, diagnose-release]
+        options: [build, validate, android-test, plan, diagnose-release, android-host-probe]
         default: build
       cache_tag:
         description: auto selects a completed compatible cache; empty forces a cold build
@@ -70,6 +70,40 @@ jobs:
           name: overlay-check-${{ github.run_id }}
           path: build/overlay-check.json
           if-no-files-found: ignore
+          retention-days: 14
+  android_host_probe:
+    needs: validate
+    if: github.event_name == 'workflow_dispatch' && inputs.mode == 'android-host-probe'
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 5
+    permissions: {}
+    steps:
+      - name: Inspect ARM64 host virtualization without installing or running Android
+        shell: bash
+        run: |
+          mkdir -p host-evidence
+          python3 - <<'PY'
+          import errno, fcntl, json, os, pathlib, platform
+          report = dict(machine=platform.machine(), kernel=platform.release(),
+                        kvmExists=pathlib.Path('/dev/kvm').exists(), kvmApiVersion=None,
+                        emulatorLaunched=False, androidAcceptanceVerified=False)
+          try:
+              # KVM_GET_API_VERSION is read-only; no VM is created.
+              fd = os.open('/dev/kvm', os.O_RDWR | os.O_CLOEXEC)
+              try:
+                  report['kvmApiVersion'] = fcntl.ioctl(fd, 0xAE00, 0)
+              finally:
+                  os.close(fd)
+          except OSError as error:
+              report['kvmError'] = dict(errno=error.errno, message=os.strerror(error.errno))
+          pathlib.Path('host-evidence/arm64-host.json').write_text(json.dumps(report, indent=2))
+          print(json.dumps(report, indent=2))
+          PY
+          lscpu > host-evidence/lscpu.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android-host-evidence-${{ github.run_id }}
+          path: host-evidence/
           retention-days: 14
   diagnose:
     needs: validate
