@@ -278,7 +278,7 @@ def acceptance_coverage(checks):
         'real_video_frame': ['direct_playing'],
         'player_enter_exit_playback': ['direct_playing', 'direct_paused', 'clipped_playing',
                                      'shadow_playing', 'iframe_playing', 'iframe-same_playing',
-                                     'repeat-native-play-pause', 'container_no_mixed_ui'],
+                                     'repeat-native-play-pause', 'container_isolated_video'],
         'manual_rotation': ['manual-rotation'],
         'background_and_tab_pause': ['background-pause', 'tab-switch-pause'],
     }
@@ -712,14 +712,23 @@ def run():
             cdp.call('Page.navigate', dict(url='http://127.0.0.1:8766/clipped'))
             wait_for(lambda: cdp.js('typeof state === "function" && v.readyState >= 2'))
             tap('Play')
+            before = cdp.js('state()')
             tap('Container fullscreen')
-            wait_for(lambda: cdp.js('!!document.fullscreenElement'))
-            time.sleep(3)
-            assert not cdp.js('v.matches(":fullscreen")')
-            assert find('Позиция видео') is None, 'Upgrid overlaid site container'
-            screenshot('container-keeps-site-controls')
-            checks['container_no_mixed_ui'] = dict(status='passed', evidence='container-keeps-site-controls.png')
-            adb('shell', 'input', 'keyevent', 'KEYCODE_BACK')
+            wait_for(lambda: cdp.js('v.matches(":fullscreen")'))
+            wait_for(lambda: find('Позиция видео') is not None)
+            time.sleep(2)
+            during = cdp.js('state()')
+            assert_playing_advanced(before, during)
+            assert during['loads'] == before['loads'], 'Container promotion reloaded the video'
+            screenshot('container-isolated-upgrid-video')
+            tap('Вернуться на страницу')
+            wait_for(lambda: not cdp.js('document.fullscreenElement'))
+            time.sleep(1)
+            after = cdp.js('state()')
+            assert_playing_advanced(during, after)
+            checks['container_isolated_video'] = dict(
+                status='passed', evidence='container-isolated-upgrid-video.png',
+                before=before, during=during, after=after)
         time.sleep(2)
         cdp.ws.close()
         adb('shell', 'am', 'force-stop', PACKAGE)

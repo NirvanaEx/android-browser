@@ -21,6 +21,13 @@ Current source edits are a work in progress, not a verified replacement APK:
   FullscreenManager already requests exit. This avoids competing exit requests,
   but is not a proven diagnosis of the phone crash without its stack.
 
+The Android regression scenario now requires that a site's container request
+selects the contained video, opens Upgrid controls, preserves decoded frames
+and the existing load, and continues playback after the player exit. The Blink
+regression also covers selection and fail-closed fallback. These assertions are
+source changes only until they pass against the pinned tree and exact APK in
+GitHub Actions.
+
 Next: validate overlay against the pinned tree; add/run fullscreen selection,
 permission denial and lifecycle regression checks in GitHub; examine exit crash
 diagnostics before claiming a fix; update the stale container-keep-site-controls
