@@ -20,7 +20,7 @@ class FinalProgressTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             state = pathlib.Path(directory)
             (state/'input.h').write_text('first')
-            (state/'build.ninja').write_text('rule cc\n  command = touch object.o\n  description = CXX object.o\nbuild object.o: cc input.h\n')
+            (state/'build.ninja').write_text('rule cc\n  command = touch object.o\n  description = CXX object.o\nbuild object.o: cc input.h\nbuild chrome_public_apk: phony object.o\n')
             subprocess.run(['ninja', '-C', directory, 'object.o'], check=True, capture_output=True)
             (state/'imported-outputs.json').write_text('["object.o"]')
             with patch.dict(os.environ, GITHUB_ACTIONS='true'):
