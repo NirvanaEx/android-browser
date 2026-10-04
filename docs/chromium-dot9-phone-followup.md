@@ -192,3 +192,23 @@ passed (19). No application code, APK, or Telegram release changed during this
 diagnosis. The runtime remains unsuitable for accepting this release with its
 normal settings. The owner's exit crash still lacks its own evidence; native
 translation configuration and the transient toolbar duplication remain open.
+
+## Explicit .11 test publication (2026-10-05)
+
+After the failed checks and their limitations were explained, the owner asked
+"можешь опубликовать в телеграм?". This authorizes one publication of the exact
+.11 candidate above as Test; it does not approve a stable release or future
+candidates with failed acceptance.
+
+Telegram confirmed [message 164](https://t.me/c/4335405613/164) in "Мои приложения".
+The existing `upgrid` catalogue indexed release 54 with exact versionName,
+build 768003114 and the unchanged SHA-256. The caption discloses failed Android
+acceptance, unverified phone behavior/update preservation, missing translation
+and the unresolved duplicate toolbar. Existing history and access settings
+were preserved with a WAL-aware database backup before publication.
+
+`verify_release.py` passed the latest version, APK hash/size, download button,
+menu images, Bot API file access as UID/GID 101:101 and fresh Telegram polling.
+Publication and verification receipts are in server directory
+`work/upgrid-test-2eba4f35/` and local `build/ci-final-37230383674/telegram/`.
+Android acceptance remains false. No APK was separately sent to a personal chat.
