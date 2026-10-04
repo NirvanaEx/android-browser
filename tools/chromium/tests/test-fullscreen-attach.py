@@ -67,9 +67,10 @@ public class WebContents {
 }''',
     'org/chromium/chrome/browser/tab/Tab.java': '''package org.chromium.chrome.browser.tab;
 public class Tab {
-    public boolean interactable = true;
+    public boolean interactable = true, hidden;
     public org.chromium.content_public.browser.WebContents contents = new org.chromium.content_public.browser.WebContents();
     public boolean isUserInteractable() { return interactable; }
+    public boolean isHidden() { return hidden; }
     public org.chromium.content_public.browser.WebContents getWebContents() { return contents; }
 }''',
     'org/chromium/chrome/browser/fullscreen/FullscreenOptions.java': '''package org.chromium.chrome.browser.fullscreen;
@@ -130,6 +131,46 @@ def main():
                         str(HERE / 'UpgridFullscreenAttachTest.java')], check=True)
         subprocess.run([args.jdk / 'bin/java', '-Xmx64m', '-cp', str(work),
                         'org.chromium.chrome.browser.upgrid.UpgridFullscreenAttachTest'], check=True)
+        # Exercise the actual player's exit policy, separately from the
+        # coordinator fake. Observer ordering must not turn hiding into Play.
+        source = (HERE.parent / 'overlay/UpgridPlayer.java').read_text()
+        start = source.index('    public static void onFullscreenExited(')
+        end = source.index('\n    private UpgridPlayer(', start)
+        exit_source = '''package org.chromium.chrome.browser.upgrid;
+import android.app.Activity;
+import org.chromium.chrome.browser.tab.Tab;
+import java.util.*;
+public class UpgridPlayer {
+    static Map<Activity, UpgridPlayer> ACTIVE = new HashMap<>();
+    Tab mTab = new Tab();
+    boolean paused, requestedExit;
+    int closes;
+    void close(boolean pause, boolean exit) { paused = pause; requestedExit = exit; closes++; }
+    // ACTUAL_EXIT
+    public static void main(String[] args) {
+        Activity activity = new Activity();
+        UpgridPlayer player = new UpgridPlayer();
+        ACTIVE.put(activity, player);
+        onFullscreenExited(activity, player.mTab);
+        if (player.closes != 1 || player.paused || player.requestedExit)
+            throw new AssertionError("visible return must preserve playback and not exit twice");
+        player.mTab.hidden = true;
+        onFullscreenExited(activity, player.mTab);
+        if (player.closes != 2 || !player.paused || player.requestedExit)
+            throw new AssertionError("hidden tab must pause regardless of observer order");
+        onFullscreenExited(activity, new Tab());
+        if (player.closes != 2) throw new AssertionError("another tab must not release player");
+        System.out.println("Actual exit policy preserves visible playback and hidden-tab pause.");
+    }
+}'''.replace('    // ACTUAL_EXIT', source[start:end])
+        exit_dir = work / 'exit-policy'
+        exit_dir.mkdir()
+        exit_file = exit_dir / 'UpgridPlayer.java'
+        exit_file.write_text(exit_source)
+        subprocess.run([args.jdk / 'bin/javac', '-J-Xmx128m', '--release', '17', '-cp', str(work),
+                        '-d', str(exit_dir), str(exit_file)], check=True)
+        subprocess.run([args.jdk / 'bin/java', '-Xmx64m', '-cp', str(exit_dir) + os.pathsep + str(work),
+                        'org.chromium.chrome.browser.upgrid.UpgridPlayer'], check=True)
 
 
 if __name__ == '__main__':
