@@ -88,7 +88,16 @@ def main():
                 "obj/chrome/browser/extensions/extensions/external_provider_impl.o",
                 "obj/chrome/browser/ui/ui/extension_install_dialog_view_android.o",
             ]
-    run_checked([depot / "autoninja", "-C", output, "-j", str(args.jobs), *targets], cwd=src, env=env)
+    observer = None
+    final_state = os.environ.get('UPGRID_FINAL_AUDIT_DIR')
+    if final_state:
+        if args.target != 'chrome_public_apk' or args.check_integration:
+            raise RuntimeError('Final distributed audit requires the APK target')
+        from ci.final_progress import prepare
+        observer = prepare(src / 'third_party/ninja/ninja', output, final_state)
+        env['NINJA_STATUS'] = '[%f/%t] '
+    run_checked([depot / "autoninja", "-C", output, "-j", str(args.jobs), *targets],
+                cwd=src, env=env, observer=observer)
     # A successful command must be tied to the inputs that were actually built.
     current_revision = subprocess.check_output(
         ["git", "rev-parse", "HEAD"], cwd=src, text=True).strip()

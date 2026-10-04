@@ -84,3 +84,30 @@ speedup, compare actual setup/bootstrap/matrix/restore/link timings against the
 baseline, including the extra checkpoint transfer. Keep investigating if the
 dependency cut still pulls most host compilation into bootstrap. Do not disable
 dependency checks, change browser features or publish an unaccepted APK for speed.
+# Final-stage safeguards (2026-10-04)
+
+Run 37156601112 completed all 40 native shards, but final workspace restore/import
+took 27m42s and the combined build step remained active for over 30 minutes.
+The cause inside that step was not established: the running-job log API returned
+404. Neither its step name nor `in_progress` proves linking or forward progress.
+
+Future runs audit the final Ninja plan **after** overlay/GN regeneration. Any
+scheduled CC/CXX output already imported from a worker stops the build with
+`final-plan.json`; 128 or more remaining undistributed CC/CXX actions also stop
+it rather than silently spending hours on one runner. This is a diagnostic
+performance guard, not permission to ignore dependencies or force timestamps.
+
+During final Ninja, a separate GitHub Check updates every two minutes. Local
+receipts update every 30 seconds with completed action counts, last completed
+action, elapsed time, descendant process names, cumulative CPU time and RSS.
+No process arguments or environment are published. A ten-minute interval without
+a completed action emits a warning, not a false hang verdict or automatic kill
+of a legitimate long linker. The existing job timeout and disk guard remain.
+`final-build.log`, `final-tasks.log`, `final-plan.json`, `final-progress.json`
+and its JSONL history are retained on both success and failure. API outages do
+not turn a build into a failure; diagnostic files remain available afterward.
+The progress check is only Ninja progress, never APK or Android acceptance.
+
+These safeguards improve diagnosis and prevent hidden recompilation. They do
+not yet remove the measured full-workspace transfer or prove a faster complete
+release. The already-running 15ee93f workflow cannot acquire these changes.

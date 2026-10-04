@@ -129,5 +129,6 @@ def import_objects(archives, manifest, digest, run_id, head, workers=4):
     log.replace(out / '.ninja_log')
     result = {'importedObjects': len(accepted), 'uniqueInputsVerified': len(unique_inputs),
               'snapshotSha256': digest, 'runId': str(run_id), 'headSha': head}
+    write(STATE / 'imported-outputs.json', sorted(outputs))
     write(STATE / 'import-receipt.json', result)
     return result
