@@ -24,12 +24,13 @@ class StartupDiagnosisTests(unittest.TestCase):
             self.assertEqual(diagnosis.collect_tombstones(Path(tmp), seen), [])
             self.assertEqual([x.name for x in Path(tmp).iterdir()], ['tombstone_01.txt'])
 
-    def test_experiments_only_remove_graphite_and_jit(self):
+    def test_experiments_preserve_isolation(self):
         base = diagnosis.harness.runtime_flags('default').strip()
         self.assertEqual(diagnosis.PROFILES, {
             'default': base + '\n',
             'graphite-off': base + ' --disable-skia-graphite\n',
             'graphite-off-jitless': base + ' --disable-skia-graphite --js-flags=--jitless\n',
+            'graphite-off-low-end': base + ' --disable-skia-graphite --enable-low-end-device-mode\n',
         })
 
 
