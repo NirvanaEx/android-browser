@@ -11,7 +11,7 @@ on:
       mode:
         description: Validate tooling or build the complete APK
         type: choice
-        options: [build, validate, android-test, plan]
+        options: [build, validate, android-test, plan, diagnose-release]
         default: build
       cache_tag:
         description: auto selects a completed compatible cache; empty forces a cold build
@@ -55,6 +55,30 @@ jobs:
           python3 tools/chromium/tests/test-scrub.py --jdk "$JAVA_HOME_17_X64"
           python3 tools/chromium/tests/test-orientation.py --jdk "$JAVA_HOME_17_X64"
           UPGRID_TEST_NINJA=ninja python3 tools/chromium/distributed/test_cache.py
+  diagnose:
+    needs: validate
+    if: github.event_name == 'workflow_dispatch' && inputs.mode == 'diagnose-release'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    permissions:
+      contents: write # Read exact private draft assets with the CI job token.
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - run: |
+          bash tools/chromium/ci/setup-runner.sh
+          sudo apt-get install -y --no-install-recommends llvm-18
+      - name: Inspect completed .9 cache without building or running the APK
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 -u tools/chromium/ci/diagnose_release.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: release-diagnostics-${{ github.run_id }}
+          path: /home/runner/upgrid-state/diagnosis/reports/
+          retention-days: 14
   prepare:
     needs: validate
     if: github.event_name == 'workflow_dispatch' && (inputs.mode == 'build' || inputs.mode == 'plan')
