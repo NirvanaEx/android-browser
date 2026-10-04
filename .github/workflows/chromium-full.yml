@@ -281,6 +281,7 @@ jobs:
     permissions:
       contents: write
       actions: write # Dispatch Android tests as soon as the verified APK is uploaded.
+      checks: write # Publish final Ninja progress independently of live job logs.
     env:
       GH_TOKEN: ${{ github.token }}
       TRANSFER_TAG: ${{ needs.prepare_native.outputs.tag || needs.prepare.outputs.tag }}
@@ -309,6 +310,9 @@ jobs:
             /home/runner/upgrid-state/apk-size.json
             /home/runner/upgrid-state/import-receipt.json
             /home/runner/upgrid-state/remaining-tasks.log
+            /home/runner/upgrid-state/final-*.json
+            /home/runner/upgrid-state/final-*.jsonl
+            /home/runner/upgrid-state/final-*.log
             /home/runner/upgrid-state/android-dispatch.json
             /home/runner/upgrid-state/timing-*.json
             /home/neyron/.cache/upgrid/chromium/upgrid-*-build-receipt.json

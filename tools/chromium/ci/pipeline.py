@@ -367,6 +367,8 @@ def restore_wave(args):
         from import_objects import import_objects
         imported = import_objects(archives, manifest, plan['snapshotSha256'], plan['runId'], plan['headSha'])
         print(json.dumps(imported), flush=True)
+    else:
+        write(STATE / 'imported-outputs.json', [])
     write(STATE / f'restored-{args.wave}.json', dict(runId=plan['runId'], headSha=plan['headSha'],
           workspaceSha256=plan['workspaceSha256'], wave=args.wave))
     return plan
@@ -387,7 +389,8 @@ def assemble(args):
     with (STATE / 'remaining-tasks.log').open('w') as log:
         ninja('-n', 'chrome_public_apk', stdout=log)
     started = datetime.datetime.now(datetime.timezone.utc)
-    run(sys.executable, TOOLS / 'build.py', '--checkout', ROOT, '--profile', plan['release']['profile'], '--jobs', '4')
+    run(sys.executable, TOOLS / 'build.py', '--checkout', ROOT, '--profile', plan['release']['profile'], '--jobs', '4',
+        env={**os.environ, 'UPGRID_FINAL_AUDIT_DIR': str(STATE)})
     build_receipt = read(ROOT / f"upgrid-{plan['release']['profile']}-build-receipt.json")
     if datetime.datetime.fromisoformat(build_receipt['finishedAtUtc']) < started:
         raise RuntimeError('Stale build receipt')
