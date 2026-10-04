@@ -32,13 +32,16 @@ class HostPlanTests(unittest.TestCase):
             query_inputs('', {'missing'})
 
     def test_only_safe_host_and_android_object_paths_are_accepted(self):
-        for name in ['obj/a.o', 'clang_x64/obj/a.o', 'clang_x64_v8_arm64/obj/v8/a.o']:
+        for name in ['obj/a.o', 'clang_x64/obj/a.o', 'clang_x64_v8_arm64/obj/v8/a.o',
+                     'obj/third_party/xnnpack/f16_arch=armv8.2-a+fp16/kernel.o']:
             self.assertTrue(object_path(name), name)
         self.assertTrue(host_object('clang_x64/obj/a.o'))
         self.assertFalse(host_object('obj/a.o'))
         self.assertFalse(host_object('clang_arm64/obj/a.o'))
         for name in ['/obj/a.o', '../obj/a.o', 'clang_x64/../obj/a.o',
-                     'clang_x64/obj/a.o;echo', 'unknown/obj/a.o', 'obj/a.exe', 'obj/a\\b.o']:
+                     'clang_x64/obj/a.o;echo', 'unknown/obj/a.o', 'obj/a.exe', 'obj/a\\b.o',
+                     'obj/a=b/../bad.o', 'obj/a=b/$evil.o', 'obj/a=b/bad:rule.o',
+                     'obj/a=b/bad name.o', 'obj/a=b/bad\nname.o']:
             self.assertFalse(object_path(name), name)
 
     @unittest.skipUnless(sys.platform == 'linux' and shutil.which('ninja'), 'Real Ninja graph on GitHub')

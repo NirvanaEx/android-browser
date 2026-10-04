@@ -111,3 +111,28 @@ The progress check is only Ninja progress, never APK or Android acceptance.
 These safeguards improve diagnosis and prevent hidden recompilation. They do
 not yet remove the measured full-workspace transfer or prove a faster complete
 release. The already-running 15ee93f workflow cannot acquire these changes.
+
+## Completed final-stage evidence (2026-10-04)
+
+Build 37156601112 succeeded. The assemble step ran 23:43:42–00:43:35 UTC
+(59m53s), after 27m42s of restore/import. Its final Ninja executed 9,945
+actions: ACTION 7,348; AR 1,951; ASM 256; CC 232; CXX 16; RUST 120;
+RUST(MACRO) 4; RUST(BIN) 2; COPY 9; LINK 6; SOLINK 1. Thus this was not
+just APK packaging after parallel C++. The log records completion of SOLINK
+at 00:40:05, R8 at 00:41:52, APK creation at 00:42:00 and lint at 00:43:15.
+Those timestamps alone do not measure the individual operations' durations.
+
+Of the 248 remaining CC/CXX descriptions, 190 are XNNPACK objects whose paths
+contain `=` (for example `f16-avgpool_arch=armv8.2-a+fp16`). The shared
+`object_path` allowlist excluded that character, so the planner omitted those
+objects from the native wave. The corrected allowlist permits literal `=`
+while rejecting traversal and shell/Ninja metacharacters. Regression tests
+exercise planner routing and the actual worker Ninja/depfile grammar on Linux.
+The final audit also recognizes quoted descriptions, so an imported XNNPACK
+object cannot evade the repeated-compilation guard.
+
+The other 58 objects (56 clang_x64 and two plain obj paths) need separate
+routing analysis; the warm host-wave threshold intentionally leaves small
+host rebuilds. The >=128 guard remains unchanged. Moving 190 actions does not
+prove a 190/248 reduction in wall time, and cannot explain all 7,348 ACTIONs.
+No second full build was launched solely to benchmark this fix.
