@@ -34,6 +34,7 @@ TOOLBAR_JAVA = "chrome/browser/ui/android/toolbar/java/src/org/chromium/chrome/b
 TABLET_LAYOUT = "chrome/browser/ui/android/toolbar/java/res/layout/toolbar_tablet.xml"
 TABLET_JAVA = "chrome/browser/ui/android/toolbar/java/src/org/chromium/chrome/browser/toolbar/top/ToolbarTablet.java"
 FULLSCREEN_CSS = "third_party/blink/renderer/core/css/fullscreen.css"
+FULLSCREEN = "third_party/blink/renderer/core/fullscreen/fullscreen.cc"
 TOOLBAR_BUILD = "chrome/browser/ui/android/toolbar/BUILD.gn"
 MANIFEST = "chrome/android/java/AndroidManifest.xml"
 EXTERNAL_PROVIDERS = "chrome/browser/extensions/external_provider_impl.cc"
@@ -46,7 +47,7 @@ TRACKED = (MOJOM, HEADER, SOURCE, MEDIA_H, MEDIA_CC, MEDIA_TEST, ORIENTATION,
            NATIVE_BUILD, ACTIVITY, MENU, PACKAGE, SCREEN_API, SCREEN_IMPL, SCREEN_TEST, LABEL,
            TOOLBAR_LAYOUT, TOOLBAR_JAVA, TOOLBAR_BUILD, MANIFEST, EXTERNAL_PROVIDERS,
            CONTEXT_MENU, CONTEXT_MENU_TEST, CHROME_ACTIVITY, TOOLBAR_OVERLAY, LINT_CONFIG,
-           TABLET_LAYOUT, TABLET_JAVA, FULLSCREEN_CSS)
+           TABLET_LAYOUT, TABLET_JAVA, FULLSCREEN_CSS, FULLSCREEN)
 NEW_FILES = {
     "chrome/browser/android/upgrid_player.cc": "player_android.cc",
     "chrome/browser/android/upgrid_translate.cc": "translate_android.cc",
@@ -107,16 +108,8 @@ def render(inputs):
         "                    mBrowserControlsStateProvider.getAndroidControlsVisibility(),\n"
         "                    BrowserControlsUtils.isTopControlsRefactorOffsetEnabled());\n"
         "        }", TOOLBAR_OVERLAY)
-    output[MENU] = replace_once(output[MENU],
-        "        return currentTab != null && TranslateUtils.canTranslateCurrentTab(currentTab, true);",
-        "        return currentTab != null\n"
-        "                && (org.chromium.chrome.browser.upgrid.UpgridTranslate.canTranslate(currentTab)\n"
-        "                        || TranslateUtils.canTranslateCurrentTab(currentTab, true));", MENU)
-    output[CHROME_ACTIVITY] = replace_once(output[CHROME_ACTIVITY],
-        '            RecordUserAction.record("MobileMenuTranslate");',
-        '            RecordUserAction.record("MobileMenuTranslate");\n'
-        "            if (org.chromium.chrome.browser.upgrid.UpgridTranslate.translate(currentTab)) {\n"
-        "                return true;\n            }", CHROME_ACTIVITY)
+    # Keep Chrome's native Translate menu/UI and service readiness checks.
+    # An installed extension must not intercept this browser command.
     # MenuModelBridge supplies native extension actions without an Android menu ID.
     # The hierarchy controller already wraps those actions with dialog dismissal.
     # Replacing them routes ID 0 to ChromeContextMenuPopulator and crashes on tap.
@@ -190,14 +183,20 @@ def render(inputs):
         "  bool ShouldShowControls() const;\n  void SetUpgridControlsHidden(bool hidden);\n"
         "  bool IsUpgridPlayerActive() const { return upgrid_controls_hidden_; }\n"
         "  uint64_t UpgridSourceEpoch() const { return upgrid_source_epoch_; }\n"
-        "  static HeapVector<Member<HTMLMediaElement>> UpgridMediaCandidates(Document&);", MEDIA_H)
+        "  static HeapVector<Member<HTMLMediaElement>> UpgridMediaCandidates(Document&);\n"
+        "  static Element* UpgridFullscreenTarget(Element&);", MEDIA_H)
     output[MEDIA_H] = replace_once(output[MEDIA_H], "  std::optional<bool> user_wants_controls_visible_;",
         "  bool upgrid_controls_hidden_ = false;\n  uint64_t upgrid_source_epoch_ = 0;\n"
         "  std::optional<bool> user_wants_controls_visible_;", MEDIA_H)
     output[MEDIA_CC] = replace_once(output[MEDIA_CC], "void HTMLMediaElement::InvokeLoadAlgorithm() {",
         "void HTMLMediaElement::InvokeLoadAlgorithm() {\n  ++upgrid_source_epoch_;", MEDIA_CC)
+    output[MEDIA_CC] = replace_once(output[MEDIA_CC], "namespace blink {",
+        '#include <cmath>\n'
+        '#include "third_party/blink/renderer/core/geometry/dom_rect.h"\n'
+        '#include "third_party/blink/renderer/core/style/computed_style.h"\n\n'
+        'namespace blink {', MEDIA_CC)
     output[MEDIA_CC] = replace_once(output[MEDIA_CC], "bool HTMLMediaElement::ShouldShowControls() const {",
-        fragment("video_registry.cc.inc") +
+        fragment("video_registry.cc.inc") + fragment("video_fullscreen_target.cc.inc") +
         "void HTMLMediaElement::SetUpgridControlsHidden(bool hidden) {\n"
         "  upgrid_controls_hidden_ = hidden;\n  UpdateControlsVisibility();\n}\n\n"
         "bool HTMLMediaElement::ShouldShowControls() const {\n"
@@ -209,6 +208,18 @@ def render(inputs):
     # Keep fullscreen.css in the write set to restore the previous overlay's
     # persistent-video rule when updating a cached Chromium checkout.
     output[FULLSCREEN_CSS] = inputs[FULLSCREEN_CSS]
+    output[FULLSCREEN] = replace_once(output[FULLSCREEN],
+        '#include "third_party/blink/renderer/core/html/html_body_element.h"',
+        '#include "third_party/blink/renderer/core/html/media/html_media_element.h"\n'
+        '#include "third_party/blink/renderer/core/html/html_body_element.h"', FULLSCREEN)
+    output[FULLSCREEN] = replace_once(output[FULLSCREEN],
+        '  LocalDOMWindow& window = *document.domWindow();\n\n  // 8. If `error` is false:',
+        '  // The original request already passed activation and permissions.\n'
+        '  // Select a video in that same container/document before entering the\n'
+        '  // top layer, avoiding a second fullscreen transition or CSS capture.\n'
+        '  if (!(request_type & FullscreenRequestType::kForCrossProcessDescendant))\n'
+        '    pending = HTMLMediaElement::UpgridFullscreenTarget(*pending);\n\n'
+        '  LocalDOMWindow& window = *document.domWindow();\n\n  // 8. If `error` is false:', FULLSCREEN)
     output[MEDIA_TEST] = replace_once(output[MEDIA_TEST],
         '#include "third_party/blink/renderer/core/dom/element.h"',
         '#include "third_party/blink/renderer/core/dom/element.h"\n'
