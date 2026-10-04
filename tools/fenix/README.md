@@ -1,5 +1,9 @@
 # Fenix migration workbench
 
+For interactive testing on the Windows PC, open `Upgrid-PC.cmd` at the repository
+root. The [PC lab](../pc-lab/README.md) provides an isolated Android window,
+incremental build/install, source watch, local test pages and bug capture.
+
 This builds the Firefox Android source pinned in `upstream.json`. It is a migration prototype, not the finished replacement browser. The existing `app/` remains independently buildable.
 
 ## Linux / WSL setup
