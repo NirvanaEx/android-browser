@@ -233,6 +233,13 @@ class PlayerHost : public content::WebContentsObserver,
     if (state && state->token && std::isfinite(state->area) && state->area > 0 &&
         (!fullscreen_only_ || state->fullscreen))
       target->state = std::move(state);
+    // In passive mode the renderer has already identified the real fullscreen
+    // video. Do not hold up its controls for unrelated/ad frames to reply or
+    // reach the discovery deadline. Manual discovery still ranks all videos.
+    if (fullscreen_only_ && target->state) {
+      FinishDiscovery(generation);
+      return;
+    }
     if (--pending_ == 0)
       FinishDiscovery(generation);
   }

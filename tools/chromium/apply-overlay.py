@@ -43,6 +43,7 @@ EXTERNAL_PROVIDERS = "chrome/browser/extensions/external_provider_impl.cc"
 CONTEXT_MENU = "chrome/android/java/src/org/chromium/chrome/browser/contextmenu/ContextMenuMediator.java"
 CONTEXT_MENU_TEST = "chrome/android/junit/src/org/chromium/chrome/browser/contextmenu/ContextMenuMediatorTest.java"
 TOOLBAR_OVERLAY = "chrome/browser/ui/android/toolbar/java/src/org/chromium/chrome/browser/toolbar/top/TopToolbarOverlayMediator.java"
+TOOLBAR_POSITION = "chrome/browser/ui/android/toolbar/java/src/org/chromium/chrome/browser/toolbar/ToolbarPositionController.java"
 LINT_CONFIG = "chrome/android/expectations/lint-suppressions.xml"
 TRACKED = (MOJOM, HEADER, SOURCE, MEDIA_H, MEDIA_CC, MEDIA_TEST, ORIENTATION,
            REMOTE_CORE, REMOTE_MODULE, JAVA_SOURCES, JAVA_BUILD,
@@ -50,7 +51,7 @@ TRACKED = (MOJOM, HEADER, SOURCE, MEDIA_H, MEDIA_CC, MEDIA_TEST, ORIENTATION,
            TOOLBAR_LAYOUT, TOOLBAR_JAVA, TOOLBAR_BUILD, MANIFEST, EXTERNAL_PROVIDERS,
            CONTEXT_MENU, CONTEXT_MENU_TEST, CHROME_ACTIVITY, TOOLBAR_OVERLAY, LINT_CONFIG,
            TABLET_LAYOUT, TABLET_JAVA, FULLSCREEN_CSS, FULLSCREEN,
-           UPDATE_XZ, UPDATE_XZ_TEST)
+           UPDATE_XZ, UPDATE_XZ_TEST, TOOLBAR_POSITION)
 NEW_FILES = {
     "chrome/browser/android/upgrid_player.cc": "player_android.cc",
     "chrome/browser/android/upgrid_translate.cc": "translate_android.cc",
@@ -82,8 +83,34 @@ def fragment(name):
     return (HERE / "overlay" / name).read_text(encoding="utf-8")
 
 
+def render_toolbar_position(source):
+    return replace_once(source,
+        "        boolean allowBottomAnchoredFocusedOmnibox =\n"
+        "                ChromeFeatureList.sAndroidBottomToolbarV2.isEnabled();\n"
+        "        boolean forceBottomForFocusedOmnibox =\n"
+        "                isOmniboxFocused\n"
+        "                        && (ChromeFeatureList.sAndroidBottomToolbarV2ForceBottomForFocusedOmnibox\n"
+        "                                        .getValue()\n"
+        "                                || (allowBottomAnchoredFocusedOmnibox\n"
+        "                                        && !doesUserPreferTopToolbar));\n"
+        "        @ControlsPosition int newControlsPosition;\n"
+        "        if (!forceBottomForFocusedOmnibox\n"
+        "                && (ntpShowing\n"
+        "                        || tabSwitcherShowing\n"
+        "                        || (isOmniboxFocused && !allowBottomAnchoredFocusedOmnibox)\n"
+        "                        || isFindInPageShowing\n"
+        "                        || doesUserPreferTopToolbar)) {",
+        "        // Upgrid keeps editing above the keyboard, including when a saved\n"
+        "        // bottom-toolbar preference or a field-trial parameter is active.\n"
+        "        // Use the normal transition so dropdown anchors and offsets follow.\n"
+        "        @ControlsPosition int newControlsPosition;\n"
+        "        if (ntpShowing || tabSwitcherShowing || isOmniboxFocused\n"
+        "                || isFindInPageShowing || doesUserPreferTopToolbar) {", TOOLBAR_POSITION)
+
+
 def render(inputs):
     output = dict(inputs)
+    output[TOOLBAR_POSITION] = render_toolbar_position(inputs[TOOLBAR_POSITION])
     # Exact .9 symbols identify op_xz::Done deleting the failed output on the
     # browser sequence. Keep DCHECK enabled; perform filesystem cleanup on a
     # MayBlock worker and deliver the result back to the original sequence.
