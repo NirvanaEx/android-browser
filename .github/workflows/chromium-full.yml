@@ -24,7 +24,7 @@ on:
         type: number
         default: 40
       build_tag:
-        description: Existing private build tag for android-test; baseline tests the previous APK
+        description: Exact private build tag for android-test or reviewed diagnose-release case
         type: string
         default: baseline
 permissions:
@@ -80,9 +80,10 @@ jobs:
       - run: |
           bash tools/chromium/ci/setup-runner.sh
           sudo apt-get install -y --no-install-recommends llvm-18
-      - name: Inspect completed .9 cache without building or running the APK
+      - name: Inspect exact completed cache without building or running the APK
         env:
           GH_TOKEN: ${{ github.token }}
+          UPGRID_DIAGNOSE_TAG: ${{ inputs.build_tag }}
         run: python3 -u tools/chromium/ci/diagnose_release.py
       - uses: actions/upload-artifact@v4
         if: always()
