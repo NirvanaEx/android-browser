@@ -410,6 +410,9 @@ void LocalFrameMojoHandler::ReleaseUpgridVideo(
     std::move(callback).Run(false);
     return;
   }
-  ClearUpgridVideo(pause, true);
+  // The Android FullscreenManager owns normal exit and notifies WebContents.
+  // Do not issue a second renderer exit concurrently with that browser request.
+  // The disconnect/late-request guards still cover abandoned sessions.
+  ClearUpgridVideo(pause, false);
   std::move(callback).Run(true);
 }
