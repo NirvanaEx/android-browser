@@ -177,7 +177,9 @@ public final class UpgridPlayer implements Application.ActivityLifecycleCallback
             // The browser/site already exited. Release immediately so a new
             // fullscreen request does not hit an old ACTIVE session, and do
             // not send a second exit back into FullscreenManager.
-            player.close(false, false);
+            // A tab-hide observer can trigger this exit before our own
+            // onHidden callback runs. Preserve background/tab-switch pause.
+            player.close(tab.isHidden(), false);
         }
     }
 
