@@ -13,7 +13,7 @@ on:
       mode:
         description: Validate tooling or build the complete APK
         type: choice
-        options: [build, validate, android-test, plan, diagnose-release, android-host-probe]
+        options: [build, validate, android-test, android-startup-diagnose, plan, diagnose-release, android-host-probe]
         default: build
       cache_tag:
         description: auto selects a completed compatible cache; empty forces a cold build
@@ -307,7 +307,7 @@ jobs:
           retention-days: 1
   android:
     needs: validate
-    if: github.event_name == 'workflow_dispatch' && inputs.mode == 'android-test'
+    if: github.event_name == 'workflow_dispatch' && (inputs.mode == 'android-test' || inputs.mode == 'android-startup-diagnose')
     runs-on: ubuntu-24.04
     timeout-minutes: 50
     permissions:
@@ -332,6 +332,7 @@ jobs:
         uses: reactivecircus/android-emulator-runner@4c44018e59b437e86cdfc41da381398f93ed8808
         env:
           UPGRID_ANDROID_PROFILE: ${{ inputs.android_profile || 'default' }}
+          UPGRID_ANDROID_MODE: ${{ inputs.mode }}
         with:
           # API 30: translator SIGILL; API 35: renderer SIGSEGV in
           # berberis_HandleNoExec. Probe API 36 with the unchanged signed APK.
@@ -345,7 +346,12 @@ jobs:
           disk-size: 6000M
           disable-animations: true
           emulator-options: -no-window -no-snapshot -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
-          script: python3 tools/chromium/ci/android_test.py run
+          script: |
+            if [ "$UPGRID_ANDROID_MODE" = android-startup-diagnose ]; then
+              python3 tools/chromium/ci/diagnose_android_startup.py
+            else
+              python3 tools/chromium/ci/android_test.py run
+            fi
       - uses: actions/upload-artifact@v4
         if: always()
         with:

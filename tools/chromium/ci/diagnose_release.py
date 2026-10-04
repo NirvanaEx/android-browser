@@ -32,6 +32,16 @@ CASES = {
                    '4f97f08', '4f97dac', 'd7f7b60', 'd7f8e50', 'd82caec',
                    'd82bde0', 'e1814f8', 'a2755b4', 'a277064', 'a273af4',
                    'a274c6c']),
+    'upgrid-ci-37230383674-1': dict(
+        tag='upgrid-ci-37230383674-1',
+        head='3fec4aaeec8cb7ef5c502fdfce8407a8ac35748d',
+        release=403185335, run=37230383674, buildId='1ff2e1d8395acaa4',
+        # .11 guest GPU stack, Android run 37233952009 at 21:04:34 UTC.
+        addresses=['51567ec', '5106224', '5105c44', '511a590', '5002528',
+                   '4ffede0', '5118934', '5118300', '5127eb4', '4f986d8',
+                   '4f97f08', '4f97dac', 'd7f7b70', 'd7f8e60', 'd82cafc',
+                   'd82bdf0', 'e181508', 'a2755b4', 'a277064', 'a273af4',
+                   'a274c6c']),
 }
 
 
