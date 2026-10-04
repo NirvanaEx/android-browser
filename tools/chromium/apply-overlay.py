@@ -35,6 +35,8 @@ TABLET_LAYOUT = "chrome/browser/ui/android/toolbar/java/res/layout/toolbar_table
 TABLET_JAVA = "chrome/browser/ui/android/toolbar/java/src/org/chromium/chrome/browser/toolbar/top/ToolbarTablet.java"
 FULLSCREEN_CSS = "third_party/blink/renderer/core/css/fullscreen.css"
 FULLSCREEN = "third_party/blink/renderer/core/fullscreen/fullscreen.cc"
+UPDATE_XZ = "components/update_client/op_xz.cc"
+UPDATE_XZ_TEST = "components/update_client/op_xz_unittest.cc"
 TOOLBAR_BUILD = "chrome/browser/ui/android/toolbar/BUILD.gn"
 MANIFEST = "chrome/android/java/AndroidManifest.xml"
 EXTERNAL_PROVIDERS = "chrome/browser/extensions/external_provider_impl.cc"
@@ -47,7 +49,8 @@ TRACKED = (MOJOM, HEADER, SOURCE, MEDIA_H, MEDIA_CC, MEDIA_TEST, ORIENTATION,
            NATIVE_BUILD, ACTIVITY, MENU, PACKAGE, SCREEN_API, SCREEN_IMPL, SCREEN_TEST, LABEL,
            TOOLBAR_LAYOUT, TOOLBAR_JAVA, TOOLBAR_BUILD, MANIFEST, EXTERNAL_PROVIDERS,
            CONTEXT_MENU, CONTEXT_MENU_TEST, CHROME_ACTIVITY, TOOLBAR_OVERLAY, LINT_CONFIG,
-           TABLET_LAYOUT, TABLET_JAVA, FULLSCREEN_CSS, FULLSCREEN)
+           TABLET_LAYOUT, TABLET_JAVA, FULLSCREEN_CSS, FULLSCREEN,
+           UPDATE_XZ, UPDATE_XZ_TEST)
 NEW_FILES = {
     "chrome/browser/android/upgrid_player.cc": "player_android.cc",
     "chrome/browser/android/upgrid_translate.cc": "translate_android.cc",
@@ -81,6 +84,44 @@ def fragment(name):
 
 def render(inputs):
     output = dict(inputs)
+    # Exact .9 symbols identify op_xz::Done deleting the failed output on the
+    # browser sequence. Keep DCHECK enabled; perform filesystem cleanup on a
+    # MayBlock worker and deliver the result back to the original sequence.
+    output[UPDATE_XZ] = replace_once(output[UPDATE_XZ],
+        '#include "base/task/sequenced_task_runner.h"',
+        '#include "base/task/sequenced_task_runner.h"\n'
+        '#include "base/task/thread_pool.h"', UPDATE_XZ)
+    output[UPDATE_XZ] = replace_once(output[UPDATE_XZ],
+        '  base::SequencedTaskRunner::GetCurrentDefault()->PostTask(\n'
+        '      FROM_HERE,\n'
+        '      base::BindOnce(\n'
+        '          std::move(callback),\n'
+        '          [&]() -> base::expected<base::FilePath, CategorizedError> {',
+        '  base::ThreadPool::PostTaskAndReplyWithResult(\n'
+        '      FROM_HERE, {base::MayBlock()},\n'
+        '      base::BindOnce(\n'
+        '          [](base::FilePath out_file, bool success)\n'
+        '              -> base::expected<base::FilePath, CategorizedError> {', UPDATE_XZ)
+    output[UPDATE_XZ] = replace_once(output[UPDATE_XZ],
+        '          }()));',
+        '          }, out_file, success),\n'
+        '      std::move(callback));', UPDATE_XZ)
+    output[UPDATE_XZ_TEST] = replace_once(output[UPDATE_XZ_TEST],
+        '#include "base/test/task_environment.h"',
+        '#include "base/test/task_environment.h"\n'
+        '#include "base/threading/thread_restrictions.h"', UPDATE_XZ_TEST)
+    # Only BadPatch's event loop disallows blocking; file assertions run after
+    # leaving that scope. The old Done callback DCHECKs inside this scope.
+    prefix, bad_patch = output[UPDATE_XZ_TEST].split(
+        'TEST_F(XzOperationTest, BadPatch) {', 1)
+    bad_patch = replace_once(bad_patch, '  loop_.Run();',
+        '  {\n'
+        '    base::ScopedDisallowBlocking no_blocking_on_caller;\n'
+        '    loop_.Run();\n'
+        '  }\n'
+        '  EXPECT_FALSE(base::PathExists(in_file.DirName().AppendUTF8("decoded_xz")));',
+        UPDATE_XZ_TEST)
+    output[UPDATE_XZ_TEST] = prefix + 'TEST_F(XzOperationTest, BadPatch) {' + bad_patch
     output[LINT_CONFIG] = replace_once(output[LINT_CONFIG],
         '  <issue id="UnusedResources">',
         '  <issue id="UnusedResources">\n'

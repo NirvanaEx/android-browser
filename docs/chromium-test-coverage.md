@@ -19,7 +19,7 @@ Local Python harness tests are lightweight checks of the test tooling only.
 | Stability | App/renderer native crashes, Java crashes and ANR detection in logcat, screenshots on failure | Sustained real-device use, memory/performance and codec checks |
 | Tampermonkey foundation | Real-manager fixture results, legacy/async GM storage, style injection, local GM request, iframe, reload/restart counters, early raw page-world fetch hook | Normal Web Store install/permissions and script install must actually succeed; menu invocation still required |
 | Actual user scripts | Versioned inventory of VK theater, VK preview, Neyron updates and Kick chat sync; download SHA and JS syntax checks in cloud | Install actual scripts through Tampermonkey and test on their real sites; syntax is not execution |
-| Translation | Russian text in current page, unchanged URL, reload/cold restart, translate=no and form-input preservation | Normal TWP setup; verify Google provider, site/language exceptions, dynamic text, original text, offline retry |
+| Translation | Russian text in current page, unchanged URL, reload/cold restart, translate=no and form-input preservation | Native Chrome translation UI/service (extension interception removed); verify provider, site/language exceptions, dynamic text, original text, offline retry |
 | Adblock | Default uBO Lite installation code exists | Enabled registry, network/cosmetic blocking, disable/enable and site/incognito exceptions need Android evidence |
 
 The imported Tampermonkey fixtures are the existing project fixtures. They are
@@ -60,3 +60,14 @@ startup and crash checks failed; player, extensions and translation acceptance
 remain blocked. No repeated identical emulator run can turn this into a pass.
 The separate owner-authorized test publication is Telegram message 161;
 it does not set Android acceptance or production approval to true.
+
+Diagnosis run 37167752724 recovered matching unstripped symbols (BuildId
+849f83441c984f6f). The main-process abort resolves through
+update_client::DeleteFileAndEmptyParentDirectory and op_xz.cc's Done callback,
+which performs blocking cleanup on the original non-blocking sequence.
+The overlay now posts that cleanup to a MayBlock ThreadPool task, then delivers
+the result on the original sequence. BadPatch's upstream regression disallows
+blocking while pumping the caller loop. This regression still needs Chromium
+compilation/execution; source rendering alone is not a passed C++ test.
+The renderer translation crashes and the reported phone player-exit crash remain
+separate unresolved observations until the corrected APK is tested.

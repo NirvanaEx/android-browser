@@ -6,6 +6,8 @@ on:
       - .github/workflows/chromium-full.yml
       - tools/chromium/ci/**
       - tools/chromium/distributed/**
+      - tools/chromium/apply-overlay.py
+      - tools/chromium/overlay/**
   workflow_dispatch:
     inputs:
       mode:
@@ -55,6 +57,15 @@ jobs:
           python3 tools/chromium/tests/test-scrub.py --jdk "$JAVA_HOME_17_X64"
           python3 tools/chromium/tests/test-orientation.py --jdk "$JAVA_HOME_17_X64"
           UPGRID_TEST_NINJA=ninja python3 tools/chromium/distributed/test_cache.py
+      - name: Validate overlay anchors against pinned Chromium sources
+        run: python3 tools/chromium/ci/check_overlay.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: overlay-check-${{ github.run_id }}
+          path: build/overlay-check.json
+          if-no-files-found: ignore
+          retention-days: 14
   diagnose:
     needs: validate
     if: github.event_name == 'workflow_dispatch' && inputs.mode == 'diagnose-release'

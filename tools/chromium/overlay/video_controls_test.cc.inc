@@ -25,7 +25,7 @@ TEST_P(HTMLMediaElementTest, UpgridReturnPreservesUserControlsPreference) {
   EXPECT_FALSE(ControlsVisible());
 }
 
-TEST_P(HTMLMediaElementTest, UpgridContainerFullscreenKeepsSiteControls) {
+TEST_P(HTMLMediaElementTest, UpgridContainerSelectsItsPlayingVideo) {
   if (GetParam() != MediaTestParam::kVideo)
     return;
   Document& document = Media()->GetDocument();
@@ -33,6 +33,23 @@ TEST_P(HTMLMediaElementTest, UpgridContainerFullscreenKeepsSiteControls) {
   auto* container = document.CreateRawElement(html_names::kDivTag);
   document.body()->AppendChild(container);
   container->AppendChild(Media());
+  Media()->setAttribute(html_names::kStyleAttr,
+                        AtomicString("width:320px;height:180px"));
+  Media()->SetSrc(SrcSchemeToURL(TestURLScheme::kHttp));
+  Media()->Play();
+  test::RunPendingTasks();
+  ASSERT_NE(Media()->GetWebMediaPlayer(), nullptr);
+  UpdateLifecyclePhases();
+  EXPECT_EQ(Media(), HTMLMediaElement::UpgridFullscreenTarget(*container));
+  Media()->pause();
+  EXPECT_EQ(Media(), HTMLMediaElement::UpgridFullscreenTarget(*container));
+  Media()->setAttribute(html_names::kStyleAttr,
+                        AtomicString("width:320px;height:180px;visibility:hidden"));
+  UpdateLifecyclePhases();
+  EXPECT_EQ(container, HTMLMediaElement::UpgridFullscreenTarget(*container));
+  Media()->setAttribute(html_names::kStyleAttr,
+                        AtomicString("width:320px;height:180px"));
+  UpdateLifecyclePhases();
   Media()->SetBooleanAttribute(html_names::kControlsAttr, true);
   Media()->SetUpgridControlsHidden(true);
   EXPECT_TRUE(ControlsVisible());
@@ -43,6 +60,15 @@ TEST_P(HTMLMediaElementTest, UpgridContainerFullscreenKeepsSiteControls) {
   EXPECT_TRUE(ControlsVisible());
   SimulateExitFullscreen(container);
   EXPECT_TRUE(ControlsVisible());
+}
+
+TEST_P(HTMLMediaElementTest, UpgridContainerSelectionFailsClosedWithoutVideo) {
+  Document& document = Media()->GetDocument();
+  auto* container = document.CreateRawElement(html_names::kDivTag);
+  document.body()->AppendChild(container);
+  EXPECT_EQ(container, HTMLMediaElement::UpgridFullscreenTarget(*container));
+  container->remove();
+  EXPECT_EQ(container, HTMLMediaElement::UpgridFullscreenTarget(*container));
 }
 
 TEST_P(HTMLMediaElementTest,
