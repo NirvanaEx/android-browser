@@ -1,7 +1,7 @@
 const http = require('node:http');
 const fs = require('node:fs');
 const path = require('node:path');
-const files = Object.fromEntries(['player.html', 'iframe.html', 'multiple.html', 'controls.html', 'media-scroll.html', 'native.html', 'engine.html', 'aspect.html', 'tabs.html', 'translation.html', 'player-workbench.html'].map(name =>
+const files = Object.fromEntries(['lab.html', 'player.html', 'iframe.html', 'multiple.html', 'controls.html', 'media-scroll.html', 'native.html', 'engine.html', 'aspect.html', 'tabs.html', 'translation.html', 'player-workbench.html'].map(name =>
     ['/' + name, path.join(__dirname, 'fixtures', name)]));
 files['/sample.mp4'] = path.resolve(__dirname, '../../build/fenix/sample.mp4');
 files['/sample-poster.png'] = path.join(__dirname, 'fixtures/video-poster.png');
