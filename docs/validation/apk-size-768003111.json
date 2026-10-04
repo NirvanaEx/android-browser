@@ -1,0 +1,168 @@
+{
+  "apk": "Upgrid-146.0.7680.31-upgrid.8-player-fixes-test-build768003111-arm64.apk",
+  "bytes": 606255302,
+  "sha256": "058403f2646440fb2507101beaeba87d8a8470c523561d231b9df494ac942fd2",
+  "abis": [
+    "arm64-v8a"
+  ],
+  "groups": {
+    "AndroidManifest.xml": {
+      "packedBytes": 21237,
+      "unpackedBytes": 111488,
+      "files": 1
+    },
+    "assets": {
+      "packedBytes": 98513483,
+      "unpackedBytes": 98513732,
+      "files": 340
+    },
+    "dex": {
+      "packedBytes": 69610255,
+      "unpackedBytes": 69617528,
+      "files": 9
+    },
+    "META-INF": {
+      "packedBytes": 1382,
+      "unpackedBytes": 1382,
+      "files": 10
+    },
+    "native": {
+      "packedBytes": 398508569,
+      "unpackedBytes": 400816664,
+      "files": 3
+    },
+    "res": {
+      "packedBytes": 2683799,
+      "unpackedBytes": 4761379,
+      "files": 4142
+    },
+    "resources.arsc": {
+      "packedBytes": 36158960,
+      "unpackedBytes": 36158960,
+      "files": 1
+    }
+  },
+  "largest": [
+    {
+      "name": "lib/arm64-v8a/libchrome.so",
+      "packedBytes": 397022472,
+      "unpackedBytes": 397022472,
+      "stored": true
+    },
+    {
+      "name": "resources.arsc",
+      "packedBytes": 36158960,
+      "unpackedBytes": 36158960,
+      "stored": true
+    },
+    {
+      "name": "assets/resources.pak",
+      "packedBytes": 33538156,
+      "unpackedBytes": 33538156,
+      "stored": true
+    },
+    {
+      "name": "classes3.dex",
+      "packedBytes": 11362548,
+      "unpackedBytes": 11362548,
+      "stored": true
+    },
+    {
+      "name": "classes.dex",
+      "packedBytes": 10332296,
+      "unpackedBytes": 10332296,
+      "stored": true
+    },
+    {
+      "name": "classes4.dex",
+      "packedBytes": 10012984,
+      "unpackedBytes": 10012984,
+      "stored": true
+    },
+    {
+      "name": "classes5.dex",
+      "packedBytes": 9515632,
+      "unpackedBytes": 9515632,
+      "stored": true
+    },
+    {
+      "name": "assets/icudtl.dat",
+      "packedBytes": 9242032,
+      "unpackedBytes": 9242032,
+      "stored": true
+    },
+    {
+      "name": "classes2.dex",
+      "packedBytes": 9049156,
+      "unpackedBytes": 9049156,
+      "stored": true
+    },
+    {
+      "name": "classes6.dex",
+      "packedBytes": 7251044,
+      "unpackedBytes": 7251044,
+      "stored": true
+    },
+    {
+      "name": "classes7.dex",
+      "packedBytes": 6654456,
+      "unpackedBytes": 6654456,
+      "stored": true
+    },
+    {
+      "name": "classes8.dex",
+      "packedBytes": 5426888,
+      "unpackedBytes": 5426888,
+      "stored": true
+    },
+    {
+      "name": "lib/arm64-v8a/libchrome_crashpad_handler.so",
+      "packedBytes": 1418041,
+      "unpackedBytes": 3726136,
+      "stored": false
+    },
+    {
+      "name": "assets/locales/ta.pak",
+      "packedBytes": 1192405,
+      "unpackedBytes": 1192405,
+      "stored": true
+    },
+    {
+      "name": "assets/locales/ml.pak",
+      "packedBytes": 1186959,
+      "unpackedBytes": 1186959,
+      "stored": true
+    },
+    {
+      "name": "assets/locales/my.pak",
+      "packedBytes": 1149629,
+      "unpackedBytes": 1149629,
+      "stored": true
+    },
+    {
+      "name": "assets/locales/kn.pak",
+      "packedBytes": 1140562,
+      "unpackedBytes": 1140562,
+      "stored": true
+    },
+    {
+      "name": "assets/locales/km.pak",
+      "packedBytes": 1102284,
+      "unpackedBytes": 1102284,
+      "stored": true
+    },
+    {
+      "name": "assets/locales/te.pak",
+      "packedBytes": 1096568,
+      "unpackedBytes": 1096568,
+      "stored": true
+    },
+    {
+      "name": "assets/locales/ne.pak",
+      "packedBytes": 1095452,
+      "unpackedBytes": 1095452,
+      "stored": true
+    }
+  ],
+  "zipOverheadBytes": 757617
+}

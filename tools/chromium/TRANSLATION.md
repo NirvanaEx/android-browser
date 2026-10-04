@@ -1,5 +1,15 @@
 # Google page translation in Upgrid
 
+## Current phone-followup requirement (2026-10-04)
+
+The owner rejected the extension-based translation shipped in .9 and requires
+Chrome's native mobile translation. The current overlay no longer intercepts
+Chrome's Translate command with TWP and preserves the upstream availability
+checks. Working translation service access is not yet established: the pinned
+TranslateManager requires a configured Google API key. A visible native UI or
+an independently installed TWP extension does not satisfy this requirement.
+The following sections document the historical .7-.9 implementation only.
+
 The user requires translation **inside the current page**, with remembered
 automatic translation like Chrome. The integration path is the real TWP MV3
 extension with Google selected. This is not Google's native Chrome component.

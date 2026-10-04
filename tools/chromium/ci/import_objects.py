@@ -10,15 +10,15 @@ import tarfile
 from concurrent.futures import ThreadPoolExecutor
 from common import ROOT, STATE, read, reserve, sha, write
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / 'distributed'))
-from ninja_cache import read_deps, append_deps
+from ninja_cache import read_deps, append_deps, HEADER
+from action_paths import object_path
 
 
 def import_objects(archives, manifest, digest, run_id, head, workers=4):
     src, out = ROOT / 'src', ROOT / 'src/out/Upgrid'
     inputs = {item['path']: item for item in manifest['inputs']}
     expected_outputs = {action['output'] for shard in manifest['shards'] for action in shard}
-    if any(not name.startswith('obj/') or not name.endswith('.o') or
-           '..' in pathlib.PurePosixPath(name).parts or '\\' in name for name in expected_outputs):
+    if any(not object_path(name) for name in expected_outputs):
         raise RuntimeError('Unsafe output path')
     expanded = 0
     for path in archives:
@@ -27,8 +27,11 @@ def import_objects(archives, manifest, digest, run_id, head, workers=4):
     reserve(ROOT, extra=expanded * 2)
 
     def unpack(path):
-        with tarfile.open(path) as archive:
-            report = json.load(archive.extractfile('result.json'))
+        with tarfile.open(path, mode='r|*') as archive:
+            first = archive.next()
+            if first is None or first.name != 'result.json' or not first.isfile():
+                raise RuntimeError('Object archive must begin with its receipt')
+            report = json.load(archive.extractfile(first))
             if (str(report['runId']) != str(run_id) or report['headSha'] != head
                     or report['snapshotSha256'] != digest or report['exitCode'] != 0
                     or report['completed'] != report['total']):
@@ -41,15 +44,22 @@ def import_objects(archives, manifest, digest, run_id, head, workers=4):
             if (len(returned) != len(set(returned)) or set(returned) != set(actions)
                     or report['total'] != len(actions)):
                 raise RuntimeError('Missing/duplicate/unexpected shard output')
-            members = archive.getmembers()
             allowed = set(actions) | {'result.json', '.ninja_log', '.ninja_deps'}
-            if len({item.name for item in members}) != len(members):
-                raise RuntimeError('Duplicate archive member')
-            if any(not item.isfile() or item.name not in allowed for item in members):
-                raise RuntimeError('Unsafe object archive')
             destination = STATE / 'unpacked' / str(shard)
             destination.mkdir(parents=True, exist_ok=False)
-            archive.extractall(destination, filter='data')
+            seen = set()
+            for member in archive:
+                if member.name in seen:
+                    raise RuntimeError('Duplicate archive member')
+                if not member.isfile() or member.name not in allowed:
+                    raise RuntimeError('Unsafe object archive')
+                seen.add(member.name)
+                # Stream forward once, instead of scanning and seeking back
+                # through gzip for extraction. Output tree is still untouched.
+                if member.name != 'result.json':
+                    archive.extract(member, destination, filter='data')
+            if seen != allowed:
+                raise RuntimeError('Incomplete object archive')
         _, deps = read_deps(destination / '.ninja_deps')
         dependencies = set()
         for item in report['objects']:
@@ -102,6 +112,10 @@ def import_objects(archives, manifest, digest, run_id, head, workers=4):
     reserve(ROOT)
     with ThreadPoolExecutor(max_workers=workers) as pool:
         accepted = list(pool.map(copy_object, copy_jobs))
+    if not (out / '.ninja_deps').exists():
+        (out / '.ninja_deps').write_bytes(HEADER)
+    if not (out / '.ninja_log').exists():
+        (out / '.ninja_log').write_text('# ninja log v5\n')
     paths, _ = read_deps(out / '.ninja_deps', paths_only=True)
     temporary = out / '.ninja_deps.upgrid-import'
     shutil.copyfile(out / '.ninja_deps', temporary)
@@ -115,5 +129,6 @@ def import_objects(archives, manifest, digest, run_id, head, workers=4):
     log.replace(out / '.ninja_log')
     result = {'importedObjects': len(accepted), 'uniqueInputsVerified': len(unique_inputs),
               'snapshotSha256': digest, 'runId': str(run_id), 'headSha': head}
+    write(STATE / 'imported-outputs.json', sorted(outputs))
     write(STATE / 'import-receipt.json', result)
     return result

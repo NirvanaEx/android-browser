@@ -14,6 +14,44 @@ gh workflow run chromium-full.yml --repo NirvanaEx/android-browser \
 `mode=validate` only runs the tooling tests. Pushes to CI sources also run
 validation without starting another full Chromium build.
 
+`mode=diagnose-release` reads selected logs and matching symbols from a completed
+cache on GitHub without compiling or executing the APK. `build_tag` selects an
+explicitly reviewed tag/head/release/BuildId case in `diagnose_release.py`;
+unknown tags fail closed. The default `baseline` retains the original .9 case.
+The .10 GPU case uses `build_tag=upgrid-ci-37219068941-1`.
+
+For the symbolized .10 Dawn/Vulkan emulator crash, `mode=android-test` also
+accepts `android_profile=graphite-off-diagnostic`. It changes only the ephemeral
+device's Graphite startup flag, saves `runtime-profile.json`, and runs candidate
+checks without repeating the baseline. Update/default-runtime checks cannot
+pass in this profile. Keep `android_profile=default` for acceptance; a diagnostic
+success is never permission to distribute an otherwise unaccepted APK.
+
+`mode=android-test` runs a signed APK in a GitHub-hosted Android emulator.
+Pass `build_tag=upgrid-ci-RUN-ATTEMPT`, or `baseline` to check the previous
+signed APK used for update tests. After APK verification/upload, the build dispatches an Android test run before waiting for the incremental cache upload. Its dispatch receipt is stored with build diagnostics.
+It verifies the APK digest, installs the previous version, stores test data,
+updates without clearing data, exercises native player controls and saves
+screenshots, page state and logcat in an Actions artifact. ARM64 runs through
+the Google APIs image's native translation on an x86_64 emulator. This is
+Android functional evidence, not physical-device codec/performance/DRM proof.
+The test entry point refuses execution outside GitHub Actions. Test VMs are
+disposable and never use the user's PC as a runner.
+
+The emulator uses API 36. The API 30 baseline probe installed the signed .8
+APK but crashed at startup in `libndk_translation.so`
+(`DecodeSimdThreeDifferent`, SIGILL), before reaching any player test.
+See run 37136340535 and its Android evidence artifact. Changing the emulator
+image preserves the APK under test; it does not establish physical ARM64
+compatibility or make the failed probe a passing acceptance check.
+
+API 35 and 36 also failed on the baseline renderer in the translator's
+`berberis_HandleNoExec` (SIGSEGV). See runs 37140207049 and 37140928040.
+If the baseline or update-restoration stage fails, that check remains failed,
+but a different candidate can still run independent player diagnostics.
+The harness never clears app data; candidate-only cold-start storage uses a
+separate sentinel and cannot establish preservation across an upgrade.
+
 The workflow is serialized per branch. Forty shards can run concurrently
 subject to the account's actual GitHub concurrency quota (20 was observed).
 Each worker runs four compiler processes. Preparation and final assembly
@@ -23,12 +61,15 @@ No paid larger runner is selected. Allocation is not measured peak usage.
 ```mermaid
 flowchart LR
   A[Validate tooling] --> B[Restore cache or fetch pinned Chromium]
-  B --> C[Generate native dependencies]
-  C --> D[40 balanced C++ shards]
+  B --> C[Generate host compiler inputs]
+  C --> H0[Parallel host C and C++ wave]
+  H0 --> H1[Import host objects and generate Android inputs]
+  H1 --> D[Balanced Android C and C++ shards]
   D --> E[Parallel verify and import on final runner]
   E --> F[Java, Rust, linking, signed APK]
   F --> G[APK identity and SHA checks]
-  G --> H[APK and next-build cache in GitHub]
+  G --> H[APK in GitHub]
+  H --> K[Save next-build cache]
   H --> I[Real Android acceptance]
   I --> J[Accepted GitHub release and Telegram verification]
 ```
@@ -41,6 +82,39 @@ selects a specific cache. An empty value requests a cold checkout.
 The source overlay and version arguments are applied, GN is regenerated,
 and Ninja decides what changed. No dependency timestamp is artificially
 advanced to suppress a legitimate rebuild.
+
+If no completed cache is available, `auto` can restore a compatible immutable
+prepared workspace from an earlier interrupted run. This is only a source
+seed; it does not count as a successful compilation, and all changed build
+inputs still invalidate outputs normally.
+
+Preparation now exposes separate Actions steps for source restoration/GN,
+generated headers/modules, and snapshots. `timing-*.json` receipts and the
+step summary report elapsed time and failure/success for each stage.
+Host-tool C/C++ objects now have an earlier distributed matrix. Only their
+direct generated inputs and bootstrap dependencies run before that matrix.
+After import, Ninja links those tools and generates Android inputs. A warm
+cache with fewer than 128 pending host objects skips the host wave and its extra
+restore: rebuilding a few tools locally on the hosted VM avoids a second large
+workspace transfer. `host-routing.json` records this explicit tuning threshold.
+`mode=plan` audits the actual dependency cut without compiling Chromium.
+See `docs/chromium-build-performance.md` for measured baseline and limitations.
+
+After Ninja finishes writing the tree, two tasks run concurrently on the
+prepare runner: creating/uploading the workspace checkpoint and creating/uploading
+the native compiler snapshot. Gzip compression uses two `pigz` threads in CI;
+the worker format remains unchanged. Workspace compression overlaps a single
+upload, retaining at most two temporary chunks. Restoration downloads up to four
+chunks concurrently, verifies all hashes, then extracts them in manifest order.
+
+The workspace manifest is published only after every chunk succeeds. Its
+`native-prerequisites-v1` checkpoint marker permits reuse even if native snapshot
+creation fails before `plan.json` is available. A failed native snapshot never
+publishes a plan or starts compilation workers. Existing workspaces with a plan
+remain compatible. No second full workspace copy/checkpoint upload is added.
+These changes remove serialization in transfer/packaging and distribute host
+compilation; a full-build speedup has not yet been measured. Bootstrap work,
+final linking and the extra host-checkpoint transfer remain measured boundaries.
 
 Preparation generates reachable native headers and Clang modules before
 sharding. Import checks the run, source SHA, snapshot SHA, every object,
@@ -69,10 +143,14 @@ the GN arguments only inside its disposable checkout; local builds are
 untouched. It checks APK ZIP integrity, package, version name/code, ABI,
 signing certificate, SHA-256 and the fresh build receipt.
 
-`extensions-dev` preserves the current development profile and debug
-signing identity. This pipeline does not turn a development build into a
-production release or guarantee an in-place update from the older Fenix
-package. Installation/data preservation remain explicit acceptance checks.
+`release.json.profile` selects `extensions-ci` (optimized C++ and Java) or
+`extensions-dev` (debug). Both use the CI-owned `out/Upgrid` directory; GN/Ninja
+must invalidate incompatible cached outputs when changing profile. The optimized
+profile is restricted to GitHub Actions and keeps the configured signing identity.
+An optimized APK is still a test candidate, not production acceptance or a promise
+of an in-place update from the older Fenix package. Installation/data preservation
+remain explicit acceptance checks. `apk-size.json` records the signed candidate's
+size by ZIP category, largest entries and ABI list without repacking it.
 The current pinned security base is marked `productionApproved=false`.
 
 After testing the exact APK on Android, commit
@@ -106,6 +184,11 @@ The bot token stays on the VPS. This adapter adds no cron or second poller.
 Its `selfcheck` sends no Telegram messages.
 
 ## Failures and resumption
+
+- The prepare job reserves an exact-commit private draft and verifies asset
+  upload access before heavy setup. GitHub may reject late draft creation when
+  workflow files changed and the branch has advanced. Preparation requires the
+  previously verified draft; it never substitutes the current branch tip.
 
 - Shards retain completed object archives even when a compiler fails.
   A failed shard prevents APK assembly. Re-run failed jobs at the same

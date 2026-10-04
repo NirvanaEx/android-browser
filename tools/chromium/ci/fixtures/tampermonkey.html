@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="ru">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Upgrid — проверка Tampermonkey</title>
+<script>
+window.upgridPageStarted = true;
+window.state = () => ({ fixture: 'tampermonkey' });
+window.upgridRawProbe = window.top === window.self
+  ? fetch('/tampermonkey-raw-probe').then(response => response.json()).catch(() => null)
+  : Promise.resolve(null);
+</script>
+<style>
+body { margin:24px; font:16px/1.5 system-ui; background:#17191d; color:#eee }
+a { color:#ffc536 } iframe { width:100%; min-height:380px; border:1px solid #777 }
+pre { white-space:pre-wrap; overflow-wrap:anywhere } button { padding:12px }
+</style>
+<h1>Проверка Tampermonkey</h1>
+<p>Установите настоящее расширение Tampermonkey, разрешите пользовательские
+скрипты и <a href="/tampermonkey-smoke.user.js">установите тестовый скрипт</a>.
+Затем обновите эту страницу два раза. Здесь проверяются только локальные данные.</p>
+<p>Скрипт должен добавить результаты ниже. Счётчик запусков должен увеличиваться
+после перезагрузки и холодного запуска браузера. Отдельно нажмите команду
+«Upgrid: проверить меню» в меню Tampermonkey.</p>
+<div id="upgrid-tm-results">Скрипт пока не сообщил о запуске.</div>
+<p>Для проверки раннего запуска в контексте страницы, как в скрипте Kick,
+<a href="/tampermonkey-raw.user.js">установите второй тестовый скрипт</a> и обновите
+страницу. Значения early, intercepted и pageWorldHook должны быть true.</p>
+<pre id="upgrid-tm-raw-results">Ранний запуск пока не подтверждён.</pre>
+<pre id="upgrid-tm-page-results"></pre>
+<details><summary>Проверить выполнение во фрейме</summary>
+<iframe title="Проверка Tampermonkey во фрейме" loading="lazy" src="about:blank"></iframe>
+</details>
+<script>
+window.upgridRawProbe.then(result => {
+  document.getElementById('upgrid-tm-page-results').textContent =
+    JSON.stringify({ pageWorldHook: result?.pageWorldHook === true,
+      pageSawScript: !!window.upgridRawInjection }, null, 2);
+});
+if (window.top === window.self) {
+  document.querySelector('details').addEventListener('toggle', function () {
+    const frame = this.querySelector('iframe');
+    if (this.open && frame.getAttribute('src') === 'about:blank') {
+      frame.src = '/tampermonkey.html?frame=1';
+    }
+  });
+} else {
+  document.querySelector('details').remove();
+}
+</script>
+</html>

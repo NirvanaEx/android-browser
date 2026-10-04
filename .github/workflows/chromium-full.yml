@@ -1,16 +1,19 @@
 name: Upgrid full cloud APK
 on:
   push:
-    branches: [codex/chromium-distributed]
+    branches: [codex/chromium-distributed, codex/apk-size-player-isolation-20261003]
     paths:
       - .github/workflows/chromium-full.yml
       - tools/chromium/ci/**
+      - tools/chromium/distributed/**
+      - tools/chromium/apply-overlay.py
+      - tools/chromium/overlay/**
   workflow_dispatch:
     inputs:
       mode:
         description: Validate tooling or build the complete APK
         type: choice
-        options: [build, validate]
+        options: [build, validate, android-test, android-startup-diagnose, plan, diagnose-release, android-host-probe]
         default: build
       cache_tag:
         description: auto selects a completed compatible cache; empty forces a cold build
@@ -20,10 +23,19 @@ on:
         description: Number of native compilation shards (1 to 40)
         type: number
         default: 40
+      build_tag:
+        description: Exact private build tag for android-test or reviewed diagnose-release case
+        type: string
+        default: baseline
+      android_profile:
+        description: Default acceptance configuration or Graphite-off diagnostic only
+        type: choice
+        options: [default, graphite-off-diagnostic]
+        default: default
 permissions:
   contents: read
 concurrency:
-  group: upgrid-full-cloud-${{ github.ref }}
+  group: upgrid-full-cloud-${{ github.ref }}-${{ inputs.mode || 'validate' }}
   cancel-in-progress: false
 env:
   UPGRID_CHROMIUM_ROOT: /home/neyron/.cache/upgrid/chromium
@@ -32,7 +44,7 @@ env:
   GCLIENT_PY3: '1'
 jobs:
   validate:
-    if: github.ref == 'refs/heads/codex/chromium-distributed'
+    if: github.ref == 'refs/heads/codex/chromium-distributed' || github.ref == 'refs/heads/codex/apk-size-player-isolation-20261003'
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
@@ -41,12 +53,88 @@ jobs:
           persist-credentials: false
       - run: |
           sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends ninja-build zstd
+          sudo apt-get install -y --no-install-recommends ninja-build zstd pigz
           python3 -m unittest discover -s tools/chromium/ci/tests -v
+          python3 -m unittest discover -s tools/chromium/tests -v
+          node --test tools/chromium/tests/youtube-options.test.cjs
+          node --check tools/chromium/ci/fixtures/tampermonkey-smoke.user.js
+          node --check tools/chromium/ci/fixtures/tampermonkey-raw.user.js
+          python3 tools/chromium/tests/test-scrub.py --jdk "$JAVA_HOME_17_X64"
+          python3 tools/chromium/tests/test-orientation.py --jdk "$JAVA_HOME_17_X64"
+          python3 tools/chromium/tests/test-toolbar-position.py --jdk "$JAVA_HOME_17_X64"
+          python3 tools/chromium/tests/test-fullscreen-attach.py --jdk "$JAVA_HOME_17_X64"
           UPGRID_TEST_NINJA=ninja python3 tools/chromium/distributed/test_cache.py
+      - name: Validate overlay anchors against pinned Chromium sources
+        run: python3 tools/chromium/ci/check_overlay.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: overlay-check-${{ github.run_id }}
+          path: build/overlay-check.json
+          if-no-files-found: ignore
+          retention-days: 14
+  android_host_probe:
+    needs: validate
+    if: github.event_name == 'workflow_dispatch' && inputs.mode == 'android-host-probe'
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 5
+    permissions: {}
+    steps:
+      - name: Inspect ARM64 host virtualization without installing or running Android
+        shell: bash
+        run: |
+          mkdir -p host-evidence
+          python3 - <<'PY'
+          import errno, fcntl, json, os, pathlib, platform
+          report = dict(machine=platform.machine(), kernel=platform.release(),
+                        kvmExists=pathlib.Path('/dev/kvm').exists(), kvmApiVersion=None,
+                        emulatorLaunched=False, androidAcceptanceVerified=False)
+          try:
+              # KVM_GET_API_VERSION is read-only; no VM is created.
+              fd = os.open('/dev/kvm', os.O_RDWR | os.O_CLOEXEC)
+              try:
+                  report['kvmApiVersion'] = fcntl.ioctl(fd, 0xAE00, 0)
+              finally:
+                  os.close(fd)
+          except OSError as error:
+              report['kvmError'] = dict(errno=error.errno, message=os.strerror(error.errno))
+          pathlib.Path('host-evidence/arm64-host.json').write_text(json.dumps(report, indent=2))
+          print(json.dumps(report, indent=2))
+          PY
+          lscpu > host-evidence/lscpu.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android-host-evidence-${{ github.run_id }}
+          path: host-evidence/
+          retention-days: 14
+  diagnose:
+    needs: validate
+    if: github.event_name == 'workflow_dispatch' && inputs.mode == 'diagnose-release'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    permissions:
+      contents: write # Read exact private draft assets with the CI job token.
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - run: |
+          bash tools/chromium/ci/setup-runner.sh
+          sudo apt-get install -y --no-install-recommends llvm-18
+      - name: Inspect exact completed cache without building or running the APK
+        env:
+          GH_TOKEN: ${{ github.token }}
+          UPGRID_DIAGNOSE_TAG: ${{ inputs.build_tag }}
+        run: python3 -u tools/chromium/ci/diagnose_release.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: release-diagnostics-${{ github.run_id }}
+          path: /home/runner/upgrid-state/diagnosis/reports/
+          retention-days: 14
   prepare:
     needs: validate
-    if: github.event_name == 'workflow_dispatch' && inputs.mode == 'build'
+    if: github.event_name == 'workflow_dispatch' && (inputs.mode == 'build' || inputs.mode == 'plan')
     runs-on: ubuntu-24.04
     timeout-minutes: 350
     permissions:
@@ -56,22 +144,53 @@ jobs:
       plan_sha256: ${{ steps.prepare.outputs.plan_sha256 }}
       matrix: ${{ steps.prepare.outputs.matrix }}
       actions: ${{ steps.prepare.outputs.actions }}
+      wave: ${{ steps.prepare.outputs.wave }}
     steps:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
+      - name: Verify exact private transfer and upload access before build
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 -u tools/chromium/ci/pipeline.py preflight
       - name: Prepare disposable build runner
         run: bash tools/chromium/ci/setup-runner.sh
-      - name: Prepare complete source, native dependencies, and immutable snapshots
-        id: prepare
+      - name: Restore source cache, apply overlay, and generate build graph
         env:
           GH_TOKEN: ${{ github.token }}
           CACHE_TAG: ${{ inputs.cache_tag }}
+        run: python3 -u tools/chromium/ci/pipeline.py sources --cache-tag "$CACHE_TAG"
+      - name: Audit host-tool dependency cut without compiling
+        if: inputs.mode == 'plan'
+        run: python3 -u tools/chromium/ci/pipeline.py host-inputs --audit-only
+      - name: Build only inputs needed by host compiler wave
+        if: inputs.mode == 'build'
+        run: python3 -u tools/chromium/ci/pipeline.py host-inputs
+      - name: Save checkpoint and compiler snapshot in parallel
+        if: inputs.mode == 'build'
+        id: prepare
+        env:
+          GH_TOKEN: ${{ github.token }}
           SHARDS: ${{ inputs.shards }}
-        run: python3 -u tools/chromium/ci/pipeline.py prepare --cache-tag "$CACHE_TAG" --shards "$SHARDS"
-  native:
+        run: python3 -u tools/chromium/ci/pipeline.py first-wave --shards "$SHARDS"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: cloud-prepare-diagnostics
+          path: |
+            /home/runner/upgrid-state/transfer-access.json
+            /home/runner/upgrid-state/native-receipt.json
+            /home/runner/upgrid-state/plan.json
+            /home/runner/upgrid-state/timing-*.json
+            /home/runner/upgrid-state/workspace.json
+            /home/runner/upgrid-state/host-*.json
+            /home/runner/upgrid-state/host-input-tasks.log
+            /home/runner/upgrid-state/host-query.txt
+          if-no-files-found: ignore
+          retention-days: 14
+  host:
     needs: prepare
-    if: needs.prepare.outputs.actions != '0'
+    if: inputs.mode == 'build' && needs.prepare.outputs.wave == 'host' && needs.prepare.outputs.actions != '0'
     runs-on: ubuntu-24.04
     timeout-minutes: 330
     permissions:
@@ -90,11 +209,91 @@ jobs:
           test ! -e /home/neyron
           sudo install -d -o "$(id -u)" -g "$(id -g)" "$UPGRID_CHROMIUM_ROOT"
           mkdir -p "$UPGRID_DISTRIBUTED_STATE"
-      - name: Compile native shard and return checked outputs
+      - name: Compile host tools in parallel and return checked outputs
         env:
           GH_TOKEN: ${{ github.token }}
           TRANSFER_TAG: ${{ needs.prepare.outputs.tag }}
           PLAN_SHA256: ${{ needs.prepare.outputs.plan_sha256 }}
+          WORKER: ${{ matrix.worker }}
+        run: python3 -u tools/chromium/ci/pipeline.py worker --wave host --tag "$TRANSFER_TAG" --plan-sha256 "$PLAN_SHA256" --worker "$WORKER"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: cloud-host-${{ matrix.worker }}-diagnostics
+          path: |
+            /home/runner/upgrid-state/result.json
+            /home/runner/upgrid-state/worker.log
+          retention-days: 1
+          if-no-files-found: ignore
+  prepare_native:
+    needs: [prepare, host]
+    if: always() && inputs.mode == 'build' && needs.prepare.result == 'success' && needs.prepare.outputs.wave == 'host' && (needs.host.result == 'success' || needs.host.result == 'skipped')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 350
+    permissions:
+      contents: write
+    outputs:
+      tag: ${{ steps.snapshot.outputs.tag }}
+      plan_sha256: ${{ steps.snapshot.outputs.plan_sha256 }}
+      matrix: ${{ steps.snapshot.outputs.matrix }}
+      actions: ${{ steps.snapshot.outputs.actions }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - run: bash tools/chromium/ci/setup-runner.sh
+      - name: Restore checkpoint and import verified host objects
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TRANSFER_TAG: ${{ needs.prepare.outputs.tag }}
+          PLAN_SHA256: ${{ needs.prepare.outputs.plan_sha256 }}
+        run: python3 -u tools/chromium/ci/pipeline.py restore-wave --wave host --tag "$TRANSFER_TAG" --plan-sha256 "$PLAN_SHA256"
+      - name: Link host tools and generate remaining Android inputs
+        run: python3 -u tools/chromium/ci/pipeline.py prerequisites
+      - name: Save Android compiler snapshot and workspace
+        id: snapshot
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHARDS: ${{ inputs.shards }}
+          TRANSFER_TAG: ${{ needs.prepare.outputs.tag }}
+        run: python3 -u tools/chromium/ci/pipeline.py snapshots --tag "$TRANSFER_TAG" --shards "$SHARDS"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: cloud-native-preparation-diagnostics
+          path: |
+            /home/runner/upgrid-state/timing-*.json
+            /home/runner/upgrid-state/import-receipt.json
+            /home/runner/upgrid-state/native-receipt.json
+            /home/runner/upgrid-state/plan.json
+          if-no-files-found: ignore
+          retention-days: 14
+  native:
+    needs: [prepare, prepare_native]
+    if: always() && inputs.mode == 'build' && needs.prepare.result == 'success' && (needs.prepare.outputs.wave == 'native' || needs.prepare_native.result == 'success') && (needs.prepare_native.outputs.actions || needs.prepare.outputs.actions) != '0'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 330
+    permissions:
+      contents: write
+      checks: write
+    strategy:
+      fail-fast: false
+      max-parallel: 40
+      matrix: ${{ fromJSON(needs.prepare_native.outputs.matrix || needs.prepare.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Create isolated compiler directory
+        run: |
+          test ! -e /home/neyron
+          sudo install -d -o "$(id -u)" -g "$(id -g)" "$UPGRID_CHROMIUM_ROOT"
+          mkdir -p "$UPGRID_DISTRIBUTED_STATE"
+      - name: Compile Android C and C++ shard
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TRANSFER_TAG: ${{ needs.prepare_native.outputs.tag || needs.prepare.outputs.tag }}
+          PLAN_SHA256: ${{ needs.prepare_native.outputs.plan_sha256 || needs.prepare.outputs.plan_sha256 }}
           WORKER: ${{ matrix.worker }}
         run: python3 -u tools/chromium/ci/pipeline.py worker --tag "$TRANSFER_TAG" --plan-sha256 "$PLAN_SHA256" --worker "$WORKER"
       - uses: actions/upload-artifact@v4
@@ -104,34 +303,99 @@ jobs:
           path: |
             /home/runner/upgrid-state/result.json
             /home/runner/upgrid-state/worker.log
-          retention-days: 1
           if-no-files-found: ignore
+          retention-days: 1
+  android:
+    needs: validate
+    if: github.event_name == 'workflow_dispatch' && (inputs.mode == 'android-test' || inputs.mode == 'android-startup-diagnose')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 50
+    permissions:
+      contents: write # GitHub draft release downloads require repository write access.
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Prepare Android tests and exact APK
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BUILD_TAG: ${{ inputs.build_tag }}
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends ffmpeg
+          python3 -m pip install websocket-client==1.8.0 Pillow==11.3.0
+          python3 tools/chromium/ci/android_test.py fetch --tag "$BUILD_TAG"
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-upgrid-kvm.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Test signed ARM64 APK in Android with native translation
+        uses: reactivecircus/android-emulator-runner@4c44018e59b437e86cdfc41da381398f93ed8808
+        env:
+          UPGRID_ANDROID_PROFILE: ${{ inputs.android_profile || 'default' }}
+          UPGRID_ANDROID_MODE: ${{ inputs.mode }}
+        with:
+          # API 30: translator SIGILL; API 35: renderer SIGSEGV in
+          # berberis_HandleNoExec. Probe API 36 with the unchanged signed APK.
+          # This is still native translation, not physical ARM64 acceptance.
+          api-level: 36
+          target: google_apis
+          arch: x86_64
+          profile: pixel_2
+          ram-size: 2048M
+          cores: 2
+          disk-size: 6000M
+          disable-animations: true
+          emulator-options: -no-window -no-snapshot -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          # The action runs each script line in its own shell.
+          script: if [ "$UPGRID_ANDROID_MODE" = android-startup-diagnose ]; then python3 tools/chromium/ci/diagnose_android_startup.py; else python3 tools/chromium/ci/android_test.py run; fi
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: android-test-evidence-${{ github.run_id }}
+          path: android-evidence/
+          retention-days: 14
   apk:
-    needs: [prepare, native]
-    if: always() && needs.prepare.result == 'success' && (needs.native.result == 'success' || needs.native.result == 'skipped')
+    needs: [prepare, prepare_native, native]
+    if: always() && inputs.mode == 'build' && needs.prepare.result == 'success' && (needs.prepare.outputs.wave == 'native' || needs.prepare_native.result == 'success') && (needs.native.result == 'success' || needs.native.result == 'skipped')
     runs-on: ubuntu-24.04
     timeout-minutes: 350
     permissions:
       contents: write
+      actions: write # Dispatch Android tests as soon as the verified APK is uploaded.
+      checks: write # Publish final Ninja progress independently of live job logs.
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TRANSFER_TAG: ${{ needs.prepare_native.outputs.tag || needs.prepare.outputs.tag }}
+      PLAN_SHA256: ${{ needs.prepare_native.outputs.plan_sha256 || needs.prepare.outputs.plan_sha256 }}
     steps:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
       - run: bash tools/chromium/ci/setup-runner.sh
-      - name: Assemble, verify signed APK, and save incremental cache
-        env:
-          GH_TOKEN: ${{ github.token }}
-          TRANSFER_TAG: ${{ needs.prepare.outputs.tag }}
-          PLAN_SHA256: ${{ needs.prepare.outputs.plan_sha256 }}
-        run: python3 -u tools/chromium/ci/pipeline.py finalize --tag "$TRANSFER_TAG" --plan-sha256 "$PLAN_SHA256"
+      - name: Restore workspace and import verified Android objects
+        run: python3 -u tools/chromium/ci/pipeline.py restore-wave --tag "$TRANSFER_TAG" --plan-sha256 "$PLAN_SHA256"
+      - name: Link, assemble, verify and upload signed APK
+        id: assemble
+        run: python3 -u tools/chromium/ci/pipeline.py assemble --tag "$TRANSFER_TAG" --plan-sha256 "$PLAN_SHA256"
+      - name: Start Android acceptance independently of cache upload
+        run: python3 -u tools/chromium/ci/pipeline.py start-android --tag "$TRANSFER_TAG"
+      - name: Save complete incremental cache while Android tests run
+        if: always() && steps.assemble.outcome == 'success'
+        run: python3 -u tools/chromium/ci/pipeline.py save-cache --tag "$TRANSFER_TAG"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: cloud-apk-verification
           path: |
             /home/runner/upgrid-state/apk-verification.json
+            /home/runner/upgrid-state/apk-size.json
             /home/runner/upgrid-state/import-receipt.json
             /home/runner/upgrid-state/remaining-tasks.log
-            /home/neyron/.cache/upgrid/chromium/upgrid-extensions-dev-build-receipt.json
+            /home/runner/upgrid-state/final-*.json
+            /home/runner/upgrid-state/final-*.jsonl
+            /home/runner/upgrid-state/final-*.log
+            /home/runner/upgrid-state/android-dispatch.json
+            /home/runner/upgrid-state/timing-*.json
+            /home/neyron/.cache/upgrid/chromium/upgrid-*-build-receipt.json
           retention-days: 7
           if-no-files-found: ignore

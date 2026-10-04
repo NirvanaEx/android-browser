@@ -4,6 +4,7 @@ package org.chromium.chrome.browser.upgrid;
 import android.app.Activity;
 import android.os.Handler;
 import android.os.Looper;
+import android.os.SystemClock;
 import android.view.View;
 
 import java.util.function.Supplier;
@@ -19,6 +20,8 @@ import org.chromium.content_public.browser.WebContents;
 /** Connects browser input and successful site fullscreen to the same player. */
 @NullMarked
 public final class UpgridPlayerCoordinator implements FullscreenManager.Observer {
+    private static final long ATTACH_TIMEOUT_MS = 2000;
+    private static final long ATTACH_RETRY_MS = 50;
     private final Activity mActivity;
     private final FullscreenManager mFullscreen;
     private final Supplier<@Nullable Tab> mCurrentTab;
@@ -45,8 +48,7 @@ public final class UpgridPlayerCoordinator implements FullscreenManager.Observer
         Tab tab = mCurrentTab.get();
         if (tab != null && mFullscreen.getPersistentFullscreenMode()) {
             lockOrientation(tab);
-            int generation = ++mGeneration;
-            mHandler.post(() -> tryAttach(tab, generation, 0));
+            scheduleAttach(tab);
         }
     }
 
@@ -57,11 +59,17 @@ public final class UpgridPlayerCoordinator implements FullscreenManager.Observer
         // Take the lock synchronously, before the site's fullscreenchange
         // handler or Chromium's native controls can request a rotation.
         lockOrientation(tab);
-        int generation = ++mGeneration;
         // The browser hides its controls before Blink confirms fullscreen. Wait
-        // for fullscreen; Blink then confirms the video inside that exact root.
+        // for fullscreen; Blink promotes a video container in the original
+        // authorized request. Attach only once that video is really fullscreen.
         // hasActiveEffectivelyFullscreenVideo() excludes paused videos.
-        mHandler.post(() -> tryAttach(tab, generation, 0));
+        scheduleAttach(tab);
+    }
+
+    private void scheduleAttach(Tab tab) {
+        int generation = ++mGeneration;
+        long deadline = SystemClock.uptimeMillis() + ATTACH_TIMEOUT_MS;
+        mHandler.post(() -> tryAttach(tab, generation, deadline));
     }
 
     private void lockOrientation(Tab tab) {
@@ -78,26 +86,36 @@ public final class UpgridPlayerCoordinator implements FullscreenManager.Observer
         mOrientationLock = null;
     }
 
-    private void tryAttach(Tab tab, int generation, int attempt) {
+    private void tryAttach(Tab tab, int generation, long deadline) {
         if (mDestroyed || generation != mGeneration || mCurrentTab.get() != tab
-                || !tab.isUserInteractable()
                 || mActivity.isFinishing() || mActivity.isDestroyed()
-                || !mFullscreen.getPersistentFullscreenMode() || UpgridPlayer.isActive(mActivity)) {
+                || SystemClock.uptimeMillis() >= deadline || UpgridPlayer.isActive(mActivity)) {
             return;
         }
         WebContents contents = tab.getWebContents();
         if (contents == null || contents.isDestroyed()) return;
-        if (contents.isFullscreenForCurrentTab()) {
-            UpgridPlayer.adoptFullscreen(mActivity, tab);
-        } else if (attempt < 20) {
-            mHandler.postDelayed(() -> tryAttach(tab, generation, attempt + 1), 100);
+        if (tab.isUserInteractable() && mFullscreen.getPersistentFullscreenMode()
+                && contents.isFullscreenForCurrentTab()) {
+            // Browser fullscreen can precede Blink's video/top-layer update.
+            // Retry a failed passive discovery; never request new activation.
+            UpgridPlayer.adoptFullscreen(mActivity, tab, attached -> {
+                if (!attached) retryAttach(tab, generation, deadline);
+            });
+        } else {
+            retryAttach(tab, generation, deadline);
         }
+    }
+
+    private void retryAttach(Tab tab, int generation, long deadline) {
+        if (mDestroyed || generation != mGeneration) return;
+        mHandler.postDelayed(() -> tryAttach(tab, generation, deadline), ATTACH_RETRY_MS);
     }
 
     @Override
     public void onExitFullscreen(Tab tab) {
         ++mGeneration;
         mHandler.removeCallbacksAndMessages(null);
+        UpgridPlayer.onFullscreenExited(mActivity, tab);
         releaseOrientation();
     }
 

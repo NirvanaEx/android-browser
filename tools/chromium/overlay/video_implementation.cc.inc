@@ -28,15 +28,9 @@ bool LocalFrameMojoHandler::IsUpgridVideoCurrent(uint64_t token) const {
 }
 
 bool LocalFrameMojoHandler::IsUpgridVideoFullscreen() const {
-  if (!upgrid_video_)
-    return false;
-  if (Fullscreen::IsFullscreenElement(*upgrid_video_))
-    return true;
-  // Many sites request fullscreen on their player container. Keep that
-  // element and its DOM intact; only adopt a video inside that exact root.
-  return upgrid_fullscreen_root_ &&
-         Fullscreen::IsFullscreenElement(*upgrid_fullscreen_root_) &&
-         upgrid_fullscreen_root_->ContainsIncludingHostElements(*upgrid_video_);
+  // A fullscreen ancestor still exposes site chrome, transforms and clipping.
+  // Only the selected video in the top layer is an isolated player surface.
+  return upgrid_video_ && Fullscreen::IsFullscreenElement(*upgrid_video_);
 }
 
 mojom::blink::UpgridVideoStatePtr LocalFrameMojoHandler::UpgridVideoSnapshot() {
@@ -44,22 +38,8 @@ mojom::blink::UpgridVideoStatePtr LocalFrameMojoHandler::UpgridVideoSnapshot() {
     return nullptr;
   auto& video = *upgrid_video_;
   const bool fullscreen = IsUpgridVideoFullscreen();
-  if (upgrid_presentation_ &&
-      (!upgrid_fullscreen_root_ ||
-       !upgrid_presentation_->IsCurrent(video, *upgrid_fullscreen_root_))) {
-    ClearUpgridVideo(false, false);
-    return nullptr;
-  }
-  // Only change controls and scaling once real engine fullscreen is confirmed.
+  // Do not publish fullscreen=true before the selected video itself is granted.
   if (fullscreen && upgrid_open_requested_ && !upgrid_controls_hidden_) {
-    if (upgrid_fullscreen_root_ && upgrid_fullscreen_root_ != &video) {
-      upgrid_presentation_ =
-          UpgridFullscreenPresentation::Create(video, *upgrid_fullscreen_root_);
-      if (!upgrid_presentation_) {
-        ClearUpgridVideo(false, false);
-        return nullptr;
-      }
-    }
     const auto* style = video.InlineStyle();
     upgrid_original_fit_ =
         style ? style->GetPropertyValue(CSSPropertyID::kObjectFit) : String();
@@ -156,7 +136,7 @@ void LocalFrameMojoHandler::GetUpgridVideoCandidate(
         continue;
       const bool fullscreen = fullscreen_root &&
           fullscreen_root->ContainsIncludingHostElements(*video);
-      if (fullscreen_only && !fullscreen)
+      if (fullscreen_only && !Fullscreen::IsFullscreenElement(*video))
         continue;
       DOMRect* rect = video->GetBoundingClientRect();
       const auto* style = video->GetComputedStyle();
@@ -186,8 +166,6 @@ void LocalFrameMojoHandler::GetUpgridVideoCandidate(
   }
   if (best) {
     upgrid_video_ = best;
-    upgrid_fullscreen_root_ =
-        Fullscreen::FullscreenElementFrom(best->GetDocument());
     upgrid_candidate_area_ = best_area;
     upgrid_source_ = best->currentSrc();
     upgrid_source_epoch_ = best->UpgridSourceEpoch();
@@ -365,10 +343,6 @@ void LocalFrameMojoHandler::ControlUpgridVideo(
 }
 
 void LocalFrameMojoHandler::ClearUpgridVideo(bool pause, bool exit_fullscreen) {
-  if (upgrid_presentation_) {
-    upgrid_presentation_->Close();
-    upgrid_presentation_ = nullptr;
-  }
   if (upgrid_fullscreen_guard_) {
     upgrid_fullscreen_guard_->Cancel();
     upgrid_fullscreen_guard_ = nullptr;
@@ -415,7 +389,6 @@ void LocalFrameMojoHandler::ClearUpgridVideo(bool pause, bool exit_fullscreen) {
       Fullscreen::FullyExitFullscreen(video.GetDocument(), true);
   }
   upgrid_video_ = nullptr;
-  upgrid_fullscreen_root_ = nullptr;
   upgrid_tracks_.clear();
   upgrid_source_ = KURL();
   upgrid_media_player_ = 0;
@@ -437,6 +410,9 @@ void LocalFrameMojoHandler::ReleaseUpgridVideo(
     std::move(callback).Run(false);
     return;
   }
-  ClearUpgridVideo(pause, true);
+  // The Android FullscreenManager owns normal exit and notifies WebContents.
+  // Do not issue a second renderer exit concurrently with that browser request.
+  // The disconnect/late-request guards still cover abandoned sessions.
+  ClearUpgridVideo(pause, false);
   std::move(callback).Run(true);
 }

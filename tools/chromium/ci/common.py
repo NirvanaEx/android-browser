@@ -8,6 +8,7 @@ import shutil
 import subprocess
 import tarfile
 import tempfile
+from collections import deque
 from decimal import Decimal
 from concurrent.futures import ThreadPoolExecutor
 
@@ -66,8 +67,12 @@ def gh_json(endpoint):
 def create_transfer(tag):
     tag_checked(tag)
     # Drafts keep unaccepted APKs and complete build caches out of public releases.
-    run('gh', 'release', 'create', tag, '--repo', REPO, '--draft', '--target', os.environ['GITHUB_SHA'],
-        '--title', f'Private CI workspace {tag}', '--notes', 'Build inputs and cache; not an accepted application release.')
+    return json.loads(subprocess.check_output([
+        'gh', 'api', '--method', 'POST', f'repos/{REPO}/releases',
+        '-f', f'tag_name={tag}', '-f', f'target_commitish={os.environ["GITHUB_SHA"]}',
+        '-F', 'draft=true', '-f', f'name=Private CI workspace {tag}',
+        '-f', 'body=Build inputs and cache; not an accepted application release.'
+    ], text=True))
 
 
 def upload(tag, *paths):
@@ -91,16 +96,25 @@ def download(tag, name, destination, digest=None):
     return path
 
 
-def pack_workspace(tag, prefix):
+def pack_workspace(tag, prefix, checkpoint=None):
     reserve(ROOT)
     destination = STATE / prefix
     destination.mkdir(exist_ok=True)
     # Stream compressed chunks; never keep a second giant monolithic archive.
     process = subprocess.Popen(['tar', '--format=pax', '-I', 'zstd -T2 -3', '-cf', '-', '-C', str(ROOT), '.'], stdout=subprocess.PIPE)
     parts = []
+    # One upload overlaps compression of the next chunk. Bound staging to two
+    # chunks instead of queuing a second copy of the entire Chromium workspace.
+    uploads = ThreadPoolExecutor(max_workers=1)
+    pending = deque()
+    def send(path):
+        upload(tag, path)
+        path.unlink()  # Only successfully uploaded temporary chunks.
     try:
         index = 0
         while True:
+            if len(pending) >= 2:
+                pending.popleft().result()
             first = process.stdout.read(min(1024**2, CHUNK_BYTES))
             if not first:
                 break
@@ -116,19 +130,25 @@ def pack_workspace(tag, prefix):
                     stream.write(block)
                     remaining -= len(block)
             parts.append({'name': path.name, 'sha256': sha(path), 'bytes': path.stat().st_size})
-            upload(tag, path)
-            path.unlink()  # Only this newly uploaded temporary chunk, never source/cache files.
+            pending.append(uploads.submit(send, path))
+            print(json.dumps({'stage': 'workspace-packing', 'prefix': prefix,
+                              'chunksPacked': len(parts)}), flush=True)
             index += 1
         if process.wait():
             raise RuntimeError('Workspace archiving failed')
+        for future in pending:
+            future.result()
     finally:
         if process.poll() is None:
             process.terminate()
             process.wait()
         process.stdout.close()
+        uploads.shutdown(wait=True, cancel_futures=True)
     result = {'schema': 1, 'root': str(ROOT), 'chromiumRevision': read(PROJECT / 'tools/chromium/upstream.json')['commit'],
               'sourceHeadSha': os.environ['GITHUB_SHA'], 'parts': parts,
               'expandedBytes': int(subprocess.check_output(['du', '-sb', str(ROOT)], text=True).split()[0])}
+    if checkpoint:
+        result['checkpoint'] = checkpoint
     manifest = STATE / f'{prefix}.json'
     write(manifest, result)
     upload(tag, manifest)
@@ -144,10 +164,14 @@ def restore_workspace(tag, prefix, expected_digest=None):
         raise RuntimeError('Incompatible workspace cache')
     reserve(ROOT, extra=manifest['expandedBytes'] + sum(item['bytes'] for item in manifest['parts']))
     ROOT.mkdir(parents=True, exist_ok=True)
-    paths = []
-    for item in manifest['parts']:
-        reserve(STATE, item['bytes'])
-        paths.append(download(tag, item['name'], STATE / prefix, item['sha256']))
+    parts = manifest['parts']
+    if not parts or len({item['name'] for item in parts}) != len(parts):
+        raise RuntimeError('Empty or duplicate workspace parts')
+    # Reserve the complete download + expanded tree above, then retrieve up to
+    # four independent chunks. map retains manifest order for decompression.
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        paths = list(pool.map(lambda item: download(tag, item['name'], STATE / prefix,
+                                                   item['sha256']), parts))
     # Validate every path/link before extraction, preserving genuine symlinks.
     source = subprocess.Popen(['cat', *map(str, paths)], stdout=subprocess.PIPE)
     process = subprocess.Popen(['zstd', '-dc'], stdin=source.stdout, stdout=subprocess.PIPE)

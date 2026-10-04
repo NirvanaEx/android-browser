@@ -1,0 +1,214 @@
+# Phone feedback after test publication .9
+
+The user reports three failures in the exact test APK published as Telegram
+message 161: Translate is an extension instead of the native mobile Chrome UI;
+site fullscreen does not open Upgrid controls (toolbar entry has a short hitch);
+the exit icon terminates the app. These are unresolved acceptance failures.
+
+Current source edits are a work in progress, not a verified replacement APK:
+
+- Remove interception of Chrome's Translate command by TWP. Keep the upstream
+  native UI and its availability checks. The pinned TranslateManager checks
+  HasAPIKeyConfigured; no Google API key secret is configured in GitHub. Native
+  service availability needs investigation/configuration, not a fake test key.
+- Promote a visible video inside the requesting container during the original
+  authorized fullscreen request, after its permission/activation checks. The
+  selected video stays in the same document and retains its existing decoder.
+  Cross-process ancestor requests are not retargeted. Containers holding only
+  a child iframe need separate coverage; universal site compatibility is not
+  claimed. Update the Android container-fullscreen assertion to require Upgrid.
+- Remove the normal renderer-side exit request from ReleaseUpgridVideo; Android
+  FullscreenManager already requests exit. This avoids competing exit requests,
+  but is not a proven diagnosis of the phone crash without its stack.
+
+The Android regression scenario now requires that a site's container request
+selects the contained video, opens Upgrid controls, preserves decoded frames
+and the existing load, and continues playback after the player exit. The Blink
+regression also covers selection and fail-closed fallback. These assertions are
+source changes only until they pass against the pinned tree and exact APK in
+GitHub Actions.
+
+Next: validate overlay against the pinned tree; add/run fullscreen selection,
+permission denial and lifecycle regression checks in GitHub; examine exit crash
+diagnostics before claiming a fix; update the stale container-keep-site-controls
+test and README. Do not silently change it into a passing acceptance claim.
+Any new distributed APK needs a higher versionCode than the published 768003112.
+
+No phone is connected to ADB. The user cannot connect it now; do not keep asking.
+The VPS collector only has old Fenix 0.6.8 reports, not Chromium .9 crash evidence.
+GitHub cache diagnosis run 37167752724 on d519adf reads the exact completed .9 cache
+without compilation to recover matching BuildId symbols and the Ninja timing log.
+Read its artifact release-diagnostics-RUN before starting any further diagnosis.
+The .9 emulator startup failure is separate from the reported phone exit crash.
+
+## Phone feedback and candidate .11 (2026-10-05)
+
+The owner confirms that the installed .10 still misses site-fullscreen takeover.
+Exiting fullscreen can either close the browser or leave the page's video unable
+to enter fullscreen or Upgrid again. Transitions sometimes stutter. During page
+loading a second toolbar briefly appears below the primary one. The supplied
+576x1280 screenshot also shows the focused address field at the bottom, and the
+owner reports that the keyboard covers it; editing must remain at the top.
+The affected site need not be disclosed. Use neutral same-/cross-origin iframe,
+container and shadow-root fixtures; do not assume they reproduce the phone crash.
+
+APK identity was checked against the actual files stored by the Telegram relay:
+.9 is code 768003112 / SHA c883a7688a020690e2c91a631cf7a6ed721f3b215495fe162af98cbf072bc849;
+.10 is code 768003113 / SHA 11d222e1d56de520b540ae555146081c96ed9bfd4050cc95b0110bd60941c15e.
+The relay verified .10 as the latest catalogue entry. Java DEX and native `.text`
+sections differ, so this is not a renamed .9. The installed phone's version was
+not independently read. Translation remains unavailable: removing the TWP menu
+interception did not configure Chrome's native translation service.
+
+Candidate source changes:
+
+- Editing takes the normal TOP transition before bottom-omnibox field-trial
+  parameters; the dropdown follows the same position supplier. Leaving editing
+  retains the browsing preference. A regression runs the actual pinned method,
+  reproduces the old behavior, and tests the patched method on GitHub.
+- Passive fullscreen attachment now retries renderer-not-ready and temporarily
+  non-interactable states within a two-second deadline. Exit, tab replacement
+  and destruction cancel retries. No activation or fullscreen permission is added.
+- Browser/site fullscreen exit immediately releases the matching player session
+  without requesting another browser exit. Previously it waited for polling.
+- A valid passive fullscreen video no longer waits for unrelated frames before
+  its controls attach. Manual selection still ranks all discovery candidates.
+- Android scenarios require repeated site-button entry/exit across direct,
+  clipped, shadow and iframe pages, plus focused address bounds with the IME open.
+
+These are candidate changes, not verified phone fixes. The duplicate toolbar,
+the crash stack and universal site compatibility remain unresolved. Native
+translation is not implemented by this candidate. Use a new .11 identity for
+any compiled APK; do not replace or republish .10. The earlier test-publication
+authorization applied to .10, not an automatic waiver for future failed builds.
+
+The .11 APK was compiled in GitHub run
+[37230383674](https://github.com/NirvanaEx/android-browser/actions/runs/37230383674)
+from commit `3fec4aaeec8cb7ef5c502fdfce8407a8ac35748d`, using the completed .10
+incremental cache. APK verification confirms code `768003114`, package
+`com.upgrid.chromium`, ARM64, the existing update signer, and SHA-256
+`2eba4f357c4ff6800662c346e6f218eb5601b556d91c4d4c689132c97b1d26d2`
+(444,945,118 bytes). The build receipt, GitHub asset digest, all 60 validated
+overlay hashes, and the current local player/address edits agree. This verifies
+the candidate's identity, not its behavior on the owner's phone.
+
+Validation run
+[37230315075](https://github.com/NirvanaEx/android-browser/actions/runs/37230315075)
+passed 61 pipeline and 19 tooling tests, Java/Node/Ninja checks and pinned source
+anchors. The Java regression reproduces bottom editing in the unmodified method
+and passes 768 focused-state combinations after patching it. Coordinator tests
+exercise readiness, finite retry deadlines, cancellation and re-entry; a check
+of the actual exit method preserves visible playback and hidden-tab pause.
+These use API stubs and are not Android playback acceptance. No local build or
+emulator was run.
+
+The complete build, including the incremental cache, succeeded. Its automatically
+dispatched Android run
+[37233952009](https://github.com/NirvanaEx/android-browser/actions/runs/37233952009)
+failed before functional scenarios. The exact .11 SHA above was installed after
+the baseline. On Android 16 / `sdk_gphone64_x86_64` with ARM64 native translation,
+renderer stacks contain `libndk_translation.so!berberis_HandleNoExec`, and GPU
+processes also crash. The candidate screenshot shows an `Aw, Snap!` page; the
+candidate startup wait expired after 301.7 seconds. Its `libchrome.so` BuildId in
+the log is `1ff2e1d8395acaa4`. Fullscreen/re-entry, address/IME, and real-video
+checks were not reached. There is no passing Android or phone acceptance.
+
+This is evidence about the cloud runtime, not a diagnosis of the owner's
+site-dependent exit crash. Preserve the failure status. Do not rerun the same
+incompatible setup or disable security checks just to obtain a green result.
+The .11 APK stays in the private build release and was not published to Telegram.
+Further behavioral verification needs a compatible Android ARM64 runtime; the
+phone-specific exit crash still needs its own crash evidence. Translation and
+the duplicate toolbar remain open issues.
+
+## Exact .11 startup diagnosis (2026-10-05)
+
+Symbol run [37237192148](https://github.com/NirvanaEx/android-browser/actions/runs/37237192148)
+read the completed .11 cache without compiling. Both stripped and unstripped
+libraries match BuildId `1ff2e1d8395acaa4`. The GPU guest stack is
+`GpuMain -> GpuInit::InitializeDawn -> DawnSharedContext::Initialize ->
+dawn::native::vulkan::Device::Initialize -> BindGroupLayout::Initialize ->
+SetDebugNameInternal`. The host fault is a null dereference at `0x40` inside
+`vulkan.ranchu.so!vk_common_SetDebugUtilsObjectNameEXT`, through the native
+translation Vulkan proxy. No Upgrid player entry was reached.
+
+Run [37237867123](https://github.com/NirvanaEx/android-browser/actions/runs/37237867123)
+installed the unchanged .11 SHA and compared three launch configurations on the
+same Android 16 x86_64 image. Default produced GPU and renderer crashes. With
+`--disable-skia-graphite`, the Vulkan fault disappeared from the captured log,
+but the renderer still crashed in `berberis_HandleNoExec`. Adding
+`--js-flags=--jitless` did not remove that renderer failure. None executed the
+local page's JavaScript readiness marker. No sandbox, SELinux, seccomp or
+fullscreen activation restriction was disabled.
+
+Full tombstones were collected for the two default GPU crashes. Isolated
+renderer failures still only yielded the short in-process log, with the fault
+address hidden and no ARM64 guest stack. `HandleNoExec` reports an attempt to
+execute a non-executable guest address; its name alone does not prove whether
+the original fault belongs to Chromium or the translator. The failed first
+diagnostic dispatch, 37237190194, was an action script parsing error before APK
+launch; c491b11 fixed the selector to run in one shell.
+
+Follow-up run 37238345852 tests `--disable-skia-graphite
+--enable-low-end-device-mode`. In the pinned `ChildConnectionAllocator`, low-end
+mode selects `SandboxedProcessService1`, whose manifest retains
+`isolatedProcess=true` and does not use app zygote. This mode also changes memory
+policy, so its result must not be described as an isolated proof of a zygote
+defect, a phone fix, or release acceptance. The original three profiles are
+preserved in the diagnostic script and their results above; they are not rerun
+by this follow-up. The APK itself has not changed.
+
+That follow-up did select service 1 and no longer logged `HandleNoExec`. It still
+failed readiness after 122.9 seconds. Renderer PIDs 3666, 4134 and 4677 exited
+with signal 31 (`SIGSYS`), without tombstones. This is a distinct observed
+failure, not a passing workaround. Low-end mode also enabled in-process GPU,
+so absence of the old GPU stack in this mode is not an independent comparison.
+Utility processes logged invalid Mojo endpoint strings and exited; do not
+attribute renderer deaths to that separate message without evidence.
+
+The harness previously only detected tombstone, Java and ANR records. It now
+also correlates app process creation with fatal Zygote exit signals, including
+SIGSYS without a tombstone, while ignoring other packages, reused PIDs and
+routine SIGKILL. The new regression and 18 related harness checks pass locally.
+Run 37238941761 repeats the same low-end diagnostic flags with kernel audit
+collection to investigate a possible syscall ABI/seccomp incompatibility.
+Security checks remain enabled; that hypothesis is not yet a proven root cause.
+
+Run [37238941761](https://github.com/NirvanaEx/android-browser/actions/runs/37238941761)
+completed the comparison: readiness still failed after 124.1 seconds and the
+new detector captured renderer PIDs 3634, 4049 and 4663 terminating with SIGSYS.
+Kernel collection succeeded, but no seccomp/type-1326 audit event or rejected
+syscall number was present. Therefore a syscall ABI/filter mismatch is a
+source-supported hypothesis, not an established root cause. Pinned
+`sandbox/linux/bpf_dsl/policy_compiler.cc:140` validates the syscall audit
+architecture; the current guest is ARM64 and the host is x86_64. Inferring a
+specific failed syscall or disabling the filter would not establish correct
+Android acceptance. A further targeted emulator experiment would need actual
+seccomp trace/audit evidence; another unchanged launch adds no information.
+
+All diagnostic APKs used the exact same .11 SHA. Cloud validation passed with
+64 pipeline tests and the pinned overlay checks; local targeted harness tests
+passed (19). No application code, APK, or Telegram release changed during this
+diagnosis. The runtime remains unsuitable for accepting this release with its
+normal settings. The owner's exit crash still lacks its own evidence; native
+translation configuration and the transient toolbar duplication remain open.
+
+## Explicit .11 test publication (2026-10-05)
+
+After the failed checks and their limitations were explained, the owner asked
+"можешь опубликовать в телеграм?". This authorizes one publication of the exact
+.11 candidate above as Test; it does not approve a stable release or future
+candidates with failed acceptance.
+
+Telegram confirmed [message 164](https://t.me/c/4335405613/164) in "Мои приложения".
+The existing `upgrid` catalogue indexed release 54 with exact versionName,
+build 768003114 and the unchanged SHA-256. The caption discloses failed Android
+acceptance, unverified phone behavior/update preservation, missing translation
+and the unresolved duplicate toolbar. Existing history and access settings
+were preserved with a WAL-aware database backup before publication.
+
+`verify_release.py` passed the latest version, APK hash/size, download button,
+menu images, Bot API file access as UID/GID 101:101 and fresh Telegram polling.
+Publication and verification receipts are in server directory
+`work/upgrid-test-2eba4f35/` and local `build/ci-final-37230383674/telegram/`.
+Android acceptance remains false. No APK was separately sent to a personal chat.
