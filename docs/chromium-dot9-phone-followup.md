@@ -81,3 +81,42 @@ the crash stack and universal site compatibility remain unresolved. Native
 translation is not implemented by this candidate. Use a new .11 identity for
 any compiled APK; do not replace or republish .10. The earlier test-publication
 authorization applied to .10, not an automatic waiver for future failed builds.
+
+The .11 APK was compiled in GitHub run
+[37230383674](https://github.com/NirvanaEx/android-browser/actions/runs/37230383674)
+from commit `3fec4aaeec8cb7ef5c502fdfce8407a8ac35748d`, using the completed .10
+incremental cache. APK verification confirms code `768003114`, package
+`com.upgrid.chromium`, ARM64, the existing update signer, and SHA-256
+`2eba4f357c4ff6800662c346e6f218eb5601b556d91c4d4c689132c97b1d26d2`
+(444,945,118 bytes). The build receipt, GitHub asset digest, all 60 validated
+overlay hashes, and the current local player/address edits agree. This verifies
+the candidate's identity, not its behavior on the owner's phone.
+
+Validation run
+[37230315075](https://github.com/NirvanaEx/android-browser/actions/runs/37230315075)
+passed 61 pipeline and 19 tooling tests, Java/Node/Ninja checks and pinned source
+anchors. The Java regression reproduces bottom editing in the unmodified method
+and passes 768 focused-state combinations after patching it. Coordinator tests
+exercise readiness, finite retry deadlines, cancellation and re-entry; a check
+of the actual exit method preserves visible playback and hidden-tab pause.
+These use API stubs and are not Android playback acceptance. No local build or
+emulator was run.
+
+The complete build, including the incremental cache, succeeded. Its automatically
+dispatched Android run
+[37233952009](https://github.com/NirvanaEx/android-browser/actions/runs/37233952009)
+failed before functional scenarios. The exact .11 SHA above was installed after
+the baseline. On Android 16 / `sdk_gphone64_x86_64` with ARM64 native translation,
+renderer stacks contain `libndk_translation.so!berberis_HandleNoExec`, and GPU
+processes also crash. The candidate screenshot shows an `Aw, Snap!` page; the
+candidate startup wait expired after 301.7 seconds. Its `libchrome.so` BuildId in
+the log is `1ff2e1d8395acaa4`. Fullscreen/re-entry, address/IME, and real-video
+checks were not reached. There is no passing Android or phone acceptance.
+
+This is evidence about the cloud runtime, not a diagnosis of the owner's
+site-dependent exit crash. Preserve the failure status. Do not rerun the same
+incompatible setup or disable security checks just to obtain a green result.
+The .11 APK stays in the private build release and was not published to Telegram.
+Further behavioral verification needs a compatible Android ARM64 runtime; the
+phone-specific exit crash still needs its own crash evidence. Translation and
+the duplicate toolbar remain open issues.
