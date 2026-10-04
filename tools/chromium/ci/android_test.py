@@ -366,7 +366,32 @@ def connect_page(initial_url=None):
     return cdp
 
 
-def prepare_candidate(context, checks, diagnostic_errors):
+def runtime_flags(profile):
+    flags = '_ --no-first-run --disable-fre --no-default-browser-check'
+    if profile == 'graphite-off-diagnostic':
+        # Pinned gpu_finch_features.cc honors this before feature defaults.
+        # Tests the Dawn/Vulkan GPU crash; never changes the signed APK.
+        flags += ' --disable-skia-graphite'
+    elif profile != 'default':
+        raise ValueError('Unknown Android runtime profile')
+    return flags + '\n'
+
+
+def prepare_candidate(context, checks, diagnostic_errors, diagnostic_only=False):
+    if diagnostic_only:
+        # Do not repeat the known baseline failure. This fresh-device probe
+        # cannot establish upgrade preservation or default-runtime acceptance.
+        checks['install_update_preserves_storage'] = dict(
+            status='blocked', stage='diagnostic-only', error='Baseline not run in diagnostic profile')
+        checks['default_runtime_configuration'] = dict(
+            status='blocked', error='Graphite disabled for GPU isolation only')
+        assert not context['metadata']['baseline'], 'Diagnostic profile requires a candidate APK'
+        install = adb('install', '-r', context['apk'], timeout=300)
+        assert 'Success' in install, install
+        cdp = open_page()
+        sentinel = 'diagnostic-only-' + str(context['metadata']['versionCode'])
+        cdp.js('localStorage.setItem("upgrid-ci",' + json.dumps(sentinel) + ')')
+        return cdp, sentinel
     sentinel = 'preserve-768003111'
     baseline_ready = False
     cdp = None
@@ -416,6 +441,8 @@ def prepare_candidate(context, checks, diagnostic_errors):
 
 def run():
     from PIL import Image, ImageChops, ImageStat
+    profile = os.environ.get('UPGRID_ANDROID_PROFILE', 'default')
+    command_line = runtime_flags(profile)  # Fail before device changes on invalid input.
     context = json.loads((EVIDENCE / 'input.json').read_text())
     checks = {}
     diagnostic_errors = {}
@@ -434,12 +461,15 @@ def run():
     adb('reverse', 'tcp:8766', 'tcp:8766')
     # Ephemeral test device only; these flags do not relax fullscreen activation.
     flags = WORK / 'chrome-command-line'
-    flags.write_text('_ --no-first-run --disable-fre --no-default-browser-check\n')
+    flags.write_text(command_line)
+    save('runtime-profile.json', dict(profile=profile, commandLine=command_line.strip(),
+                                      diagnosticOnly=profile != 'default'))
     adb('push', flags, '/data/local/tmp/chrome-command-line')
     adb('shell', 'am', 'set-debug-app', '--persistent', PACKAGE)
     adb('logcat', '-c')
     try:
-        cdp, sentinel = prepare_candidate(context, checks, diagnostic_errors)
+        cdp, sentinel = prepare_candidate(context, checks, diagnostic_errors,
+                                          diagnostic_only=profile != 'default')
         package_dump = adb('shell', 'dumpsys', 'package', PACKAGE)
         assert re.search(r'versionCode=' + str(context['metadata']['versionCode']) + r'\b', package_dump), 'Installed version differs from tested APK'
         save('package.json', dict(dump=package_dump))
@@ -758,6 +788,7 @@ def run():
         save('results.json', dict(apk=context['metadata'], checks=checks, passed=not failed,
                                  executedScenariosPassed=not scenario_failed, acceptanceCoverage=coverage,
                                  diagnosticErrors=diagnostic_errors,
+                                 runtimeProfile=profile, diagnosticOnly=profile != 'default',
                                  physicalDevice=False, distributionApproved=False))
         server.shutdown()
     if failed:

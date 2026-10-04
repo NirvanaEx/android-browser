@@ -11,6 +11,20 @@ import android_test
 
 
 class HarnessTests(unittest.TestCase):
+    def test_graphite_diagnostic_never_claims_update_or_default_runtime_acceptance(self):
+        context = dict(apk='candidate.apk', metadata=dict(baseline=False, versionCode=768003113))
+        checks = {}
+        with patch.object(android_test, 'adb', return_value='Success') as adb, \
+                patch.object(android_test, 'open_page', return_value=Mock()):
+            android_test.prepare_candidate(context, checks, {}, diagnostic_only=True)
+        self.assertEqual(checks['default_runtime_configuration']['status'], 'blocked')
+        self.assertNotEqual(android_test.acceptance_coverage(checks)['saved_data_preserved']['status'], 'passed')
+        adb.assert_called_once_with('install', '-r', 'candidate.apk', timeout=300)
+        self.assertEqual(android_test.runtime_flags('graphite-off-diagnostic'),
+                         android_test.runtime_flags('default').rstrip() + ' --disable-skia-graphite\n')
+        with self.assertRaises(ValueError):
+            android_test.runtime_flags('arbitrary-flags')
+
     def test_unexecuted_acceptance_is_blocked_even_if_smoke_checks_pass(self):
         coverage = android_test.acceptance_coverage({'direct_playing': {'status': 'passed'}})
         self.assertEqual(coverage['real_video_frame']['status'], 'passed')

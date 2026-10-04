@@ -20,6 +20,13 @@ explicitly reviewed tag/head/release/BuildId case in `diagnose_release.py`;
 unknown tags fail closed. The default `baseline` retains the original .9 case.
 The .10 GPU case uses `build_tag=upgrid-ci-37219068941-1`.
 
+For the symbolized .10 Dawn/Vulkan emulator crash, `mode=android-test` also
+accepts `android_profile=graphite-off-diagnostic`. It changes only the ephemeral
+device's Graphite startup flag, saves `runtime-profile.json`, and runs candidate
+checks without repeating the baseline. Update/default-runtime checks cannot
+pass in this profile. Keep `android_profile=default` for acceptance; a diagnostic
+success is never permission to distribute an otherwise unaccepted APK.
+
 `mode=android-test` runs a signed APK in a GitHub-hosted Android emulator.
 Pass `build_tag=upgrid-ci-RUN-ATTEMPT`, or `baseline` to check the previous
 signed APK used for update tests. After APK verification/upload, the build dispatches an Android test run before waiting for the incremental cache upload. Its dispatch receipt is stored with build diagnostics.

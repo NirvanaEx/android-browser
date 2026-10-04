@@ -27,6 +27,11 @@ on:
         description: Exact private build tag for android-test or reviewed diagnose-release case
         type: string
         default: baseline
+      android_profile:
+        description: Default acceptance configuration or Graphite-off diagnostic only
+        type: choice
+        options: [default, graphite-off-diagnostic]
+        default: default
 permissions:
   contents: read
 concurrency:
@@ -289,6 +294,8 @@ jobs:
           sudo udevadm trigger --name-match=kvm
       - name: Test signed ARM64 APK in Android with native translation
         uses: reactivecircus/android-emulator-runner@4c44018e59b437e86cdfc41da381398f93ed8808
+        env:
+          UPGRID_ANDROID_PROFILE: ${{ inputs.android_profile || 'default' }}
         with:
           # API 30: translator SIGILL; API 35: renderer SIGSEGV in
           # berberis_HandleNoExec. Probe API 36 with the unchanged signed APK.
