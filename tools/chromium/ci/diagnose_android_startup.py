@@ -114,6 +114,10 @@ def run_profile(name, flags, base, seen_tombstones):
         ('tombstones', lambda: result.update(tombstones=collect_tombstones(directory, seen_tombstones))),
         ('dropbox', lambda: (directory / 'dropbox.txt').write_text(
             harness.adb('shell', 'dumpsys', 'dropbox', '--print', 'data_app_native_crash', timeout=30))),
+        # A seccomp KILL can terminate a process without a tombstone. Retain
+        # the disposable emulator's audit event, including syscall ABI.
+        ('kernel', lambda: (directory / 'kernel.txt').write_text(
+            harness.adb('shell', 'dmesg', timeout=20))),
     ):
         harness.collect_diagnostic(result['diagnosticErrors'], label, operation)
     result['elapsedSeconds'] = round(time.monotonic()-started, 1)
@@ -166,8 +170,8 @@ def main():
     results = []
     seen_tombstones = set()
     try:
-        # The first three cases were captured by run 37237867123. Follow up on
-        # its remaining renderer failure without repeating those experiments.
+        # Runs 37237867123 and 37238345852 found SIGSYS after bypassing app
+        # zygote. Repeat that case with kernel audit evidence, not weaker flags.
         for name in ('graphite-off-low-end',):
             print('Android startup diagnosis: ' + name, flush=True)
             results.append(run_profile(name, PROFILES[name], base, seen_tombstones))

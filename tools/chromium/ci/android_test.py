@@ -263,7 +263,18 @@ def app_failures(log):
         if re.search(r'Cmdline: ' + re.escape(PACKAGE) + r'(?=[:\s])', block) and re.search(r'signal \d+ \(SIG', block):
             failures.append(dict(kind='native-crash', detail='\n'.join(line for line in block.splitlines()
                 if 'Cmdline:' in line or 'signal ' in line or 'libndk_translation.so' in line)[:4000]))
+    processes = {}
     for line in log.splitlines():
+        started = re.search(r'Start proc (\d+):([^/\s]+)', line)
+        if started:
+            processes[started[1]] = started[2]
+        died = re.search(r'Zygote\s*:\s*Process (\d+) exited due to signal (\d+)\b', line)
+        if died:
+            process = processes.pop(died[1], '')
+            # seccomp KILL may produce no tombstone. Ignore routine kill/stop
+            # signals and require the PID to belong to our exact package.
+            if (process == PACKAGE or process.startswith(PACKAGE + ':')) and int(died[2]) in (4, 6, 7, 11, 31):
+                failures.append(dict(kind='process-fatal-signal', detail=process + ': ' + line[:1000]))
         if ('ANR in ' + PACKAGE in line or ('ANR in Window{' in line and PACKAGE + '/' in line)
                 or ('Process: ' + PACKAGE in line and 'AndroidRuntime' in line)):
             failures.append(dict(kind='anr-or-java-crash', detail=line[:1000]))

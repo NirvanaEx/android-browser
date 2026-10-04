@@ -44,6 +44,22 @@ class HarnessTests(unittest.TestCase):
         self.assertEqual(android_test.app_failures('ActivityManager: ANR in com.other.browser'), [])
         self.assertTrue(android_test.app_failures('WindowManager: ANR in Window{abc u0 com.upgrid.chromium/Activity}'))
 
+    def test_fatal_signal_without_tombstone_is_scoped_to_process_owner(self):
+        log = '''ActivityManager: Start proc 100:com.upgrid.chromium:sandboxed_process1:0/u0i1
+Zygote  : Process 100 exited due to signal 31 (Unknown signal 31)
+ActivityManager: Start proc 101:com.upgrid.chromium.fake/u0a20
+Zygote  : Process 101 exited due to signal 31 (Unknown signal 31)
+ActivityManager: Start proc 102:com.upgrid.chromium:sandboxed_process1:1/u0i2
+Zygote  : Process 102 exited due to signal 9 (Killed)
+ActivityManager: Start proc 100:com.other.app/u0a21
+Zygote  : Process 100 exited due to signal 31 (Unknown signal 31)
+Zygote  : Process 999 exited due to signal 31 (Unknown signal 31)
+'''
+        failures = android_test.app_failures(log)
+        self.assertEqual(len(failures), 1)
+        self.assertEqual(failures[0]['kind'], 'process-fatal-signal')
+        self.assertIn('Process 100', failures[0]['detail'])
+
     def test_loop_boundary_is_playback_but_frozen_frames_are_not(self):
         before = dict(paused=False, frames=350, time=23.9)
         android_test.assert_playing_advanced(before, dict(paused=False, frames=380, time=1.9))
