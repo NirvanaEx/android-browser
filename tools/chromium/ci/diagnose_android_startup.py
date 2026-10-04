@@ -17,6 +17,11 @@ PROFILES = {
     'graphite-off': harness.runtime_flags('graphite-off-diagnostic'),
     'graphite-off-jitless': harness.runtime_flags('graphite-off-diagnostic').rstrip()
                             + ' --js-flags=--jitless\n',
+    # Pinned ChildConnectionAllocator.createVariableSize uses service 1
+    # (isolatedProcess=true, useAppZygote absent) for SysUtils.isLowEndDevice.
+    # This also changes memory policy, so a pass only localizes the start path.
+    'graphite-off-low-end': harness.runtime_flags('graphite-off-diagnostic').rstrip()
+                            + ' --enable-low-end-device-mode\n',
 }
 HTML = b'''<!doctype html><title>Upgrid startup HTML</title><p id="ready">HTML ready</p>
 <script>document.title='Upgrid startup JS ready';
@@ -161,8 +166,11 @@ def main():
     results = []
     seen_tombstones = set()
     try:
-        for name, flags in PROFILES.items():
-            results.append(run_profile(name, flags, base, seen_tombstones))
+        # The first three cases were captured by run 37237867123. Follow up on
+        # its remaining renderer failure without repeating those experiments.
+        for name in ('graphite-off-low-end',):
+            print('Android startup diagnosis: ' + name, flush=True)
+            results.append(run_profile(name, PROFILES[name], base, seen_tombstones))
     finally:
         server.shutdown()
         (base / 'summary.json').write_text(json.dumps(dict(apk=context['metadata'],
