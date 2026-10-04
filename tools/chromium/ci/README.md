@@ -14,6 +14,12 @@ gh workflow run chromium-full.yml --repo NirvanaEx/android-browser \
 `mode=validate` only runs the tooling tests. Pushes to CI sources also run
 validation without starting another full Chromium build.
 
+`mode=diagnose-release` reads selected logs and matching symbols from a completed
+cache on GitHub without compiling or executing the APK. `build_tag` selects an
+explicitly reviewed tag/head/release/BuildId case in `diagnose_release.py`;
+unknown tags fail closed. The default `baseline` retains the original .9 case.
+The .10 GPU case uses `build_tag=upgrid-ci-37219068941-1`.
+
 `mode=android-test` runs a signed APK in a GitHub-hosted Android emulator.
 Pass `build_tag=upgrid-ci-RUN-ATTEMPT`, or `baseline` to check the previous
 signed APK used for update tests. After APK verification/upload, the build dispatches an Android test run before waiting for the incremental cache upload. Its dispatch receipt is stored with build diagnostics.

@@ -6,10 +6,18 @@ import tempfile
 import unittest
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
-from diagnose_release import extract, selected
+from diagnose_release import diagnostic_case, extract, selected
 
 
 class ReleaseDiagnosisTests(unittest.TestCase):
+    def test_exact_candidate_identity_and_unknown_tag_rejection(self):
+        self.assertEqual(diagnostic_case('baseline')['run'], 37156601112)
+        candidate = diagnostic_case('upgrid-ci-37219068941-1')
+        self.assertEqual(candidate['release'], 403119124)
+        self.assertEqual(candidate['buildId'], 'bb857d87ea5c97d3')
+        with self.assertRaisesRegex(ValueError, 'reviewed diagnostic identity'):
+            diagnostic_case('upgrid-ci-37219068941-2')
+
     def test_only_exact_logs_and_libraries_are_selected(self):
         for name in ('./src/out/Upgrid/.ninja_log',
                      'src/out/Upgrid/lib.unstripped/libchrome_combined.so'):

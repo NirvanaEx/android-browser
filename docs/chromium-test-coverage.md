@@ -71,3 +71,28 @@ blocking while pumping the caller loop. This regression still needs Chromium
 compilation/execution; source rendering alone is not a passed C++ test.
 The renderer translation crashes and the reported phone player-exit crash remain
 separate unresolved observations until the corrected APK is tested.
+
+## .10 Android result (2026-10-04)
+
+Build 37219068941 completed successfully on ec9a587. Candidate versionCode
+768003113 has SHA-256
+`11d222e1d56de520b540ae555146081c96ed9bfd4050cc95b0110bd60941c15e`.
+Android run 37222939751 failed; its exact-APK identity and evidence are saved in
+`build/android-evidence-37222939751`. Baseline .8 fails first, then .10 is
+installed without clearing data. Do not attribute the baseline abort at
+18:08:48 UTC (PID 3459) to the candidate launched at 18:12:48 (PID 7190).
+
+Candidate DevTools exposes page targets, but the renderer cannot load the
+fixture, and the final screenshot shows an Aw, Snap page. The candidate GPU
+crashes at 18:12:54 in the emulator's `vulkan.ranchu.so`,
+`vk_common_SetDebugUtilsObjectNameEXT`, through the native-bridge Vulkan proxy.
+Its guest libchrome BuildId is `bb857d87ea5c97d3`. Renderer failures contain
+`berberis_HandleNoExec`. The previous blocking-disallowed browser abort is not
+observed in the candidate interval; this limited observation does not prove
+the phone exit crash fixed. GPU guest symbols will be recovered from the
+exact .10 cache by the allowlisted diagnose-release case, without compilation.
+
+The player, extension, translation and lifecycle scenarios remain blocked;
+update preservation and crash checks failed. Neither changing these statuses
+nor repeating the identical emulator run is acceptance. Native Google Translate
+service configuration and approval of the Chromium base remain unresolved.
