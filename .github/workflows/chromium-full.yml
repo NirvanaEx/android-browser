@@ -61,6 +61,8 @@ jobs:
           node --check tools/chromium/ci/fixtures/tampermonkey-raw.user.js
           python3 tools/chromium/tests/test-scrub.py --jdk "$JAVA_HOME_17_X64"
           python3 tools/chromium/tests/test-orientation.py --jdk "$JAVA_HOME_17_X64"
+          python3 tools/chromium/tests/test-toolbar-position.py --jdk "$JAVA_HOME_17_X64"
+          python3 tools/chromium/tests/test-fullscreen-attach.py --jdk "$JAVA_HOME_17_X64"
           UPGRID_TEST_NINJA=ninja python3 tools/chromium/distributed/test_cache.py
       - name: Validate overlay anchors against pinned Chromium sources
         run: python3 tools/chromium/ci/check_overlay.py

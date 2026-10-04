@@ -1,7 +1,7 @@
 """Acceptance gate tied to the exact APK, signing identity and tested revision."""
 REQUIRED = (
     'android_install_and_update', 'saved_data_preserved', 'cold_start_saved_tab',
-    'empty_tab_and_menu', 'real_video_frame', 'player_enter_exit_playback',
+    'empty_tab_and_menu', 'address_input_top', 'real_video_frame', 'player_enter_exit_playback',
     'manual_rotation', 'background_and_tab_pause', 'adblock', 'tampermonkey_scripts',
     'google_translation', 'translation_after_restart', 'translation_exceptions',
 )

@@ -278,7 +278,8 @@ def acceptance_coverage(checks):
         'real_video_frame': ['direct_playing'],
         'player_enter_exit_playback': ['direct_playing', 'direct_paused', 'clipped_playing',
                                      'shadow_playing', 'iframe_playing', 'iframe-same_playing',
-                                     'repeat-native-play-pause', 'container_isolated_video'],
+                                     'repeat-native-play-pause', 'container_isolated_video',
+                                     'site-fullscreen-repeat'],
         'manual_rotation': ['manual-rotation'],
         'background_and_tab_pause': ['background-pause', 'tab-switch-pause'],
     }
@@ -585,6 +586,60 @@ def run():
             wait_for(lambda: cdp.js('!document.fullscreenElement'))
             save('manual-rotation.json', dict(original=original, rotated=rotated, before=before, during=during, restored=restored))
 
+        def site_fullscreen_repeat():
+            states = []
+            # All entries use a site's button, never the Upgrid toolbar entry.
+            # The iframe buttons execute in their own origin with a real tap.
+            for path in ('/direct', '/clipped', '/shadow', '/iframe-same', '/iframe'):
+                cdp.call('Page.navigate', dict(url='http://127.0.0.1:8766' + path))
+                wait_for(lambda: cdp.js('typeof state === "function" && state()?.readyState >= 2'))
+                tap('Play')
+                wait_for(lambda: cdp.js('state()?.frames > 3 && !state().paused'))
+                before = cdp.js('state()')
+                for cycle in range(3):
+                    started = time.monotonic()
+                    tap('Container fullscreen')
+                    wait_for(lambda: cdp.js('state()?.videoFullscreen'))
+                    wait_for(lambda: find('Позиция видео') is not None)
+                    # Includes uiautomator overhead; not a frame-latency benchmark.
+                    observed_entry_seconds = time.monotonic() - started
+                    time.sleep(1)
+                    during = cdp.js('state()')
+                    assert_same_video(before, during)
+                    assert_playing_advanced(before, during)
+                    player_tap('Вернуться на страницу')
+                    wait_for(lambda: cdp.js('!state()?.fullscreen'))
+                    time.sleep(1)
+                    after = cdp.js('state()')
+                    assert_same_video(before, after)
+                    assert_playing_advanced(during, after)
+                    states.append(dict(path=path, cycle=cycle, before=before, during=during,
+                                       after=after, observedEntrySeconds=observed_entry_seconds))
+                    before = after
+                screenshot('site-fullscreen-repeat-' + path[1:])
+            save('site-fullscreen-repeat.json', states)
+
+        def address_input_top():
+            observations = []
+            size = list(map(int, re.findall(r'(\d+)x(\d+)', adb('shell', 'wm', 'size'))[-1]))
+            def address_node():
+                return next((n for n in ui().iter('node') if n.get('resource-id') == PACKAGE + ':id/url_bar'), None)
+            for cycle in range(2):
+                tap_node(wait_for(address_node))
+                adb('shell', 'input', 'text', 'upgrid-layout-test')
+                wait_for(lambda: re.search(r'(?:mInputShown|mIsInputViewShown|isInputViewShown)=true',
+                                          adb('shell', 'dumpsys', 'input_method')))
+                node = wait_for(address_node)
+                bounds = list(map(int, re.findall(r'\d+', node.get('bounds'))))
+                assert len(bounds) == 4 and 0 <= bounds[1] < size[1] / 4
+                assert bounds[1] < bounds[3] < size[1] / 2, 'Address field is below the top editing area'
+                assert node.get('focused') == 'true' and 'upgrid-layout-test' in node.get('text', '')
+                observations.append(dict(cycle=cycle, bounds=bounds, screen=size, keyboardShown=True))
+                screenshot('address-input-top-' + str(cycle))
+                adb('shell', 'input', 'keyevent', 'KEYCODE_BACK')
+                adb('shell', 'input', 'keyevent', 'KEYCODE_BACK')
+            save('address_input_top.json', observations)
+
         def background_pause():
             nonlocal cdp
             before = start_direct_player()
@@ -723,6 +778,8 @@ def run():
                                                  providerVerified=False, siteLanguageExceptionsTested=False))
 
         for name, operation in [('repeat-native-play-pause', repeat_and_pause),
+                                ('site-fullscreen-repeat', site_fullscreen_repeat),
+                                ('address_input_top', address_input_top),
                                 ('manual-rotation', manual_rotation),
                                 ('background-pause', background_pause),
                                 ('tab-switch-pause', tab_switch_pause),
