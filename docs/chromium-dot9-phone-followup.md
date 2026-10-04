@@ -120,3 +120,75 @@ The .11 APK stays in the private build release and was not published to Telegram
 Further behavioral verification needs a compatible Android ARM64 runtime; the
 phone-specific exit crash still needs its own crash evidence. Translation and
 the duplicate toolbar remain open issues.
+
+## Exact .11 startup diagnosis (2026-10-05)
+
+Symbol run [37237192148](https://github.com/NirvanaEx/android-browser/actions/runs/37237192148)
+read the completed .11 cache without compiling. Both stripped and unstripped
+libraries match BuildId `1ff2e1d8395acaa4`. The GPU guest stack is
+`GpuMain -> GpuInit::InitializeDawn -> DawnSharedContext::Initialize ->
+dawn::native::vulkan::Device::Initialize -> BindGroupLayout::Initialize ->
+SetDebugNameInternal`. The host fault is a null dereference at `0x40` inside
+`vulkan.ranchu.so!vk_common_SetDebugUtilsObjectNameEXT`, through the native
+translation Vulkan proxy. No Upgrid player entry was reached.
+
+Run [37237867123](https://github.com/NirvanaEx/android-browser/actions/runs/37237867123)
+installed the unchanged .11 SHA and compared three launch configurations on the
+same Android 16 x86_64 image. Default produced GPU and renderer crashes. With
+`--disable-skia-graphite`, the Vulkan fault disappeared from the captured log,
+but the renderer still crashed in `berberis_HandleNoExec`. Adding
+`--js-flags=--jitless` did not remove that renderer failure. None executed the
+local page's JavaScript readiness marker. No sandbox, SELinux, seccomp or
+fullscreen activation restriction was disabled.
+
+Full tombstones were collected for the two default GPU crashes. Isolated
+renderer failures still only yielded the short in-process log, with the fault
+address hidden and no ARM64 guest stack. `HandleNoExec` reports an attempt to
+execute a non-executable guest address; its name alone does not prove whether
+the original fault belongs to Chromium or the translator. The failed first
+diagnostic dispatch, 37237190194, was an action script parsing error before APK
+launch; c491b11 fixed the selector to run in one shell.
+
+Follow-up run 37238345852 tests `--disable-skia-graphite
+--enable-low-end-device-mode`. In the pinned `ChildConnectionAllocator`, low-end
+mode selects `SandboxedProcessService1`, whose manifest retains
+`isolatedProcess=true` and does not use app zygote. This mode also changes memory
+policy, so its result must not be described as an isolated proof of a zygote
+defect, a phone fix, or release acceptance. The original three profiles are
+preserved in the diagnostic script and their results above; they are not rerun
+by this follow-up. The APK itself has not changed.
+
+That follow-up did select service 1 and no longer logged `HandleNoExec`. It still
+failed readiness after 122.9 seconds. Renderer PIDs 3666, 4134 and 4677 exited
+with signal 31 (`SIGSYS`), without tombstones. This is a distinct observed
+failure, not a passing workaround. Low-end mode also enabled in-process GPU,
+so absence of the old GPU stack in this mode is not an independent comparison.
+Utility processes logged invalid Mojo endpoint strings and exited; do not
+attribute renderer deaths to that separate message without evidence.
+
+The harness previously only detected tombstone, Java and ANR records. It now
+also correlates app process creation with fatal Zygote exit signals, including
+SIGSYS without a tombstone, while ignoring other packages, reused PIDs and
+routine SIGKILL. The new regression and 18 related harness checks pass locally.
+Run 37238941761 repeats the same low-end diagnostic flags with kernel audit
+collection to investigate a possible syscall ABI/seccomp incompatibility.
+Security checks remain enabled; that hypothesis is not yet a proven root cause.
+
+Run [37238941761](https://github.com/NirvanaEx/android-browser/actions/runs/37238941761)
+completed the comparison: readiness still failed after 124.1 seconds and the
+new detector captured renderer PIDs 3634, 4049 and 4663 terminating with SIGSYS.
+Kernel collection succeeded, but no seccomp/type-1326 audit event or rejected
+syscall number was present. Therefore a syscall ABI/filter mismatch is a
+source-supported hypothesis, not an established root cause. Pinned
+`sandbox/linux/bpf_dsl/policy_compiler.cc:140` validates the syscall audit
+architecture; the current guest is ARM64 and the host is x86_64. Inferring a
+specific failed syscall or disabling the filter would not establish correct
+Android acceptance. A further targeted emulator experiment would need actual
+seccomp trace/audit evidence; another unchanged launch adds no information.
+
+All diagnostic APKs used the exact same .11 SHA. Cloud validation passed with
+64 pipeline tests and the pinned overlay checks; local targeted harness tests
+passed (19). No application code, APK, or Telegram release changed during this
+diagnosis. The runtime remains unsuitable for accepting this release with its
+normal settings. The owner's exit crash still lacks its own evidence; native
+translation configuration and the transient toolbar duplication remain open.
