@@ -96,3 +96,17 @@ The player, extension, translation and lifecycle scenarios remain blocked;
 update preservation and crash checks failed. Neither changing these statuses
 nor repeating the identical emulator run is acceptance. Native Google Translate
 service configuration and approval of the Chromium base remain unresolved.
+
+Symbolization run 37224505356 matched .10's BuildId and resolved the GPU guest
+stack through `dawn::native::vulkan::SetDebugNameInternal`, bind-group layout
+initialization, `gpu::DawnSharedContext::Initialize`, and
+`gpu::GpuInit::InitializeDawn`. This identifies the Dawn/Vulkan startup path;
+it does not explain the separate renderer `berberis_HandleNoExec`.
+
+The optional `graphite-off-diagnostic` Android profile runs the same signed
+candidate with `--disable-skia-graphite`, which the pinned Chromium honors in
+`gpu/config/gpu_finch_features.cc`. It skips repeating the failed baseline,
+records that update preservation and default runtime are unverified, and can
+never yield overall acceptance. No sandbox, DCHECK or fullscreen activation
+check is disabled. Screenshots/logcat and scenario assertions remain enabled.
+This is one causal GPU comparison, not a production configuration change.
