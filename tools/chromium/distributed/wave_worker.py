@@ -15,6 +15,19 @@ from worker import sha
 from action_paths import object_path
 
 
+def write_graph(out, actions):
+    graph = []
+    for index, action in enumerate(actions):
+        name = action['output']
+        if not object_path(name):
+            raise RuntimeError('Invalid object path')
+        (out / name).parent.mkdir(parents=True, exist_ok=True)
+        graph += [f'rule cxx_{index}', '  command = ' + action['command'].replace('$', '$$'),
+                  '  description = CXX ' + name, '  deps = gcc', '  depfile = ' + name + '.d',
+                  f'build {name}: cxx_{index}']
+    (out / 'wave.ninja').write_text('\n'.join(graph) + '\n')
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('archive', type=pathlib.Path)
@@ -55,16 +68,7 @@ def main():
             raise RuntimeError('Limit must be positive')
         actions = actions[:args.limit]
     out.mkdir(parents=True, exist_ok=True)
-    graph = []
-    for index, action in enumerate(actions):
-        name = action['output']
-        if not object_path(name):
-            raise RuntimeError('Invalid object path')
-        (out / name).parent.mkdir(parents=True, exist_ok=True)
-        graph += [f'rule cxx_{index}', '  command = ' + action['command'].replace('$', '$$'),
-                  '  description = CXX ' + name, '  deps = gcc', '  depfile = ' + name + '.d',
-                  f'build {name}: cxx_{index}']
-    (out / 'wave.ninja').write_text('\n'.join(graph) + '\n')
+    write_graph(out, actions)
     completed, check_id = 0, None
     token, repo, head = (os.environ.get(name) for name in ('GH_TOKEN', 'GITHUB_REPOSITORY', 'GITHUB_SHA'))
 

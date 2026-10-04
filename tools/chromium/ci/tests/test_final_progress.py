@@ -37,6 +37,14 @@ class FinalProgressTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, 'imported objects'):
             enforce_plan(report)
 
+    def test_quoted_xnnpack_import_cannot_bypass_rebuild_guard(self):
+        name = 'obj/third_party/xnnpack/f16_arch=armv8.2-a+fp16/kernel.o'
+        for description in (name, "'" + name + "'", '"' + name + '"'):
+            report = audit_plan('[1/1] CC ' + description, {name})
+            self.assertEqual(report['repeatedImportedObjects'], [name])
+            with self.assertRaisesRegex(RuntimeError, 'imported objects'):
+                enforce_plan(report)
+
     def test_bulk_compile_guard_allows_small_remainder_and_link(self):
         for count in (127, 128):
             report = audit_plan('\n'.join(f'[{i+1}/{count}] CC obj/{i}.o' for i in range(count)), set())

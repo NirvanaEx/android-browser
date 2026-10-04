@@ -4,6 +4,7 @@ import json
 import os
 import pathlib
 import re
+import shlex
 import subprocess
 import threading
 import time
@@ -26,6 +27,15 @@ def audit_plan(text, imported):
             continue
         kind, target = match[3], match[4]
         counts[kind] += 1
+        if kind in ('CC', 'CXX'):
+            # Chromium shell-quotes descriptions of paths containing '='.
+            # Parse only one target; never execute the description.
+            try:
+                words = shlex.split(target)
+            except ValueError:
+                words = []
+            if len(words) == 1:
+                target = words[0]
         if kind in ('CC', 'CXX') and target in imported:
             repeated.append(target)
     return {'actionsByType': dict(counts), 'totalActions': sum(counts.values()),
