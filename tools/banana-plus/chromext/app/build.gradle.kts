@@ -1,0 +1,52 @@
+plugins {
+  id("com.android.application")
+  id("org.jetbrains.kotlin.android")
+  id("com.ncorti.ktfmt.gradle")
+}
+
+android {
+  compileSdk = 35
+  namespace = "org.matrix.chromext"
+
+  defaultConfig {
+    applicationId = "org.matrix.chromext"
+    minSdk = 21
+    targetSdk = 35
+    versionCode = 17
+    versionName = "3.8.3-bananaplus.1"
+  }
+
+  buildFeatures { buildConfig = true }
+
+  buildTypes {
+    release {
+      isShrinkResources = true
+      isMinifyEnabled = true
+      proguardFiles("proguard-rules.pro")
+    }
+  }
+
+  androidResources {
+    additionalParameters += listOf("--allow-reserved-package-id", "--package-id", "0x42")
+  }
+
+  compileOptions {
+    sourceCompatibility = JavaVersion.VERSION_21
+    targetCompatibility = JavaVersion.VERSION_21
+  }
+
+  lint {
+    disable +=
+        listOf(
+            "Internationalization",
+            "UnsafeIntentLaunch",
+            "SetJavaScriptEnabled",
+            "UnspecifiedRegisterReceiverFlag",
+            "Usability:Icons")
+  }
+}
+
+dependencies {
+  compileOnly("de.robv.android.xposed:api:82")
+  testImplementation("junit:junit:4.13.2")
+}

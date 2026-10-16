@@ -1,0 +1,40 @@
+{
+  "schema": 1,
+  "generated": "2026-10-16",
+  "block_hosts": 86693,
+  "exception_hosts": 1842,
+  "asset_sha256": "fe5ed04e1d9b84f1d382eacc0cafbdcaf5c19c7793c10ab0a00477f0ddb49d2e",
+  "selection": "Only global whole-host rules without options or with all/document alone. Domain-scoped, third-party, resource-specific, regex and path block rules are not broadened. Applicable document exceptions win; resource-only exceptions do not whitelist main documents.",
+  "sources": [
+    {
+      "file": "base.txt",
+      "url": "https://raw.githubusercontent.com/triplebanana/filter/0edb39c9fb61f77fae6a0165d8d3bfd16256c112/tools/base/base.txt",
+      "sha256": "5fbf43d6ba1200c7c3fa306930bceb5d9fdc64ffd45bdb31be5312a3648e0861"
+    },
+    {
+      "file": "easylist.txt",
+      "url": "https://easylist.to/easylist/easylist.txt",
+      "sha256": "440973833a3c67edd7f2dde0c49deec1ea82e786185369f211b73498e374d2d1"
+    },
+    {
+      "file": "badware.txt",
+      "url": "https://raw.githubusercontent.com/uBlockOrigin/uAssets/master/filters/badware.txt",
+      "sha256": "735ce5e82655caf73987b2c244877c69f471b789e4e4498ae971d493a14d75c7"
+    },
+    {
+      "file": "filters.txt",
+      "url": "https://raw.githubusercontent.com/uBlockOrigin/uAssets/master/filters/filters.txt",
+      "sha256": "3d468ccf06ccbfda0204c9f96bc8653d55c39337a11e185707848e190ff52755"
+    },
+    {
+      "file": "serverlist.txt",
+      "url": "https://pgl.yoyo.org/adservers/serverlist.php?hostformat=adblockplus&showintro=1&mimetype=plaintext",
+      "sha256": "93ab43bc02f3668e002d22097ef0881efab294b5ffb99c224602d9b1d4ca5cb4"
+    },
+    {
+      "file": "unbreak.txt",
+      "url": "https://raw.githubusercontent.com/uBlockOrigin/uAssets/master/filters/unbreak.txt",
+      "sha256": "6b095ad85e8b7ba9dc4f489fd538dd54e51568b0ea8543fa57ca9ccbc3b559c2"
+    }
+  ]
+}

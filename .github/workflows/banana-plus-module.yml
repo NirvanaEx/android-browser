@@ -1,0 +1,39 @@
+name: Banana Plus native navigation module
+on:
+  push:
+    branches: [codex/banana-native-redirect-20261016]
+    paths:
+      - 'tools/banana-plus/**'
+      - '.github/workflows/banana-plus-module.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  module:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Verify policy snapshot
+        run: python3 tools/banana-plus/test-navigation-rules.py
+      - name: Test and build module
+        working-directory: tools/banana-plus/chromext
+        run: |
+          chmod +x gradlew
+          ./gradlew --no-daemon --max-workers=2 app:testDebugUnitTest app:assembleDebug --console=plain
+      - name: Record module digest
+        run: sha256sum tools/banana-plus/chromext/app/build/outputs/apk/debug/app-debug.apk > tools/banana-plus/chromext/app/build/module-sha256.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: banana-plus-navigation-module
+          path: |
+            tools/banana-plus/chromext/app/build/outputs/apk/debug/app-debug.apk
+            tools/banana-plus/chromext/app/build/module-sha256.txt
+            tools/banana-plus/chromext/app/build/test-results/testDebugUnitTest/
+          retention-days: 14
