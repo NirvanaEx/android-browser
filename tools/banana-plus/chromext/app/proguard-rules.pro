@@ -1,0 +1,2 @@
+-keep class org.matrix.chromext.MainHook
+-keepattributes SourceFile,LineNumberTable

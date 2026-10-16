@@ -1,0 +1,180 @@
+/* font_fix */
+[class^="eruda-icon"]:before {
+  font-size: 10px;
+  display: block;
+}
+.eruda-icon-arrow-left:before {
+  content: "←";
+}
+.eruda-icon-arrow-right:before {
+  content: "→";
+}
+.eruda-icon-clear:before {
+  content: "⦸";
+  font-size: 16px;
+  margin-left: 1px;
+}
+.eruda-icon-compress:before {
+  content: "🗎";
+}
+.eruda-icon-copy:before,
+.luna-text-viewer-icon-copy:before {
+  content: "⎘ ";
+  font-size: 14px;
+  font-weight: bold;
+}
+.eruda-icon-delete:before {
+  content: "X";
+  font-size: 15px;
+  font-weight: bold;
+  margin-left: 2px;
+  transform: scale(1.3, 1);
+}
+.eruda-icon-expand:before {
+  content: "⌄";
+}
+.eruda-icon-eye:before {
+  content: "⊕";
+  font-size: 16px;
+  transform: translate(-2px, 0.5px);
+}
+#eruda-info .eruda-userscripts > h2 > span.eruda-icon-eye {
+  transform: translate(0px, -6px);
+}
+div.eruda-btn.eruda-search {
+  margin-top: 4px;
+}
+.eruda-icon-filter:before {
+  content: "Ȳ";
+  font-size: 13px;
+  margin-left: 6px;
+  transform: scale(1.5, 1);
+}
+.eruda-icon-play:before {
+  content: "▷";
+}
+.eruda-icon-record:before {
+  content: "●";
+}
+.eruda-icon-refresh:before {
+  content: "↻";
+  font-size: 17px;
+  font-weight: normal;
+  transform: translate(-5px, -1.5px);
+}
+.eruda-icon-reset:before {
+  content: "↺";
+  font-size: 18px;
+  font-weight: bold;
+  transform: rotate(270deg) translate(7px, 0);
+}
+.eruda-icon-search:before {
+  content: "🔍";
+}
+.eruda-icon-select:before {
+  content: "➤";
+  font-size: 14px;
+  transform: rotate(232deg);
+}
+.eruda-icon-tool:before {
+  content: "⚙";
+  font-size: 30px;
+}
+.luna-console-icon-error:before {
+  content: "✗";
+}
+.luna-console-icon-warn:before {
+  content: "⚠";
+}
+[class$="icon-caret-right"]:before,
+[class$="icon-arrow-right"]:before {
+  content: "▼";
+  font-size: 9px;
+  display: block;
+  transform: rotate(-0.25turn);
+}
+[class$="icon-caret-down"]:before,
+[class$="icon-arrow-down"]:before {
+  content: "▼";
+  font-size: 9px;
+}
+
+/* new_icons */
+.eruda-icon-add:before {
+  content: "➕";
+  font-size: 10px;
+  vertical-align: 3px;
+}
+.eruda-icon-save:before {
+  content: "💾";
+  font-size: 10px;
+  vertical-align: 3px;
+}
+
+/* dom_fix */
+#eruda-elements div.eruda-dom-viewer-container {
+  overflow-x: hidden;
+}
+#eruda-elements div.eruda-dom-viewer-container > div.eruda-dom-viewer {
+  overflow-x: scroll;
+}
+.luna-dom-viewer {
+  min-width: 80vw;
+}
+
+/* plugin */
+.eruda-filters > ul > li {
+  display: flex;
+}
+h2.eruda-title {
+  width: 100%;
+}
+#eruda-info li .eruda-title span {
+  padding-left: 8px;
+  float: right;
+}
+#eruda-info .eruda-csp-rules > div.eruda-content {
+  white-space: pre-wrap;
+  margin-right: 3em;
+}
+#eruda-info .eruda-user-agent > h2 > span.eruda-reset {
+  position: relative;
+  top: 35px;
+  left: 20.5px;
+}
+#eruda-info .eruda-userscripts > h2 > span.eruda-icon-eye {
+  position: relative;
+  right: 10px;
+}
+#eruda-info .eruda-user-agent > div.eruda-content {
+  text-wrap: balance;
+  text-align: center;
+  margin-right: 3em;
+}
+#eruda-info .eruda-user-agent h2,
+#eruda-info .eruda-csp-rules h2 {
+  padding-bottom: 12px;
+}
+#eruda-info .eruda-check-update {
+  text-align: center;
+}
+#eruda-info .eruda-userscripts div.eruda-content,
+#eruda-resources div.eruda-commands {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-around;
+  > span {
+    padding: 0.3em;
+    margin: 0.3em;
+    border: 0.5px solid violet;
+  }
+}
+#eruda-resources .eruda-filter-item {
+  width: 90%;
+  padding: 0.3em;
+}
+#eruda-resources .eruda-delete-filter {
+  width: 10%;
+  margin: auto;
+  text-align: center;
+}
