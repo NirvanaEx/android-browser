@@ -1,0 +1,54 @@
+{
+  "date": "2026-10-16",
+  "delivery": "persistent ChromeXt userscript; existing APK unchanged",
+  "version": "1.0.2",
+  "sha256": "77b0ab66a89010d35f679541b69bf2bad7e543e56c92da310f51cee56aebddb0",
+  "source_copy_matches": true,
+  "installed": true,
+  "cold_start_version": "1.0.2",
+  "other_scripts_preserved": true,
+  "scope": [
+    "pxp.farm",
+    "*.pxp.farm",
+    "porn-xp.eu",
+    "pervtube.net",
+    "*.pervtube.net"
+  ],
+  "before": {
+    "site": "pxp.farm",
+    "trigger": "thumbnail touch",
+    "unwanted_original_tab_host": "s.pemsrv.com"
+  },
+  "after": {
+    "real_site_rows": 20,
+    "skipped": [
+      {
+        "site": "pervtube.net",
+        "case": "popup_close_touch",
+        "reason": "no suitable visible control"
+      },
+      {
+        "site": "pxp.farm",
+        "case": "popup_close_touch",
+        "reason": "no suitable visible control"
+      }
+    ],
+    "unwanted_same_tab_navigation": false,
+    "unsolicited_new_windows": 0,
+    "heading_case_correction": "First H1 contains a native target=_blank link to porn-xp.eu; this expected user link is preserved.",
+    "real_video_started": [
+      {
+        "site": "pervtube.net",
+        "playing": true
+      },
+      {
+        "site": "pxp.farm",
+        "playing": true
+      }
+    ],
+    "controls_passed": 9,
+    "controls_total": 9
+  },
+  "debug_forward_removed": true,
+  "cookies_or_passwords_accessed": false
+}

@@ -1,0 +1,173 @@
+{
+  "date": "2026-10-16",
+  "version": "2.0.4",
+  "delivery": "Persistent ChromeXt userscript in installed org.triple.banana; no APK rebuild",
+  "scope": "All HTTP/HTTPS hosts and ports; ChromeXt frame injection requested",
+  "source_sha256": "873dd0318e640320496393d97a5974d53669ba994406da128d3f9c4a5899d970",
+  "source_copy_matches": true,
+  "installed": true,
+  "cold_start_verified": true,
+  "other_five_scripts_preserved": true,
+  "control_tests": {
+    "passed": 23,
+    "total": 23,
+    "all_passed": true,
+    "cases": [
+      {
+        "case": "background_popup",
+        "passed": true
+      },
+      {
+        "case": "background_redirect",
+        "passed": true
+      },
+      {
+        "case": "native_link_hijack",
+        "passed": true
+      },
+      {
+        "case": "native_external_link",
+        "passed": true
+      },
+      {
+        "case": "native_new_tab",
+        "passed": true
+      },
+      {
+        "case": "script_external_redirect",
+        "passed": true
+      },
+      {
+        "case": "same_origin_spa",
+        "passed": true
+      },
+      {
+        "case": "delegated_menu",
+        "passed": true
+      },
+      {
+        "case": "player_control",
+        "passed": true
+      },
+      {
+        "case": "delegated_button_ad",
+        "passed": true
+      },
+      {
+        "case": "login_popup",
+        "passed": true
+      },
+      {
+        "case": "popup_then_replace",
+        "passed": true
+      },
+      {
+        "case": "extra_popup",
+        "passed": true
+      },
+      {
+        "case": "delayed_popup",
+        "passed": true
+      },
+      {
+        "case": "synthetic_link",
+        "passed": true
+      },
+      {
+        "case": "external_form",
+        "passed": true
+      },
+      {
+        "case": "synthetic_form",
+        "passed": true
+      },
+      {
+        "case": "known_ad_link",
+        "passed": true
+      },
+      {
+        "case": "same_origin_clickunder",
+        "passed": true
+      },
+      {
+        "case": "timer_redirect",
+        "passed": true
+      },
+      {
+        "case": "manual_allow_navigation",
+        "passed": true
+      },
+      {
+        "case": "manual_allow_popup",
+        "passed": true
+      },
+      {
+        "case": "dismiss_notice",
+        "passed": true
+      }
+    ]
+  },
+  "public_domains": [
+    {
+      "host": "example.com",
+      "version": "2.0.4",
+      "scope": "all-http-sites",
+      "script_popup_blocked": true
+    },
+    {
+      "host": "example.org",
+      "version": "2.0.4",
+      "scope": "all-http-sites",
+      "script_popup_blocked": true
+    }
+  ],
+  "real_site_checks": {
+    "total": 20,
+    "executed": 18,
+    "skipped": [
+      {
+        "site": "pervtube.net",
+        "case": "popup_close_touch",
+        "reason": "no suitable visible control"
+      },
+      {
+        "site": "pxp.farm",
+        "case": "popup_close_touch",
+        "reason": "no suitable visible control"
+      }
+    ],
+    "same_tab_left_site": false,
+    "unexpected_windows": [],
+    "expected_mirror_link": {
+      "site": "pxp.farm",
+      "case": "content_heading_touch",
+      "destination": "porn-xp.eu",
+      "reason": "Native target=_blank anchor nested in the first H1, confirmed by prior DOM inspection",
+      "opened": true
+    },
+    "real_playback": [
+      {
+        "site": "pervtube.net",
+        "playing": true
+      },
+      {
+        "site": "pxp.farm",
+        "playing": true
+      }
+    ]
+  },
+  "cleanup": {
+    "matrix_forward_removed": true,
+    "fixture_forward_removed": true,
+    "fixture_reverse_removed": true,
+    "public_forward_removed": true,
+    "owned_public_tabs_closed": 2
+  },
+  "vpn": "Deferred by user; no server or phone network configuration changed",
+  "limits": [
+    "Page-script protection depends on ChromeXt injection timing and frame support",
+    "Server-side HTTP redirects are not intercepted by this userscript",
+    "Legitimate automatic cross-site navigation can require the one-time Open action"
+  ],
+  "website_cookies_or_passwords_read": false
+}

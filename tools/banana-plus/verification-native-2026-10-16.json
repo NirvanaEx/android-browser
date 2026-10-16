@@ -1,0 +1,397 @@
+{
+  "date": "2026-10-16",
+  "installed": true,
+  "package": "org.triple.banana",
+  "native_guard_version": "1.0.1",
+  "module_version": "3.8.3-bananaplus.2",
+  "userscript_version": "2.1.3",
+  "browser_versionCode": 520151463,
+  "ci": {
+    "url": "https://github.com/NirvanaEx/android-browser/actions/runs/38865232111",
+    "commit": "11b65a9c7f8a3ae88bec8360b2277b25a5ec3890",
+    "module_tests_passed": 10,
+    "filter_selection_tests_passed": 3
+  },
+  "apk_sha256": "bc10ba75350134a59849aabaa98950b94c5c6e5ea32ad2315e798ca83bc2031a",
+  "module_sha256": "567fc307252b9d601f4ea3ef234fefbb6b2bcbc39ae6e356d9279cb005a3fc62",
+  "packaging": {
+    "changed_entry": "assets/lspatch/modules/org.matrix.chromext.apk",
+    "other_entries_verified_unchanged": 4019,
+    "signer_preserved": true,
+    "signature_verified": true,
+    "alignment_verified": true,
+    "compiled_locally": false,
+    "browser_version_pinned_for_chromium_compatibility": true
+  },
+  "data_identity_preserved": true,
+  "all_six_script_metadata_and_enabled_states_preserved": true,
+  "native_runtime": {
+    "version": "1.0.1",
+    "ready": true,
+    "synchronousChecksConfigured": true,
+    "configuredBeforeNative": true,
+    "hooks": 3,
+    "blockHosts": 86693,
+    "exceptionHosts": 1842,
+    "checked": 96,
+    "blocked": 1,
+    "blockedServerRedirects": 1,
+    "failure": null
+  },
+  "server_matrix": {
+    "cases": 19,
+    "all_passed": true,
+    "rows": [
+      {
+        "case": "block_301",
+        "passed": true,
+        "native_server_blocks": 1,
+        "source_preserved": true,
+        "current_host": "127.0.0.1",
+        "current_path": "/source",
+        "requested_new_tab": false,
+        "new_tabs": 0,
+        "new_tab_final_hosts": [],
+        "original_document_unchanged": true,
+        "advertiser_document_responses": 0,
+        "page_world_interception_used": false,
+        "cdp_fetch_interception_used": false
+      },
+      {
+        "case": "block_302",
+        "passed": true,
+        "native_server_blocks": 1,
+        "source_preserved": true,
+        "current_host": "127.0.0.1",
+        "current_path": "/source",
+        "requested_new_tab": false,
+        "new_tabs": 0,
+        "new_tab_final_hosts": [],
+        "original_document_unchanged": true,
+        "advertiser_document_responses": 0,
+        "page_world_interception_used": false,
+        "cdp_fetch_interception_used": false
+      },
+      {
+        "case": "block_303",
+        "passed": true,
+        "native_server_blocks": 1,
+        "source_preserved": true,
+        "current_host": "127.0.0.1",
+        "current_path": "/source",
+        "requested_new_tab": false,
+        "new_tabs": 0,
+        "new_tab_final_hosts": [],
+        "original_document_unchanged": true,
+        "advertiser_document_responses": 0,
+        "page_world_interception_used": false,
+        "cdp_fetch_interception_used": false
+      },
+      {
+        "case": "block_307",
+        "passed": true,
+        "native_server_blocks": 1,
+        "source_preserved": true,
+        "current_host": "127.0.0.1",
+        "current_path": "/source",
+        "requested_new_tab": false,
+        "new_tabs": 0,
+        "new_tab_final_hosts": [],
+        "original_document_unchanged": true,
+        "advertiser_document_responses": 0,
+        "page_world_interception_used": false,
+        "cdp_fetch_interception_used": false
+      },
+      {
+        "case": "block_308",
+        "passed": true,
+        "native_server_blocks": 1,
+        "source_preserved": true,
+        "current_host": "127.0.0.1",
+        "current_path": "/source",
+        "requested_new_tab": false,
+        "new_tabs": 0,
+        "new_tab_final_hosts": [],
+        "original_document_unchanged": true,
+        "advertiser_document_responses": 0,
+        "page_world_interception_used": false,
+        "cdp_fetch_interception_used": false
+      },
+      {
+        "case": "block_chain",
+        "passed": true,
+        "native_server_blocks": 1,
+        "source_preserved": true,
+        "current_host": "127.0.0.1",
+        "current_path": "/source",
+        "requested_new_tab": false,
+        "new_tabs": 0,
+        "new_tab_final_hosts": [],
+        "original_document_unchanged": true,
+        "advertiser_document_responses": 0,
+        "page_world_interception_used": false,
+        "cdp_fetch_interception_used": false
+      },
+      {
+        "case": "block_scheme_relative",
+        "passed": true,
+        "native_server_blocks": 1,
+        "source_preserved": true,
+        "current_host": "127.0.0.1",
+        "current_path": "/source",
+        "requested_new_tab": false,
+        "new_tabs": 0,
+        "new_tab_final_hosts": [],
+        "original_document_unchanged": true,
+        "advertiser_document_responses": 0,
+        "page_world_interception_used": false,
+        "cdp_fetch_interception_used": false
+      },
+      {
+        "case": "block_https_host",
+        "passed": true,
+        "native_server_blocks": 1,
+        "source_preserved": true,
+        "current_host": "127.0.0.1",
+        "current_path": "/source",
+        "requested_new_tab": false,
+        "new_tabs": 0,
+        "new_tab_final_hosts": [],
+        "original_document_unchanged": true,
+        "advertiser_document_responses": 0,
+        "page_world_interception_used": false,
+        "cdp_fetch_interception_used": false
+      },
+      {
+        "case": "block_canonical_host",
+        "passed": true,
+        "native_server_blocks": 1,
+        "source_preserved": true,
+        "current_host": "127.0.0.1",
+        "current_path": "/source",
+        "requested_new_tab": false,
+        "new_tabs": 0,
+        "new_tab_final_hosts": [],
+        "original_document_unchanged": true,
+        "advertiser_document_responses": 0,
+        "page_world_interception_used": false,
+        "cdp_fetch_interception_used": false
+      },
+      {
+        "case": "block_new_tab",
+        "passed": true,
+        "native_server_blocks": 1,
+        "source_preserved": true,
+        "current_host": "127.0.0.1",
+        "current_path": "/source",
+        "requested_new_tab": true,
+        "new_tabs": 1,
+        "new_tab_final_hosts": [],
+        "original_document_unchanged": true,
+        "advertiser_document_responses": 0,
+        "page_world_interception_used": false,
+        "cdp_fetch_interception_used": false
+      },
+      {
+        "case": "allow_relative",
+        "passed": true,
+        "native_server_blocks": 0,
+        "source_preserved": false,
+        "current_host": "127.0.0.1",
+        "current_path": "/wanted",
+        "requested_new_tab": false,
+        "new_tabs": 0,
+        "new_tab_final_hosts": [],
+        "original_document_unchanged": false,
+        "advertiser_document_responses": 0,
+        "page_world_interception_used": false,
+        "cdp_fetch_interception_used": false
+      },
+      {
+        "case": "allow_cross_origin",
+        "passed": true,
+        "native_server_blocks": 0,
+        "source_preserved": false,
+        "current_host": "localhost",
+        "current_path": "/wanted",
+        "requested_new_tab": false,
+        "new_tabs": 0,
+        "new_tab_final_hosts": [],
+        "original_document_unchanged": false,
+        "advertiser_document_responses": 0,
+        "page_world_interception_used": false,
+        "cdp_fetch_interception_used": false
+      },
+      {
+        "case": "allow_chain",
+        "passed": true,
+        "native_server_blocks": 0,
+        "source_preserved": false,
+        "current_host": "127.0.0.1",
+        "current_path": "/wanted",
+        "requested_new_tab": false,
+        "new_tabs": 0,
+        "new_tab_final_hosts": [],
+        "original_document_unchanged": false,
+        "advertiser_document_responses": 0,
+        "page_world_interception_used": false,
+        "cdp_fetch_interception_used": false
+      },
+      {
+        "case": "allow_ad_name_in_path",
+        "passed": true,
+        "native_server_blocks": 0,
+        "source_preserved": false,
+        "current_host": "127.0.0.1",
+        "current_path": "/wanted",
+        "requested_new_tab": false,
+        "new_tabs": 0,
+        "new_tab_final_hosts": [],
+        "original_document_unchanged": false,
+        "advertiser_document_responses": 0,
+        "page_world_interception_used": false,
+        "cdp_fetch_interception_used": false
+      },
+      {
+        "case": "allow_new_tab",
+        "passed": true,
+        "native_server_blocks": 0,
+        "source_preserved": true,
+        "current_host": "127.0.0.1",
+        "current_path": "/source",
+        "requested_new_tab": true,
+        "new_tabs": 1,
+        "new_tab_final_hosts": [],
+        "original_document_unchanged": true,
+        "advertiser_document_responses": 0,
+        "page_world_interception_used": false,
+        "cdp_fetch_interception_used": false
+      },
+      {
+        "case": "without_debugger_connection",
+        "passed": true,
+        "native_server_blocks": 1,
+        "source_preserved": true
+      },
+      {
+        "case": "cold_start_1",
+        "passed": true,
+        "guard_ready": true,
+        "native_server_blocks": 1,
+        "source_preserved": true
+      },
+      {
+        "case": "cold_start_2",
+        "passed": true,
+        "guard_ready": true,
+        "native_server_blocks": 1,
+        "source_preserved": true
+      },
+      {
+        "case": "cold_start_3",
+        "passed": true,
+        "guard_ready": true,
+        "native_server_blocks": 1,
+        "source_preserved": true
+      }
+    ],
+    "cdp_fetch_interception_used": false,
+    "includes_three_cold_starts": true,
+    "includes_disconnected_debugger": true,
+    "original_document_markers_preserved_for_blocked_redirects": true,
+    "advertiser_document_responses": 0
+  },
+  "front_end_regressions": {
+    "cases": 23,
+    "all_passed": true
+  },
+  "media_recovery": {
+    "cases": 5,
+    "all_passed": true
+  },
+  "expanded_click_controls": {
+    "supported_cases": 29,
+    "all_supported_passed": true,
+    "unknown_localhost_redirect_negative_control": "The legacy server-limit fixture intentionally uses an unlisted localhost destination and is allowed; known-host native server tests are separate."
+  },
+  "timers": {
+    "passed": true,
+    "version": "2.1.3",
+    "details_report": "build/banana-inspect/native-guard-long-timers.json",
+    "duration_seconds": 126,
+    "attempts": 16,
+    "new_tabs": 0,
+    "advertiser_requests": 0
+  },
+  "real_sites": [
+    {
+      "site": "pervtube.net",
+      "phases": 13,
+      "home_idle_seconds": 60,
+      "first_link_reached": true,
+      "first_play_started": true,
+      "playback_observed_seconds": 120,
+      "video_after_observation": [
+        {
+          "playing": true,
+          "ready": 4,
+          "position_seconds": 127
+        }
+      ],
+      "repeated_touches": 3,
+      "paused_after_final_pause": true,
+      "unexpected_tab_or_same_tab_replacement": false
+    },
+    {
+      "site": "pxp.farm",
+      "phases": 13,
+      "home_idle_seconds": 60,
+      "first_link_reached": true,
+      "first_play_started": true,
+      "playback_observed_seconds": 120,
+      "video_after_observation": [
+        {
+          "playing": true,
+          "ready": 4,
+          "position_seconds": 128
+        }
+      ],
+      "repeated_touches": 3,
+      "paused_after_final_pause": true,
+      "unexpected_tab_or_same_tab_replacement": false
+    }
+  ],
+  "cleanup": {
+    "native": {
+      "forward_removed": true,
+      "reverse_removed": true,
+      "owned_test_tabs_closed": true
+    },
+    "controls_forward_removed": true,
+    "controls_reverse_removed": true,
+    "media": {
+      "forward_removed": true,
+      "reverse_removed": true
+    },
+    "timers_forward_removed": true,
+    "timers_reverse_removed": true,
+    "sites": {
+      "forward_removed": true,
+      "owned_test_tabs_closed": true
+    },
+    "final": {
+      "installed_apk_sha256": "bc10ba75350134a59849aabaa98950b94c5c6e5ea32ad2315e798ca83bc2031a",
+      "installed_apk_matches_verified_artifact": true,
+      "package": "org.triple.banana",
+      "main_process_crashes_since_final_update": 0,
+      "debug_forward_absent": true,
+      "fixture_reverse_absent": true
+    }
+  },
+  "limitations": [
+    "Destination classification uses the bundled advertising/badware host lists; previously unknown advertising hosts are not guaranteed to match.",
+    "The navigation guard does not remove ads embedded in video streams."
+  ],
+  "website_cookies_or_passwords_read": false,
+  "vpn_changed": false
+}
