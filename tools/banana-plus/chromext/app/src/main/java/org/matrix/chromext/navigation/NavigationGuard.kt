@@ -13,7 +13,7 @@ import org.matrix.chromext.utils.hookBefore
 
 /** Synchronous browser-process hooks, installed before any WindowAndroid/tab navigation. */
 object NavigationGuard {
-  const val VERSION = "1.0.0"
+  const val VERSION = "1.0.1"
   private const val ASSET = "assets/banana-navigation-hosts.txt"
   private var rules: NavigationRules? = null
   private var hooks = 0
@@ -28,6 +28,7 @@ object NavigationGuard {
   @Synchronized fun init(loader: ClassLoader) {
     if (ready || failure != null) return
     try {
+      NavigationStartup.init(loader)
       val path = requireNotNull(Resource.modulePath())
       rules = ZipFile(path).use { zip ->
         zip.getInputStream(requireNotNull(zip.getEntry(ASSET))).bufferedReader().use {
@@ -79,7 +80,9 @@ object NavigationGuard {
 
   fun status(): JSONObject = JSONObject().apply {
     put("version", VERSION)
-    put("ready", ready)
+    put("ready", ready && NavigationStartup.configured && NavigationStartup.beforeNative)
+    put("synchronousChecksConfigured", NavigationStartup.configured)
+    put("configuredBeforeNative", NavigationStartup.beforeNative)
     put("hooks", hooks)
     put("blockHosts", rules?.blockCount ?: 0)
     put("exceptionHosts", rules?.exceptionCount ?: 0)
