@@ -1,0 +1,328 @@
+{
+  "date": "2026-10-16",
+  "installed_version": "2.1.3",
+  "delivery": "Persistent ChromeXt userscript; original APK unchanged",
+  "scope": "All HTTP and HTTPS hosts and ports",
+  "source_sha256": "56b8b5ab42f5f073e03d61a0392e86f24d1fa1ccbb68ac1a843ccc78308321ca",
+  "source_copy_matches": true,
+  "cold_start_verified": true,
+  "other_five_scripts_preserved": true,
+  "expanded_regression": {
+    "version": "2.1.1",
+    "supported_passed": 20,
+    "supported_total": 20,
+    "cases": [
+      {
+        "case": "rewrite_href_external",
+        "passed": true,
+        "expected": "wanted"
+      },
+      {
+        "case": "rewrite_href_sameorigin",
+        "passed": true,
+        "expected": "wanted"
+      },
+      {
+        "case": "rewrite_touchstart",
+        "passed": true,
+        "expected": "wanted"
+      },
+      {
+        "case": "cancel_first_link_popup",
+        "passed": true,
+        "expected": "wanted"
+      },
+      {
+        "case": "cancel_link_redirect",
+        "passed": true,
+        "expected": "wanted"
+      },
+      {
+        "case": "link_two_popups",
+        "passed": true,
+        "expected": "wanted"
+      },
+      {
+        "case": "link_delayed_ad",
+        "passed": true,
+        "expected": "wanted"
+      },
+      {
+        "case": "video_direct",
+        "passed": true,
+        "expected": "stay"
+      },
+      {
+        "case": "video_custom_button",
+        "passed": true,
+        "expected": "stay"
+      },
+      {
+        "case": "video_pointerdown",
+        "passed": true,
+        "expected": "stay"
+      },
+      {
+        "case": "labelled_overlay",
+        "passed": true,
+        "expected": "stay"
+      },
+      {
+        "case": "timer_popup_then_sameorigin",
+        "passed": true,
+        "expected": "stay"
+      },
+      {
+        "case": "iframe_sameorigin_popup",
+        "passed": true,
+        "expected": "stay"
+      },
+      {
+        "case": "iframe_crossorigin_popup",
+        "passed": true,
+        "expected": "stay"
+      },
+      {
+        "case": "iframe_crossorigin_top",
+        "passed": true,
+        "expected": "stay"
+      },
+      {
+        "case": "iframe_blank_open",
+        "passed": true,
+        "expected": "stay"
+      },
+      {
+        "case": "meta_refresh",
+        "passed": true,
+        "expected": "stay"
+      },
+      {
+        "case": "server_redirect",
+        "passed": false,
+        "expected": "server-limit"
+      },
+      {
+        "case": "blank_link_rewrite",
+        "passed": true,
+        "expected": "wanted-newtab"
+      },
+      {
+        "case": "blank_link_cancel_popup",
+        "passed": true,
+        "expected": "wanted-newtab"
+      },
+      {
+        "case": "blank_link_extra_popup",
+        "passed": true,
+        "expected": "wanted-newtab"
+      }
+    ]
+  },
+  "automatic_navigation_edges": {
+    "version": "2.1.2",
+    "cases": [
+      {
+        "case": "link_role_button_popup",
+        "passed": true
+      },
+      {
+        "case": "timer_sameorigin_without_popup",
+        "passed": true
+      },
+      {
+        "case": "button_sameorigin_navigation",
+        "passed": true
+      },
+      {
+        "case": "video_sameorigin_replace",
+        "passed": true
+      }
+    ]
+  },
+  "media_recovery": {
+    "version": "2.1.3",
+    "cases": [
+      {
+        "case": "media_ad_consumes_play",
+        "passed": true
+      },
+      {
+        "case": "media_manual_pause",
+        "passed": true
+      },
+      {
+        "case": "media_settings_paused",
+        "passed": true
+      },
+      {
+        "case": "media_mask_consumes_play",
+        "passed": true
+      },
+      {
+        "case": "media_source_changes",
+        "passed": true
+      }
+    ]
+  },
+  "normal_and_blocking_regression": {
+    "version": "2.1.3",
+    "all_passed": true,
+    "count": 23
+  },
+  "long_timers": {
+    "version": "2.1.3",
+    "duration_seconds": 126,
+    "attempts": [
+      {
+        "tag": "load_5",
+        "elapsed": 5.002899999976158
+      },
+      {
+        "tag": "load_15",
+        "elapsed": 15.002099999964237
+      },
+      {
+        "tag": "bare_internal_22",
+        "elapsed": 22.00169999998808
+      },
+      {
+        "tag": "after_click_1_5",
+        "elapsed": 26.071799999952315
+      },
+      {
+        "tag": "load_30",
+        "elapsed": 30.00089999997616
+      },
+      {
+        "tag": "blank_iframe_35",
+        "elapsed": 35.00119999998808
+      },
+      {
+        "tag": "after_click_1_15",
+        "elapsed": 36.07119999998808
+      },
+      {
+        "tag": "load_60",
+        "elapsed": 60.000799999952314
+      },
+      {
+        "tag": "after_click_2_5",
+        "elapsed": 76.63909999996423
+      },
+      {
+        "tag": "after_click_2_15",
+        "elapsed": 86.64
+      },
+      {
+        "tag": "load_90",
+        "elapsed": 90.00119999998807
+      },
+      {
+        "tag": "blank_iframe_95",
+        "elapsed": 95.00209999996424
+      },
+      {
+        "tag": "bare_internal_102",
+        "elapsed": 102.00129999995232
+      },
+      {
+        "tag": "after_click_3_5",
+        "elapsed": 107.02229999995231
+      },
+      {
+        "tag": "after_click_3_15",
+        "elapsed": 117.02209999996424
+      },
+      {
+        "tag": "load_120",
+        "elapsed": 120.00039999997615
+      }
+    ],
+    "new_tabs": 0,
+    "ad_requests": 0,
+    "manual_pause_preserved": true,
+    "foreground_observation": true,
+    "passed": true
+  },
+  "real_site_long_observation": [
+    {
+      "site": "pervtube.net",
+      "version": "2.1.1",
+      "first_link_click_reached": true,
+      "video_playing_before_repeat": true,
+      "video_at_120_seconds": [
+        {
+          "paused": false,
+          "ready": 4,
+          "time": 127.324951
+        }
+      ],
+      "unexpected_windows": 0,
+      "unwanted_same_tab_navigation": false,
+      "player_ad_ui_detected": false,
+      "errors": []
+    },
+    {
+      "site": "pxp.farm",
+      "version": "2.1.1",
+      "first_link_click_reached": true,
+      "video_playing_before_repeat": true,
+      "video_at_120_seconds": [
+        {
+          "paused": false,
+          "ready": 4,
+          "time": 127.468095
+        }
+      ],
+      "unexpected_windows": 0,
+      "unwanted_same_tab_navigation": false,
+      "player_ad_ui_detected": false,
+      "errors": []
+    }
+  ],
+  "real_site_final_version": [
+    {
+      "site": "pervtube.net",
+      "version": "2.1.3",
+      "first_link_click_reached": true,
+      "video_playing_before_repeat": true,
+      "video_at_120_seconds": null,
+      "unexpected_windows": 0,
+      "unwanted_same_tab_navigation": false,
+      "player_ad_ui_detected": false,
+      "errors": []
+    },
+    {
+      "site": "pxp.farm",
+      "version": "2.1.3",
+      "first_link_click_reached": true,
+      "video_playing_before_repeat": true,
+      "video_at_120_seconds": null,
+      "unexpected_windows": 0,
+      "unwanted_same_tab_navigation": false,
+      "player_ad_ui_detected": false,
+      "errors": []
+    }
+  ],
+  "known_unblocked": {
+    "case": "server_redirect",
+    "http_status": 302,
+    "ad_requests": 1,
+    "explanation": "The server redirect happened outside the document navigation guard."
+  },
+  "not_detected_by_this_navigation_guard": [
+    "Advertising embedded in the media stream",
+    "Ordinary advertising content inside a page",
+    "Code executed before ChromeXt injection; this is not an engine security boundary"
+  ],
+  "cleanup": {
+    "debug_forward_absent": true,
+    "fixture_reverse_absent": true,
+    "screen_timeout_restored": true,
+    "owned_public_test_tabs_closed": true
+  },
+  "website_cookies_or_passwords_read": false,
+  "apk_compiled": false,
+  "vpn_changed": false
+}
