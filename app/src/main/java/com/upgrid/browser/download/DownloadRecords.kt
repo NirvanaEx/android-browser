@@ -4,6 +4,7 @@ import android.content.Context
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.updateAndGet
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -47,6 +48,15 @@ data class DownloadRecord(
  * flow but are NOT written to disk — persisting twenty times a second to
  * describe a number that is meaningless after a restart would be the one
  * expensive thing this class does.
+ *
+ * Every mutation goes through `updateAndGet` rather than reading [state] and
+ * assigning it back. [DownloadManager] runs each download in its own coroutine
+ * on the IO pool, so two of them mutate this list from two threads at once —
+ * and a read-modify-write pair loses whichever change landed between the read
+ * and the write. The one that gets lost is whatever wrote last, which for a
+ * download that has just finished is its DONE status and the URI of the file:
+ * the bytes are on disk, the row still says RUNNING, and the next launch's
+ * [failInterrupted] turns it into FAILED.
  */
 class DownloadRecords(context: Context) {
 
@@ -59,30 +69,32 @@ class DownloadRecords(context: Context) {
     val records: StateFlow<List<DownloadRecord>> = state.asStateFlow()
 
     fun add(record: DownloadRecord) {
-        state.value = (listOf(record) + state.value).take(MAX_ROWS)
-        persist()
+        persist(state.updateAndGet { (listOf(record) + it).take(MAX_ROWS) })
     }
 
     /** Replace a row by id. [durable] false = progress tick, don't touch disk. */
     fun update(record: DownloadRecord, durable: Boolean = true) {
-        val updated = state.value.map { if (it.id == record.id) record else it }
-        // A record can vanish while its download runs (the user cleared the
-        // list); re-adding it here would resurrect a row they deleted.
-        if (updated.none { it.id == record.id }) return
-        state.value = updated
-        if (durable) persist()
+        val updated = state.updateAndGet { current ->
+            // A record can vanish while its download runs (the user cleared the
+            // list); re-adding it here would resurrect a row they deleted.
+            if (current.none { it.id == record.id }) {
+                current
+            } else {
+                current.map { if (it.id == record.id) record else it }
+            }
+        }
+        if (durable && updated.any { it.id == record.id }) persist(updated)
     }
 
     fun byId(id: String): DownloadRecord? = state.value.firstOrNull { it.id == id }
 
     fun remove(id: String) {
-        state.value = state.value.filterNot { it.id == id }
-        persist()
+        persist(state.updateAndGet { current -> current.filterNot { it.id == id } })
     }
 
     fun clear() {
         state.value = emptyList()
-        persist()
+        persist(emptyList())
     }
 
     /**
@@ -90,24 +102,30 @@ class DownloadRecords(context: Context) {
      * spinner that never moves would be a lie.
      */
     fun failInterrupted() {
-        val fixed = state.value.map {
-            if (it.status == DownloadRecord.Status.RUNNING) {
-                it.copy(status = DownloadRecord.Status.FAILED)
-            } else {
-                it
+        val before = state.value
+        val fixed = state.updateAndGet { current ->
+            current.map {
+                if (it.status == DownloadRecord.Status.RUNNING) {
+                    it.copy(status = DownloadRecord.Status.FAILED)
+                } else {
+                    it
+                }
             }
         }
-        if (fixed != state.value) {
-            state.value = fixed
-            persist()
-        }
+        if (fixed != before) persist(fixed)
     }
 
     // --- Storage -----------------------------------------------------------
 
-    private fun persist() {
+    /**
+     * Write [rows] — the exact list the caller just installed, not a fresh
+     * read of [state]. Two downloads run on two IO threads and both write
+     * through here; re-reading would let the slower one persist a snapshot the
+     * faster one had already moved past.
+     */
+    private fun persist(rows: List<DownloadRecord>) {
         val array = JSONArray()
-        state.value.forEach { record ->
+        rows.forEach { record ->
             array.put(
                 JSONObject().apply {
                     put("id", record.id)
