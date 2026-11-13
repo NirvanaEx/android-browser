@@ -68,6 +68,11 @@
         }
     }
 
+    /** Same rule as LoginStore.normaliseHost on the native side. */
+    function normaliseHost(host) {
+        return String(host || "").trim().toLowerCase().replace(/^www\./, "");
+    }
+
     function report(message) {
         try {
             message.t = "login";
@@ -138,7 +143,17 @@
         field.dispatchEvent(new Event("change", { bubbles: true }));
     }
 
-    function fill(username, password) {
+    /**
+     * Type a saved password in — but only into the site it was saved for.
+     *
+     * The host the native side looked the password up under travels with the
+     * fill, and this document checks it against its own. Nothing upstream is
+     * trusted to have aimed correctly: the relay routes by tab id, a tab
+     * navigates whenever it likes, and the cost of getting it wrong once is a
+     * password typed into somebody else's form and read back by script.
+     */
+    function fill(username, password, host) {
+        if (normaliseHost(host) !== normaliseHost(hostOf())) return;
         var fields = passwordFields();
         if (!fields.length) return;
         var passwordField = fields[0];
@@ -150,7 +165,9 @@
     browser.runtime.onMessage.addListener(function (msg) {
         // Shared channel: player, find and translate have their own verbs.
         if (!msg || !msg.cmd) return;
-        if (msg.cmd === "loginFill") fill(msg.username || "", msg.password || "");
+        if (msg.cmd === "loginFill") {
+            fill(msg.username || "", msg.password || "", msg.host || "");
+        }
     });
 
     // Announce once the document has a password field to fill. A page without
