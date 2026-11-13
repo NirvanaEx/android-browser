@@ -7,6 +7,7 @@ import subprocess
 import sys
 import tarfile
 import tempfile
+import threading
 import unittest
 from unittest.mock import patch
 
@@ -77,6 +78,7 @@ class RelayTests(unittest.TestCase):
 
 @unittest.skipUnless(sys.platform == 'linux' and shutil.which('ninja'), 'Real Ninja test runs on Linux CI')
 class ImportTests(unittest.TestCase):
+    object_prefix = 'obj'
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
@@ -102,7 +104,7 @@ class ImportTests(unittest.TestCase):
         actions = []
         graph = []
         for i in range(2):
-            name = f'obj/{i}.o'
+            name = f'{self.object_prefix}/{i}.o'
             (self.src/f'{i}.cc').write_text('source')
             command = f'../../emitter {name}'
             actions.append({'output': name, 'file': f'../../{i}.cc', 'command': command})
@@ -143,7 +145,7 @@ class ImportTests(unittest.TestCase):
     def test_parallel_import_accepted_and_changed_header_rebuilds(self):
         self.assertEqual(self.invoke()['importedObjects'], 2)
         self.assertIn('no work to do', subprocess.check_output(['ninja', '-C', str(self.out), '-n'], text=True))
-        stamp = max((self.out/f'obj/{i}.o').stat().st_mtime_ns for i in range(2)) + 2_000_000_000
+        stamp = max((self.out/f'{self.object_prefix}/{i}.o').stat().st_mtime_ns for i in range(2)) + 2_000_000_000
         os.utime(self.src/'header.h', ns=(stamp, stamp))
         self.assertIn('[2/2]', subprocess.check_output(['ninja', '-C', str(self.out), '-n'], text=True))
 
@@ -151,26 +153,30 @@ class ImportTests(unittest.TestCase):
         (self.src/'header.h').write_text('changed')
         with self.assertRaisesRegex(RuntimeError, 'Compiler input changed'):
             self.invoke()
-        self.assertFalse((self.out/'obj/0.o').exists())
+        self.assertFalse((self.out/f'{self.object_prefix}/0.o').exists())
         self.assertEqual((self.out/'.ninja_deps').read_bytes(), HEADER)
 
     def test_incomplete_wave_rejected_before_output_mutation(self):
         with self.assertRaisesRegex(RuntimeError, 'Incomplete or overlapping'):
             self.invoke(self.archives[:1])
-        self.assertFalse((self.out/'obj/0.o').exists())
+        self.assertFalse((self.out/f'{self.object_prefix}/0.o').exists())
 
     def test_corrupt_object_rejected(self):
         stage = self.state/'corrupt'
         stage.mkdir()
         with tarfile.open(self.archives[0]) as archive:
             archive.extractall(stage, filter='data')
-        (stage/'obj/0.o').write_bytes(b'corrupted')
+        (stage/f'{self.object_prefix}/0.o').write_bytes(b'corrupted')
         with tarfile.open(self.archives[0], 'w:gz') as archive:
-            for name in ('result.json', '.ninja_deps', '.ninja_log', 'obj/0.o'):
+            for name in ('result.json', '.ninja_deps', '.ninja_log', f'{self.object_prefix}/0.o'):
                 archive.add(stage/name, arcname=name)
         with self.assertRaisesRegex(RuntimeError, 'Object or dependency'):
             self.invoke()
-        self.assertFalse((self.out/'obj/0.o').exists())
+        self.assertFalse((self.out/f'{self.object_prefix}/0.o').exists())
+
+
+class HostImportTests(ImportTests):
+    object_prefix = 'clang_x64/obj'
 
 
 @unittest.skipUnless(sys.platform == 'linux' and shutil.which('zstd'), 'Archive test runs on Linux CI')
@@ -187,10 +193,23 @@ class WorkspaceTests(unittest.TestCase):
             os.utime(original, ns=(stamp, stamp))
             (root/'link').symlink_to('source')
             expected = common.sha(original)
+            second_packed = threading.Event()
+            downloads = threading.Barrier(3)
+            original_sha = common.sha
+            def hash_part(path):
+                result = original_sha(path)
+                if pathlib.Path(path).name == 'workspace.0001.tar.zst.part':
+                    second_packed.set()
+                return result
             def upload(tag, *paths):
                 for path in paths:
+                    if pathlib.Path(path).name == 'workspace.0000.tar.zst.part':
+                        if not second_packed.wait(10):
+                            raise RuntimeError('Packing blocked behind the first upload')
                     shutil.copyfile(path, assets/pathlib.Path(path).name)
             def download(tag, name, destination, digest=None):
+                if name.endswith('.part'):
+                    downloads.wait(timeout=10)
                 destination = pathlib.Path(destination)
                 destination.mkdir(parents=True, exist_ok=True)
                 result = destination/name
@@ -200,6 +219,7 @@ class WorkspaceTests(unittest.TestCase):
                 return result
             with patch.multiple(common, ROOT=root, STATE=state, CHUNK_BYTES=65536), \
                     patch.object(common, 'reserve'), patch.object(common, 'upload', side_effect=upload), \
+                    patch.object(common, 'sha', side_effect=hash_part), \
                     patch.object(common, 'download', side_effect=download), patch.dict(os.environ, GITHUB_SHA='head'):
                 digest = common.pack_workspace('upgrid-ci-fixture-1-1', 'workspace')
                 self.assertGreater(len(common.read(assets/'workspace.json')['parts']), 1)
@@ -209,6 +229,27 @@ class WorkspaceTests(unittest.TestCase):
             self.assertEqual(common.sha(original), expected)
             self.assertEqual(original.stat().st_mtime_ns, stamp)
             self.assertTrue((root/'link').is_symlink())
+
+    def test_failed_chunk_upload_never_publishes_checkpoint_manifest(self):
+        with tempfile.TemporaryDirectory() as directory:
+            base = pathlib.Path(directory)
+            root, state = base/'root', base/'state'
+            root.mkdir()
+            state.mkdir()
+            (root/'source').write_bytes(os.urandom(180000))
+            uploaded = []
+            def upload(tag, path):
+                uploaded.append(path.name)
+                if path.name.endswith('0001.tar.zst.part'):
+                    raise RuntimeError('simulated network failure')
+            with patch.multiple(common, ROOT=root, STATE=state, CHUNK_BYTES=65536), \
+                    patch.object(common, 'reserve'), patch.object(common, 'upload', side_effect=upload):
+                with self.assertRaisesRegex(RuntimeError, 'simulated network failure'):
+                    common.pack_workspace('upgrid-ci-fixture-1-1', 'workspace',
+                                          checkpoint='native-prerequisites-v1')
+            self.assertNotIn('workspace.json', uploaded)
+            self.assertFalse((state/'workspace.json').exists())
+            self.assertTrue((root/'source').exists())
 
 
 if __name__ == '__main__':

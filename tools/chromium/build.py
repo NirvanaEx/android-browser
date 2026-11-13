@@ -16,6 +16,7 @@ HERE = pathlib.Path(__file__).resolve().parent
 PROFILES = {
     "player": ("Upgrid", "args.gn", "upgrid"),
     "extensions": ("UpgridExtensions", "args-extensions.gn", "upgrid-extensions"),
+    "extensions-ci": ("Upgrid", "args-extensions.gn", "upgrid-extensions-ci"),
     "extensions-dev": ("Upgrid", "args-extensions-dev.gn", "upgrid-extensions-dev"),
 }
 
@@ -35,6 +36,8 @@ def main():
     parser.add_argument("--low-memory", action="store_true",
                         help="Use the agreed 6 GiB RAM / 8 GiB swap profile with one worker; never change WSL limits")
     args = parser.parse_args()
+    if args.profile == "extensions-ci" and os.environ.get("GITHUB_ACTIONS") != "true":
+        parser.error("extensions-ci is reserved for a disposable GitHub Actions workspace")
     if args.jobs < 1:
         parser.error("--jobs must be at least 1")
     if args.low_memory and args.jobs != 1:
@@ -85,7 +88,16 @@ def main():
                 "obj/chrome/browser/extensions/extensions/external_provider_impl.o",
                 "obj/chrome/browser/ui/ui/extension_install_dialog_view_android.o",
             ]
-    run_checked([depot / "autoninja", "-C", output, "-j", str(args.jobs), *targets], cwd=src, env=env)
+    observer = None
+    final_state = os.environ.get('UPGRID_FINAL_AUDIT_DIR')
+    if final_state:
+        if args.target != 'chrome_public_apk' or args.check_integration:
+            raise RuntimeError('Final distributed audit requires the APK target')
+        from ci.final_progress import prepare
+        observer = prepare(src / 'third_party/ninja/ninja', output, final_state)
+        env['NINJA_STATUS'] = '[%f/%t] '
+    run_checked([depot / "autoninja", "-C", output, "-j", str(args.jobs), *targets],
+                cwd=src, env=env, observer=observer)
     # A successful command must be tied to the inputs that were actually built.
     current_revision = subprocess.check_output(
         ["git", "rev-parse", "HEAD"], cwd=src, text=True).strip()

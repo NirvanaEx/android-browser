@@ -123,6 +123,7 @@ public final class UpgridPlayer implements Application.ActivityLifecycleCallback
     private boolean mClosed;
     private boolean mControls = true;
     private boolean mHasFullscreen;
+    private Callback<Boolean> mAttachResult;
     private boolean mLocked;
     private int mFitMode;
     private long mLastResponse;
@@ -153,10 +154,14 @@ public final class UpgridPlayer implements Application.ActivityLifecycleCallback
         return ACTIVE.containsKey(activity);
     }
 
-    public static void adoptFullscreen(Activity activity, Tab tab) {
+    public static void adoptFullscreen(Activity activity, Tab tab, Callback<Boolean> result) {
         if (isActive(activity) || activity.isFinishing() || activity.isDestroyed()
-                || tab == null || tab.getWebContents() == null) return;
+                || tab == null || tab.getWebContents() == null) {
+            result.onResult(false);
+            return;
+        }
         UpgridPlayer player = new UpgridPlayer(activity, tab, true);
+        player.mAttachResult = result;
         ACTIVE.put(activity, player);
         player.start();
     }
@@ -164,6 +169,18 @@ public final class UpgridPlayer implements Application.ActivityLifecycleCallback
     public static void closeForActivity(Activity activity) {
         UpgridPlayer player = ACTIVE.get(activity);
         if (player != null) player.close(true);
+    }
+
+    public static void onFullscreenExited(Activity activity, Tab tab) {
+        UpgridPlayer player = ACTIVE.get(activity);
+        if (player != null && player.mTab == tab) {
+            // The browser/site already exited. Release immediately so a new
+            // fullscreen request does not hit an old ACTIVE session, and do
+            // not send a second exit back into FullscreenManager.
+            // A tab-hide observer can trigger this exit before our own
+            // onHidden callback runs. Preserve background/tab-switch pause.
+            player.close(tab.isHidden(), false);
+        }
     }
 
     private UpgridPlayer(Activity activity, Tab tab, boolean automatic) {
@@ -225,6 +242,7 @@ public final class UpgridPlayer implements Application.ActivityLifecycleCallback
             mHasFullscreen = true;
             if (mDialog == null) createControls();
             render();
+            reportAttachment(true);
             return true;
         } catch (JSONException e) {
             fail("Не удалось открыть плеер");
@@ -900,6 +918,12 @@ public final class UpgridPlayer implements Application.ActivityLifecycleCallback
         close(pause, true);
     }
 
+    private void reportAttachment(boolean attached) {
+        Callback<Boolean> result = mAttachResult;
+        mAttachResult = null;
+        if (result != null) result.onResult(attached);
+    }
+
     private void close(boolean pause, boolean exitFullscreen) {
         if (mClosed) return;
         Log.i(TAG, "Closing controls; pause=%b", pause);
@@ -927,6 +951,7 @@ public final class UpgridPlayer implements Application.ActivityLifecycleCallback
                 && mActivity instanceof ChromeActivity chromeActivity) {
             chromeActivity.getFullscreenManager().exitPersistentFullscreenMode();
         }
+        reportAttachment(false);
     }
 
     @Override

@@ -1,0 +1,62 @@
+[
+  {
+    "id": "vk-theater",
+    "name": "VK — театральный режим с чатом",
+    "version": "1.1.0",
+    "source": "https://tampermonkey.neyron.site/scripts/vk-theater.user.js?v=1.1.0",
+    "sha256": "5992fac7ae579b066bf04025ffdc29a827e4b27113e9622cc7111aa92f369234",
+    "grants": [
+      "GM_info",
+      "GM_getValue",
+      "GM_setValue",
+      "GM_registerMenuCommand"
+    ],
+    "runAt": "document-idle",
+    "syntaxVerified": true,
+    "androidExecutionVerified": false
+  },
+  {
+    "id": "vkvideo-preview",
+    "name": "VK Видео — превью без размытия",
+    "version": "1.4.2",
+    "source": "https://tampermonkey.neyron.site/scripts/vkvideo-preview.user.js?v=1.4.2",
+    "sha256": "7a18057343eab8aa010a952f67b5974b301619a0e34e53b918405d46a41ca34e",
+    "grants": [
+      "none"
+    ],
+    "runAt": "document-end",
+    "syntaxVerified": true,
+    "androidExecutionVerified": false
+  },
+  {
+    "id": "neyron-update-status",
+    "name": "Neyron — статус обновлений",
+    "version": "1.0.3",
+    "source": "https://tampermonkey.neyron.site/scripts/neyron-update-status.user.js?v=1.0.3",
+    "sha256": "0c3d9cf85c40c4022485f27ef1c8a2e53646408e70d5c7958374daa804340783",
+    "grants": [
+      "GM_info",
+      "GM_xmlhttpRequest",
+      "GM_getValue",
+      "GM_setValue",
+      "GM_registerMenuCommand",
+      "GM_unregisterMenuCommand"
+    ],
+    "runAt": "document-end",
+    "syntaxVerified": true,
+    "androidExecutionVerified": false
+  },
+  {
+    "id": "kick-chat-sync",
+    "name": "Kick — сдвиг и история чата записи",
+    "version": "1.1.2",
+    "source": "https://tampermonkey.neyron.site/scripts/kick-chat-sync.user.js?v=1.1.2",
+    "sha256": "8bf00cc4d5fd30fbceb4dea7d48e3a8537c51e8309c1272edc3559fd2b17af63",
+    "grants": [
+      "none"
+    ],
+    "runAt": "document-start",
+    "syntaxVerified": true,
+    "androidExecutionVerified": false
+  }
+]

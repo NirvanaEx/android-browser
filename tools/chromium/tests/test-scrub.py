@@ -11,8 +11,9 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--checkout", type=pathlib.Path,
                         default=pathlib.Path("~/.cache/upgrid/chromium"))
+    parser.add_argument("--jdk", type=pathlib.Path, help="JDK root on the GitHub test runner")
     args = parser.parse_args()
-    jdk = args.checkout.expanduser() / "src/third_party/jdk/current/bin"
+    jdk = args.jdk / "bin" if args.jdk else args.checkout.expanduser() / "src/third_party/jdk/current/bin"
     with tempfile.TemporaryDirectory(prefix="upgrid-scrub-test-") as output:
         subprocess.run([jdk / "javac", "-J-Xmx128m", "--release", "17", "-d", output,
                         HERE.parent / "overlay/UpgridScrubSession.java",

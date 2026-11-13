@@ -6,9 +6,64 @@ import os
 import pathlib
 import shlex
 import shutil
+import subprocess
 import tarfile
 from ninja_cache import read_deps
 from probe_bundle import SRC, OUT, BASE, sha
+
+
+HEADER_SUFFIXES = {'.h', '.hh', '.hpp', '.hxx', '.hpp11', '.inc', '.inl',
+                   '.def', '.ipp', '.tcc', '.modulemap'}
+
+
+def pack_snapshot(archive, metadata, inputs):
+    # Keep the existing gzip format used by workers, but compress on two cores
+    # in cloud CI. Non-CI snapshot tooling retains its previous resource use.
+    cloud = os.environ.get('GITHUB_ACTIONS') == 'true'
+    process = None
+    with archive.open('wb') as destination:
+        try:
+            if cloud:
+                process = subprocess.Popen(['pigz', '-1', '-p', '2', '-c'],
+                                           stdin=subprocess.PIPE, stdout=destination)
+            stream = process.stdin if process else destination
+            options = {} if process else {'compresslevel': 1}
+            with tarfile.open(fileobj=stream, mode='w|' if process else 'w:gz',
+                              dereference=True, **options) as output:
+                output.add(metadata, arcname='wave-manifest.json')
+                output.add(BASE / 'llvm-LICENSE.TXT', arcname='LICENSES/llvm-LICENSE.TXT')
+                for number, item in enumerate(inputs):
+                    output.add(SRC / item['path'], arcname='src/' + item['path'], recursive=False)
+                    if number and number % 25000 == 0:
+                        print(json.dumps({'stage': 'packing', 'filesDone': number}), flush=True)
+            if process:
+                process.stdin.close()
+                if process.wait():
+                    raise RuntimeError('Native snapshot compression failed')
+        finally:
+            if process:
+                if process.poll() is None:
+                    process.terminate()
+                if not process.stdin.closed:
+                    process.stdin.close()
+                process.wait()
+
+
+def snapshot_headers(src):
+    """Include textual compiler inputs missed by an old Ninja dependency log."""
+    for directory, dirs, names in os.walk(src):
+        dirs[:] = [name for name in dirs if name not in
+                   ('.git', 'out', 'node_modules', '__pycache__')]
+        for name in names:
+            path = pathlib.Path(directory) / name
+            parts = path.relative_to(src).parts
+            # Eigen exposes public headers named Core and Tensor (no suffix).
+            eigen = parts[:3] == ('third_party', 'eigen3', 'src')
+            standard_include = 'include' in parts
+            # Some libraries #include generated/scanner .c files from C++.
+            if (path.suffix in HEADER_SUFFIXES | {'.c'} or
+                    ((eigen or standard_include) and not path.suffix)) and path.is_file():
+                yield path
 
 
 def main():
@@ -28,30 +83,25 @@ def main():
         raise RuntimeError('Insufficient staging space on D')
     pending = json.loads((BASE / args.pending).read_text())
     files = set()
-    for name in read_deps(OUT / '.ninja_deps', paths_only=True)[0]:
+    for name in (read_deps(OUT / '.ninja_deps', paths_only=True)[0] if (OUT / '.ninja_deps').exists() else []):
         p = pathlib.Path(os.path.normpath(OUT / name))
         if p.is_file() and p.suffix not in ('.o', '.a', '.so', '.rlib'):
             files.add(p)
     # Existing deps omit headers behind newly enabled conditionals and module
     # search headers. Include the header trees while excluding caches/test data.
-    header_suffixes = {'.h', '.hh', '.hpp', '.hxx', '.inc', '.inl', '.def', '.ipp', '.tcc', '.modulemap'}
-    for directory, dirs, names in os.walk(SRC):
-        dirs[:] = [name for name in dirs if name not in ('.git', 'out', 'node_modules', '__pycache__')]
-        for name in names:
-            p = pathlib.Path(directory) / name
-            if p.suffix in header_suffixes and p.is_file():
-                files.add(p)
-    for directory in [OUT / 'gen', OUT / 'obj/build/modules',
+    files.update(snapshot_headers(SRC))
+    for directory in [OUT / 'gen', OUT / 'obj/build/modules', *OUT.glob('clang_*/gen'),
+                      *OUT.glob('clang_*/obj/build/modules'),
                       SRC / 'third_party/llvm-build/Release+Asserts/lib/clang/23/include']:
         for p in directory.rglob('*'):
-            if p.is_file() and p.suffix in header_suffixes | {'.pcm', '', '.cc', '.c', '.cpp'}:
+            if p.is_file() and p.suffix in HEADER_SUFFIXES | {'.pcm', '', '.cc', '.c', '.cpp'}:
                 files.add(p)
     files.update(SRC / name for name in ['third_party/ninja/ninja', 'LICENSE',
                  'build/config/warning_suppression.txt', 'build/config/unsafe_buffers_paths.txt'])
     actions, deferred = [], []
     for action in pending:
         argv = shlex.split(action['command'])
-        if pathlib.Path(argv[0]).name != 'clang++' or action['directory'] != str(OUT):
+        if pathlib.Path(argv[0]).name not in ('clang++', 'clang') or action['directory'] != str(OUT):
             deferred.append(action['output'])
             continue
         inputs = [pathlib.Path(os.path.normpath(OUT / argv[0])),
@@ -64,13 +114,11 @@ def main():
         files.update(inputs)
         actions.append(action)
     # Notices accompany distributed header/source snapshots.
-    for p in list(files):
-        for parent in p.parents:
-            if not parent.is_relative_to(SRC):
-                break
-            for name in ('LICENSE', 'LICENSE.txt', 'LICENSE.TXT', 'COPYING', 'NOTICE', 'README.chromium'):
-                if (parent / name).is_file():
-                    files.add(parent / name)
+    parents = {parent for p in files for parent in p.parents if parent.is_relative_to(SRC)}
+    for parent in parents:
+        for name in ('LICENSE', 'LICENSE.txt', 'LICENSE.TXT', 'COPYING', 'NOTICE', 'README.chromium'):
+            if (parent / name).is_file():
+                files.add(parent / name)
     print(json.dumps({'stage': 'hashing', 'actions': len(actions), 'files': len(files),
                       'deferred': len(deferred)}), flush=True)
     inputs = []
@@ -87,7 +135,7 @@ def main():
             print(json.dumps({'stage': 'hashing', 'filesDone': number}), flush=True)
     # Balance shards by previous timings where available; every target appears once.
     costs = {}
-    for line in (OUT / '.ninja_log').read_text().splitlines():
+    for line in ((OUT / '.ninja_log').read_text().splitlines() if (OUT / '.ninja_log').exists() else []):
         parts = line.split('\t')
         if len(parts) == 5:
             costs[parts[3]] = max(1000, int(parts[1]) - int(parts[0]))
@@ -99,16 +147,11 @@ def main():
         loads[index] += costs.get(action['output'], 15000)
     manifest = {'schema': 1, 'sourceRoot': str(SRC), 'outputRoot': str(OUT),
                 'inputs': inputs, 'shards': shards, 'deferred': deferred,
-                'totalActions': len(actions), 'mode': 'compile-wave', 'jobsPerWorker': 4}
+                'totalActions': len(actions), 'mode': 'compile-wave', 'jobsPerWorker': 4,
+                'wave': args.prefix}
     metadata = BASE / (args.prefix + '-manifest.json')
     metadata.write_text(json.dumps(manifest) + '\n')
-    with tarfile.open(archive, 'w:gz', compresslevel=1, dereference=True) as output:
-        output.add(metadata, arcname='wave-manifest.json')
-        output.add(BASE / 'llvm-LICENSE.TXT', arcname='LICENSES/llvm-LICENSE.TXT')
-        for number, item in enumerate(inputs):
-            output.add(SRC / item['path'], arcname='src/' + item['path'], recursive=False)
-            if number and number % 25000 == 0:
-                print(json.dumps({'stage': 'packing', 'filesDone': number}), flush=True)
+    pack_snapshot(archive, metadata, inputs)
     receipt = {'archive': str(archive), 'sha256': sha(archive), 'bytes': archive.stat().st_size,
                'inputFiles': len(inputs), 'inputBytes': sum(item['size'] for item in inputs),
                'actions': len(actions), 'shards': len(shards), 'deferred': len(deferred)}
