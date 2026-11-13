@@ -39,3 +39,18 @@ screenshots/
 # Tooling caches
 .kotlin/
 .claude/
+
+# Private local configuration and generated data
+.env
+.env.*
+!.env.example
+!.env.*.example
+!**/.env.example
+!**/.env.*.example
+*.jks
+*.keystore
+*.p12
+*.pfx
+**/key.properties
+**/keystore.properties
+.playwright-mcp/
