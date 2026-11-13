@@ -138,7 +138,26 @@
         field.dispatchEvent(new Event("change", { bubbles: true }));
     }
 
-    function fill(username, password) {
+    /**
+     * `www.GitHub.com` → `github.com`, the same shape LoginStore keys on, so
+     * the two sides can be compared at all.
+     */
+    function normaliseHost(host) {
+        return String(host || "").toLowerCase().replace(/^www\./, "");
+    }
+
+    function fill(host, username, password) {
+        // The password is only for the site it was saved under.
+        //
+        // The fill does not come back along the path the request went out on:
+        // "ready" is announced by whichever document has a password field, and
+        // the answer is delivered by background.js to the tab that is on
+        // screen. Those are the same tab in the ordinary case and different
+        // ones whenever a page finishes loading in the background — at which
+        // point, without this, one site's saved password is written into
+        // another site's form, where its script can read it straight back.
+        if (normaliseHost(host) !== normaliseHost(hostOf())) return;
+
         var fields = passwordFields();
         if (!fields.length) return;
         var passwordField = fields[0];
@@ -150,7 +169,9 @@
     browser.runtime.onMessage.addListener(function (msg) {
         // Shared channel: player, find and translate have their own verbs.
         if (!msg || !msg.cmd) return;
-        if (msg.cmd === "loginFill") fill(msg.username || "", msg.password || "");
+        if (msg.cmd === "loginFill") {
+            fill(msg.host || "", msg.username || "", msg.password || "");
+        }
     });
 
     // Announce once the document has a password field to fill. A page without

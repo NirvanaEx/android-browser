@@ -40,7 +40,9 @@ function ensurePort() {
             // Find and translate act on the page you are looking at, whichever
             // frame the player happens to be locked to.
             if (msg && PAGE_COMMANDS[msg.cmd]) {
-                sendToPage(msg);
+                // A password is not one of the idempotent ones: see the
+                // fallback in sendToPage.
+                sendToPage(msg, msg.cmd === "loginFill");
                 return;
             }
             // Everything else is a player command → controlled frame only.
@@ -78,15 +80,22 @@ var PAGE_COMMANDS = {
  * restored but never selected — the query comes back empty, and falling back
  * to every tab is right: the command is idempotent, the user is looking at one
  * of them, and the alternative is a button that silently does nothing.
+ *
+ * `activeOnly` is the exception, and it exists for one command. A `loginFill`
+ * carries a saved password, so "tell them all" hands it to every open page.
+ * logins.js checks the host before writing it into a form and would refuse —
+ * but the refusal happens after the password has been delivered into that
+ * page's content process, which is somewhere it has no business being. Not
+ * knowing which tab to fill is a fill that doesn't happen.
  */
-function sendToPage(msg) {
+function sendToPage(msg, activeOnly) {
     browser.tabs.query({ active: true })
         // A rejected filter is the same situation as an empty answer: we don't
         // know which tab, so tell them all.
         .catch(function () { return []; })
         .then(function (tabs) {
             if (tabs && tabs.length) return tabs;
-            return browser.tabs.query({});
+            return activeOnly ? [] : browser.tabs.query({});
         })
         .then(function (tabs) {
             (tabs || []).forEach(function (t) {
